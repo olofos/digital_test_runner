@@ -1,18 +1,21 @@
+use std::{
+    fmt::{write, Display},
+    mem,
+    str::FromStr,
+};
+
 use nom::{
     branch::alt,
     bytes::complete::{tag, tag_no_case},
-    character::complete::{
-        alpha1, alphanumeric1, digit0, hex_digit1, oct_digit0, oct_digit1, one_of,
-    },
-    combinator::{map, map_res, recognize, value},
+    character::complete::{alpha1, alphanumeric1, digit0, hex_digit1, oct_digit0, one_of},
+    combinator::{map, map_res, recognize},
     error::ParseError,
     multi::{many0, many1},
-    number,
-    sequence::{delimited, preceded, separated_pair, tuple},
+    sequence::{delimited, preceded, tuple},
     IResult, Parser,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BinOp {
     Equal,
     NotEqual,
@@ -32,6 +35,79 @@ enum BinOp {
     Reminder,
 }
 
+impl FromStr for BinOp {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "=" => Ok(Self::Equal),
+            "!=" => Ok(Self::NotEqual),
+            ">" => Ok(Self::GreaterThan),
+            "<" => Ok(Self::LessThan),
+            ">=" => Ok(Self::GreaterThanOrEqual),
+            "<=" => Ok(Self::LessThanOrEqual),
+            "|" => Ok(Self::Or),
+            "^" => Ok(Self::Xor),
+            "&" => Ok(Self::And),
+            "<<" => Ok(Self::ShiftLeft),
+            ">>" => Ok(Self::ShiftRight),
+            "+" => Ok(Self::Plus),
+            "-" => Ok(Self::Minus),
+            "*" => Ok(Self::Times),
+            "/" => Ok(Self::Divide),
+            "%" => Ok(Self::Reminder),
+            _ => Err(anyhow::anyhow!("Unknown bin op {}", s)),
+        }
+    }
+}
+
+impl Display for BinOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Equal => "=",
+            Self::NotEqual => "!=",
+            Self::GreaterThan => ">",
+            Self::LessThan => "<",
+            Self::GreaterThanOrEqual => ">=",
+            Self::LessThanOrEqual => "<=",
+            Self::Or => "|",
+            Self::Xor => "^",
+            Self::And => "&",
+            Self::ShiftLeft => "<<",
+            Self::ShiftRight => ">>",
+            Self::Plus => "+",
+            Self::Minus => "-",
+            Self::Times => "*",
+            Self::Divide => "/",
+            Self::Reminder => "%",
+        };
+        write!(f, "{s}")
+    }
+}
+
+impl BinOp {
+    fn precedence(&self) -> u8 {
+        match self {
+            Self::Equal => 7,
+            Self::NotEqual => 7,
+            Self::GreaterThan => 7,
+            Self::LessThan => 7,
+            Self::GreaterThanOrEqual => 7,
+            Self::LessThanOrEqual => 7,
+            Self::Or => 6,
+            Self::Xor => 5,
+            Self::And => 4,
+            Self::ShiftLeft => 3,
+            Self::ShiftRight => 3,
+            Self::Plus => 2,
+            Self::Minus => 2,
+            Self::Times => 1,
+            Self::Divide => 1,
+            Self::Reminder => 1,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum UnaryOp {
     Minus,
@@ -39,9 +115,20 @@ enum UnaryOp {
     BitNot,
 }
 
+impl Display for UnaryOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Minus => "-",
+            Self::LogicalNot => "!",
+            Self::BitNot => "~",
+        };
+        write!(f, "{s}")
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum Expr {
-    Number(u64),
+    Number(i64),
     Variable(String),
     BinOp {
         op: BinOp,
@@ -58,6 +145,25 @@ enum Expr {
     },
 }
 
+impl Display for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Number(n) => write!(f, "{n}"),
+            Self::Variable(s) => write!(f, "{s}"),
+            Self::BinOp { op, left, right } => write!(f, "({left} {op} {right})"),
+            Self::UnaryOp { op, expr } => write!(f, "{op}{expr}"),
+            Self::Func { name, params } => {
+                let params = params
+                    .iter()
+                    .map(|p| format!("{p}"))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                write!(f, "{name}({params})")
+            }
+        }
+    }
+}
+
 fn ws<'a, F, O, E: ParseError<&'a str>>(inner: F) -> impl Parser<&'a str, O, E>
 where
     F: Parser<&'a str, O, E>,
@@ -66,54 +172,55 @@ where
 }
 
 fn expr(i: &str) -> IResult<&str, Expr> {
-    todo!()
-}
+    let (i, (first, rest)) = tuple((
+        ws(factor),
+        many0(tuple((
+            map_res(
+                alt((
+                    tag("="),
+                    tag("!="),
+                    tag(">"),
+                    tag("<"),
+                    tag(">="),
+                    tag("<="),
+                    tag("|"),
+                    tag("^"),
+                    tag("&"),
+                    tag("<<"),
+                    tag(">>"),
+                    tag("+"),
+                    tag("-"),
+                    tag("*"),
+                    tag("/"),
+                    tag("%"),
+                )),
+                |s: &str| s.parse::<BinOp>(),
+            ),
+            ws(factor),
+        ))),
+    ))(i)?;
 
-fn or_expr(i: &str) -> IResult<&str, Expr> {
-    todo!()
-}
+    let (ops, rest_exprs): (Vec<_>, Vec<_>) = rest.into_iter().unzip();
+    let mut exprs = vec![first];
+    exprs.extend(rest_exprs);
+    let mut ops = ops;
+    let mut sorted_ops = ops.clone();
+    sorted_ops.sort_by_key(|op| op.precedence());
 
-fn xor_expr(i: &str) -> IResult<&str, Expr> {
-    todo!()
-}
-
-fn and_expr(i: &str) -> IResult<&str, Expr> {
-    todo!()
-}
-
-fn shift_expr(i: &str) -> IResult<&str, Expr> {
-    todo!()
-}
-
-fn arithm_expr(i: &str) -> IResult<&str, Expr> {
-    todo!()
-}
-
-fn term(i: &str) -> IResult<&str, Expr> {
-    alt((
-        map(separated_pair(term, tag("*"), factor), |(l, r)| {
-            Expr::BinOp {
-                op: BinOp::Times,
-                left: Box::new(l),
-                right: Box::new(r),
-            }
-        }),
-        map(separated_pair(term, tag("/"), factor), |(l, r)| {
-            Expr::BinOp {
-                op: BinOp::Divide,
-                left: Box::new(l),
-                right: Box::new(r),
-            }
-        }),
-        map(separated_pair(term, tag("%"), factor), |(l, r)| {
-            Expr::BinOp {
-                op: BinOp::Reminder,
-                left: Box::new(l),
-                right: Box::new(r),
-            }
-        }),
-        factor,
-    ))(i)
+    for op in &sorted_ops {
+        let index = ops.iter().position(|o| o == op).unwrap();
+        ops.remove(index);
+        let left = Box::new(mem::replace(&mut exprs[index], Expr::Number(0)));
+        let right = Box::new(exprs.remove(index + 1));
+        let expr = Expr::BinOp {
+            op: op.clone(),
+            left,
+            right,
+        };
+        exprs[index] = expr;
+    }
+    let expr = exprs.pop().unwrap();
+    Ok((i, expr))
 }
 
 fn factor(i: &str) -> IResult<&str, Expr> {
@@ -144,17 +251,17 @@ fn number(i: &str) -> IResult<&str, Expr> {
     map(
         alt((
             map_res(preceded(tag_no_case("0x"), hex_digit1), |src| {
-                u64::from_str_radix(src, 16)
+                i64::from_str_radix(src, 16)
             }),
             map_res(
                 preceded(tag_no_case("0b"), recognize(many1(one_of("01")))),
-                |src| u64::from_str_radix(src, 2),
+                |src| i64::from_str_radix(src, 2),
             ),
             map_res(recognize(tuple((one_of("123456789"), digit0))), |src| {
-                u64::from_str_radix(src, 10)
+                i64::from_str_radix(src, 10)
             }),
             map_res(recognize(tuple((tag("0"), oct_digit0))), |src| {
-                u64::from_str_radix(src, 8)
+                i64::from_str_radix(src, 8)
             }),
         )),
         |n| Expr::Number(n),
@@ -183,7 +290,7 @@ mod tests {
     #[case("0Xff", 255)]
     #[case("0b1010", 10)]
     #[case("0B1010", 10)]
-    fn number_works(#[case] input: &str, #[case] num: u64) {
+    fn number_works(#[case] input: &str, #[case] num: i64) {
         let (_, expr) = number(input).unwrap();
         assert_eq!(expr, Expr::Number(num))
     }
@@ -198,12 +305,17 @@ mod tests {
         assert_eq!(id, String::from(input))
     }
 
-    // #[rstest]
-    // #[case("1*2")]
-    #[test]
-    // fn term_works(#[case] input: &str) {
-    fn term_works() {
-        let (_, expr) = term("1/2/3").unwrap();
-        dbg!(expr);
+    #[rstest]
+    #[case("1", "1")]
+    #[case("a", "a")]
+    #[case("1+2", "(1 + 2)")]
+    #[case("1 + 2", "(1 + 2)")]
+    #[case("1 + 2*3 + 4", "((1 + (2 * 3)) + 4)")]
+    #[case("f(1)", "f(1)")]
+    #[case("-1", "-1")]
+    #[case("f(1+2)*f(3)", "(f((1 + 2)) * f(3))")]
+    fn term_works2(#[case] input: &str, #[case] result: &str) {
+        let (_, expr) = expr(input).unwrap();
+        assert_eq!(format!("{expr}"), result);
     }
 }
