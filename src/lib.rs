@@ -6,7 +6,7 @@ use nom::{
     character::complete::{alpha1, alphanumeric1, digit0, hex_digit1, oct_digit0, one_of},
     combinator::{map, map_res, recognize},
     error::ParseError,
-    multi::{many0, many1},
+    multi::{many0, many1, separated_list0},
     sequence::{delimited, preceded, tuple},
     IResult, Parser,
 };
@@ -225,17 +225,17 @@ fn expr(i: &str) -> IResult<&str, Expr> {
         many0(tuple((
             map_res(
                 alt((
-                    tag("="),
                     tag("!="),
-                    tag(">"),
-                    tag("<"),
                     tag(">="),
                     tag("<="),
+                    tag("<<"),
+                    tag(">>"),
+                    tag("="),
+                    tag(">"),
+                    tag("<"),
                     tag("|"),
                     tag("^"),
                     tag("&"),
-                    tag("<<"),
-                    tag(">>"),
                     tag("+"),
                     tag("-"),
                     tag("*"),
@@ -272,7 +272,10 @@ fn factor(i: &str) -> IResult<&str, Expr> {
         }),
         number,
         map(
-            tuple((identifier, delimited(tag("("), many0(expr), tag(")")))),
+            tuple((
+                identifier,
+                delimited(tag("("), separated_list0(tag(","), expr), tag(")")),
+            )),
             |(name, params)| Expr::Func { name, params },
         ),
         map(identifier, Expr::Variable),
@@ -428,12 +431,28 @@ mod tests {
     #[case("1 + 2", "(1 + 2)")]
     #[case("1 + 2*3 + 4", "((1 + (2 * 3)) + 4)")]
     #[case("f(1)", "f(1)")]
+    #[case("f(1,2)", "f(1,2)")]
+    #[case("f(1 , 2)", "f(1,2)")]
     #[case("-1", "-1")]
     #[case("f(1+2)*f(3)", "(f((1 + 2)) * f(3))")]
     #[case("1 + 2 * 3 = 4 + 5", "((1 + (2 * 3)) = (4 + 5))")]
     #[case("1*2/3*4", "(((1 * 2) / 3) * 4)")]
+    #[case("1=2", "(1 = 2)")]
+    #[case("1>2", "(1 > 2)")]
+    #[case("1<2", "(1 < 2)")]
+    #[case("1>=2", "(1 >= 2)")]
+    #[case("1<=2", "(1 <= 2)")]
+    #[case("1&2", "(1 & 2)")]
+    #[case("1^2", "(1 ^ 2)")]
+    #[case("1|2", "(1 | 2)")]
+    #[case("1+2", "(1 + 2)")]
+    #[case("1-2", "(1 - 2)")]
+    #[case("1*2", "(1 * 2)")]
+    #[case("1/2", "(1 / 2)")]
+    #[case("1%2", "(1 % 2)")]
     fn expr_works(#[case] input: &str, #[case] result: &str) {
-        let (_, expr) = expr(input).unwrap();
+        let (i, expr) = expr(input).unwrap();
+        assert_eq!(i, "");
         assert_eq!(format!("{expr}"), result);
     }
 
