@@ -1,8 +1,4 @@
-use std::{
-    fmt::{write, Display},
-    mem,
-    str::FromStr,
-};
+use std::{fmt::Display, mem, str::FromStr};
 
 use nom::{
     branch::alt,
@@ -171,6 +167,58 @@ where
     delimited(many0(one_of(" \t")), inner, many0(one_of(" \t")))
 }
 
+/// Used to parse strings of binary operators.
+/// We construct a separate tree of only the binary operators on the same level, so that we don't recurse into expressions in brackets
+#[derive(Debug, Clone)]
+enum BinOpTree {
+    Atom(Expr),
+    BinOp {
+        op: BinOp,
+        left: Box<BinOpTree>,
+        right: Box<BinOpTree>,
+    },
+    Dummy,
+}
+
+impl Display for BinOpTree {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Atom(expr) => write!(f, "{expr}"),
+            Self::BinOp { op, left, right } => write!(f, "({left} {op} {right})"),
+            Self::Dummy => write!(f, "DUMMY"),
+        }
+    }
+}
+
+impl BinOpTree {
+    fn add(&mut self, new_op: BinOp, new_expr: Expr) {
+        if let Self::BinOp { op, left: _, right } = self {
+            if new_op.precedence() < op.precedence() {
+                right.add(new_op, new_expr);
+                return;
+            }
+        };
+        let left = mem::replace(self, Self::Dummy);
+        *self = Self::BinOp {
+            op: new_op,
+            left: Box::new(left),
+            right: Box::new(Self::Atom(new_expr)),
+        }
+    }
+
+    fn to_expr(self) -> Expr {
+        match self {
+            Self::Atom(expr) => expr,
+            Self::BinOp { op, left, right } => Expr::BinOp {
+                op,
+                left: Box::new(left.to_expr()),
+                right: Box::new(right.to_expr()),
+            },
+            Self::Dummy => unreachable!(),
+        }
+    }
+}
+
 fn expr(i: &str) -> IResult<&str, Expr> {
     let (i, (first, rest)) = tuple((
         ws(factor),
@@ -200,27 +248,12 @@ fn expr(i: &str) -> IResult<&str, Expr> {
         ))),
     ))(i)?;
 
-    let (ops, rest_exprs): (Vec<_>, Vec<_>) = rest.into_iter().unzip();
-    let mut exprs = vec![first];
-    exprs.extend(rest_exprs);
-    let mut ops = ops;
-    let mut sorted_ops = ops.clone();
-    sorted_ops.sort_by_key(|op| op.precedence());
-
-    for op in &sorted_ops {
-        let index = ops.iter().position(|o| o == op).unwrap();
-        ops.remove(index);
-        let left = Box::new(mem::replace(&mut exprs[index], Expr::Number(0)));
-        let right = Box::new(exprs.remove(index + 1));
-        let expr = Expr::BinOp {
-            op: op.clone(),
-            left,
-            right,
-        };
-        exprs[index] = expr;
+    let mut tree = BinOpTree::Atom(first);
+    for (op, expr) in rest {
+        tree.add(op, expr);
     }
-    let expr = exprs.pop().unwrap();
-    Ok((i, expr))
+
+    Ok((i, tree.to_expr()))
 }
 
 fn factor(i: &str) -> IResult<&str, Expr> {
@@ -314,7 +347,9 @@ mod tests {
     #[case("f(1)", "f(1)")]
     #[case("-1", "-1")]
     #[case("f(1+2)*f(3)", "(f((1 + 2)) * f(3))")]
-    fn term_works2(#[case] input: &str, #[case] result: &str) {
+    #[case("1 + 2 * 3 = 4 + 5", "((1 + (2 * 3)) = (4 + 5))")]
+    #[case("1*2/3*4", "(((1 * 2) / 3) * 4)")]
+    fn expr_works(#[case] input: &str, #[case] result: &str) {
         let (_, expr) = expr(input).unwrap();
         assert_eq!(format!("{expr}"), result);
     }
