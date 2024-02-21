@@ -309,6 +309,89 @@ fn identifier(i: &str) -> IResult<&str, String> {
     Ok((i, s.to_owned()))
 }
 
+impl Expr {
+    fn eval(&self, ctx: &EvalContext) -> anyhow::Result<i64> {
+        match self {
+            Self::Number(n) => Ok(*n),
+            Self::Variable(name) => ctx
+                .get(name)
+                .ok_or(anyhow::anyhow!("Variable {name} not found")),
+            Self::UnaryOp { op, expr } => {
+                let val = expr.eval(ctx)?;
+                match op {
+                    UnaryOp::BitNot => Ok(!val),
+                    UnaryOp::LogicalNot => Ok(if val == 0 { 0 } else { 1 }),
+                    UnaryOp::Minus => Ok(-val),
+                }
+            }
+            Self::BinOp { op, left, right } => {
+                let left = left.eval(ctx)?;
+                let right = right.eval(ctx)?;
+                match op {
+                    BinOp::Equal => Ok(if left == right { 1 } else { 0 }),
+                    BinOp::NotEqual => Ok(if left != right { 1 } else { 0 }),
+                    BinOp::GreaterThan => Ok(if left > right { 1 } else { 0 }),
+                    BinOp::LessThan => Ok(if left < right { 1 } else { 0 }),
+                    BinOp::GreaterThanOrEqual => Ok(if left >= right { 1 } else { 0 }),
+                    BinOp::LessThanOrEqual => Ok(if left <= right { 1 } else { 0 }),
+                    BinOp::Or => Ok(left | right),
+                    BinOp::Xor => Ok(left ^ right),
+                    BinOp::And => Ok(left & right),
+                    BinOp::ShiftLeft => Ok(left << right),
+                    BinOp::ShiftRight => Ok(left >> right),
+                    BinOp::Plus => Ok(left + right),
+                    BinOp::Minus => Ok(left - right),
+                    BinOp::Times => Ok(left * right),
+                    BinOp::Divide => Ok(left / right),
+                    BinOp::Reminder => Ok(left % right),
+                }
+            }
+            _ => unimplemented!(),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct EvalContext {
+    values: Vec<(String, i64)>,
+    frame_stack: Vec<usize>,
+}
+
+impl EvalContext {
+    fn new() -> Self {
+        Default::default()
+    }
+
+    fn push_frame(&mut self) {
+        self.frame_stack.push(self.values.len())
+    }
+
+    fn pop_frame(&mut self) {
+        let len = self.frame_stack.pop().unwrap_or(0);
+        self.values.truncate(len);
+    }
+
+    fn set(&mut self, name: &str, value: i64) {
+        let frame_start = *self.frame_stack.last().unwrap_or(&0);
+        if let Some((_, entry_value)) = self.values[frame_start..]
+            .iter_mut()
+            .find(|entry| entry.0 == name)
+        {
+            *entry_value = value;
+        } else {
+            self.values.push((name.to_owned(), value));
+        }
+    }
+
+    fn get(&self, name: &str) -> Option<i64> {
+        self.values
+            .iter()
+            .rev()
+            .find(|entry| entry.0 == name)
+            .map(|entry| entry.1)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -352,5 +435,46 @@ mod tests {
     fn expr_works(#[case] input: &str, #[case] result: &str) {
         let (_, expr) = expr(input).unwrap();
         assert_eq!(format!("{expr}"), result);
+    }
+
+    #[test]
+    fn eval_context_works() {
+        let mut ctx = EvalContext::new();
+        ctx.set("a", 1);
+        ctx.set("b", 2);
+        ctx.set("c", 3);
+        assert_eq!(ctx.get("a"), Some(1));
+        assert_eq!(ctx.get("b"), Some(2));
+        assert_eq!(ctx.get("c"), Some(3));
+        ctx.set("a", 4);
+        assert_eq!(ctx.get("a"), Some(4));
+        assert_eq!(ctx.get("b"), Some(2));
+        assert_eq!(ctx.get("c"), Some(3));
+        ctx.push_frame();
+        ctx.set("a", 5);
+        ctx.set("b", 6);
+        assert_eq!(ctx.get("a"), Some(5));
+        assert_eq!(ctx.get("b"), Some(6));
+        assert_eq!(ctx.get("c"), Some(3));
+        ctx.pop_frame();
+        assert_eq!(ctx.get("a"), Some(4));
+        assert_eq!(ctx.get("b"), Some(2));
+        assert_eq!(ctx.get("c"), Some(3));
+    }
+
+    #[rstest]
+    #[case("1+2", 3)]
+    #[case("1+2+3", 6)]
+    #[case("2*3", 6)]
+    #[case("1+2+3=2*3", 1)]
+    #[case("1+2+3=b*c", 1)]
+    fn eval_works(#[case] input: &str, #[case] value: i64) {
+        let (i, expr) = expr(input).unwrap();
+        assert_eq!(i, "");
+        let mut ctx = EvalContext::new();
+        ctx.set("a", 1);
+        ctx.set("b", 2);
+        ctx.set("c", 3);
+        assert_eq!(expr.eval(&ctx).unwrap(), value);
     }
 }
