@@ -1,3 +1,4 @@
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::{fmt::Display, mem, str::FromStr};
 
 use nom::{
@@ -313,7 +314,7 @@ fn identifier(i: &str) -> IResult<&str, String> {
 }
 
 impl Expr {
-    fn eval(&self, ctx: &EvalContext) -> anyhow::Result<i64> {
+    fn eval(&self, ctx: &mut EvalContext) -> anyhow::Result<i64> {
         match self {
             Self::Number(n) => Ok(*n),
             Self::Variable(name) => ctx
@@ -323,7 +324,7 @@ impl Expr {
                 let val = expr.eval(ctx)?;
                 match op {
                     UnaryOp::BitNot => Ok(!val),
-                    UnaryOp::LogicalNot => Ok(if val == 0 { 0 } else { 1 }),
+                    UnaryOp::LogicalNot => Ok(if val == 0 { 1 } else { 0 }),
                     UnaryOp::Minus => Ok(-val),
                 }
             }
@@ -349,20 +350,56 @@ impl Expr {
                     BinOp::Reminder => Ok(left % right),
                 }
             }
-            _ => unimplemented!(),
+            Self::Func { name, params } => match name.as_str() {
+                "random" => {
+                    if params.len() == 1 {
+                        let max = params[0].eval(ctx)?;
+                        Ok(ctx.rng.gen_range(1..max))
+                    } else {
+                        anyhow::bail!("The function 'random' takes one parameter")
+                    }
+                }
+                "ite" => {
+                    if params.len() == 3 {
+                        let test = params[0].eval(ctx)?;
+                        if test == 0 {
+                            Ok(params[2].eval(ctx)?)
+                        } else {
+                            Ok(params[1].eval(ctx)?)
+                        }
+                    } else {
+                        anyhow::bail!("The function 'lte' takes three parameters")
+                    }
+                }
+                "signExt" => anyhow::bail!("The function '{name}' is currently not implemented"),
+                _ => anyhow::bail!("Unknown function '{name}'"),
+            },
         }
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct EvalContext {
     values: Vec<(String, i64)>,
     frame_stack: Vec<usize>,
+    rng: StdRng,
 }
 
 impl EvalContext {
     fn new() -> Self {
-        Default::default()
+        Self {
+            values: vec![],
+            frame_stack: vec![],
+            rng: StdRng::from_entropy(),
+        }
+    }
+
+    fn with_seed(seed: u64) -> Self {
+        Self {
+            values: vec![],
+            frame_stack: vec![],
+            rng: StdRng::seed_from_u64(seed),
+        }
     }
 
     fn push_frame(&mut self) {
@@ -494,6 +531,64 @@ mod tests {
         ctx.set("a", 1);
         ctx.set("b", 2);
         ctx.set("c", 3);
-        assert_eq!(expr.eval(&ctx).unwrap(), value);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), value);
+    }
+
+    #[rstest]
+    #[case("7=3", 0)]
+    #[case("7!=3", 1)]
+    #[case("7<3", 0)]
+    #[case("7>3", 1)]
+    #[case("7<=3", 0)]
+    #[case("7>=3", 1)]
+    #[case("7<<3", 56)]
+    #[case("7>>3", 0)]
+    #[case("7+3", 10)]
+    #[case("7-3", 4)]
+    #[case("7*3", 21)]
+    #[case("7/3", 2)]
+    #[case("7%3", 1)]
+    fn eval_works_for_binop(#[case] input: &str, #[case] value: i64) {
+        let (i, expr) = expr(input).unwrap();
+        assert_eq!(i, "");
+        let mut ctx = EvalContext::new();
+        ctx.set("a", 1);
+        ctx.set("b", 2);
+        ctx.set("c", 3);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), value);
+    }
+
+    #[rstest]
+    #[case("-3", -3)]
+    #[case("~3", !3)]
+    #[case("!3", 0)]
+    fn eval_works_for_unart_op(#[case] input: &str, #[case] value: i64) {
+        let (i, expr) = expr(input).unwrap();
+        assert_eq!(i, "");
+        let mut ctx = EvalContext::new();
+        ctx.set("a", 1);
+        ctx.set("b", 2);
+        ctx.set("c", 3);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), value);
+    }
+
+    #[test]
+    fn eval_random_works() {
+        let (i, expr) = expr("random(10)").unwrap();
+        assert_eq!(i, "");
+        let mut ctx = EvalContext::with_seed(0);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), 1);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), 6);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), 3);
+    }
+
+    #[rstest]
+    #[case("ite(0,2,3)", 3)]
+    #[case("ite(1,2,3)", 2)]
+    fn eval_ite_works(#[case] input: &str, #[case] value: i64) {
+        let (i, expr) = expr(input).unwrap();
+        assert_eq!(i, "");
+        let mut ctx = EvalContext::new();
+        assert_eq!(expr.eval(&mut ctx).unwrap(), value);
     }
 }
