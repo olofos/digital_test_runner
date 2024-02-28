@@ -443,6 +443,39 @@ enum Stmt {
     },
 }
 
+impl Stmt {
+    fn run(&self, ctx: &mut EvalContext) {
+        match self {
+            Self::Let { name, expr } => {
+                let value = expr.eval(ctx).unwrap();
+                ctx.set(name, value);
+            }
+            Self::DataRow(entries) => {
+                let data = entries
+                    .iter()
+                    .map(|entry| entry.run(ctx))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                println!("{data}");
+            }
+            Self::Loop {
+                variable,
+                max,
+                stmts,
+            } => {
+                ctx.push_frame();
+                for i in 0..*max {
+                    ctx.set(variable, i);
+                    for stmt in stmts {
+                        stmt.run(ctx);
+                    }
+                }
+                ctx.pop_frame();
+            }
+        }
+    }
+}
+
 fn stmt(i: &str) -> IResult<&str, Stmt> {
     delimited(
         many0(one_of(" \t")),
@@ -469,6 +502,25 @@ enum DataEntry {
     Bits { number: u64, expr: Expr },
     X,
     Z,
+}
+
+impl DataEntry {
+    fn run(&self, ctx: &mut EvalContext) -> String {
+        match self {
+            Self::Number(n) => format!("{n}"),
+            Self::Expr(expr) => format!("{}", expr.eval(ctx).unwrap()),
+            Self::Bits { number, expr } => {
+                let value = expr.eval(ctx).unwrap();
+                (0..*number)
+                    .rev()
+                    .map(|n| format!("{}", (value >> n) & 1))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            }
+            Self::X => String::from("X"),
+            Self::Z => String::from("Z"),
+        }
+    }
 }
 
 fn data_entry(i: &str) -> IResult<&str, DataEntry> {
@@ -598,8 +650,17 @@ impl FromStr for TestCase {
     type Err = anyhow::Error;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
-        let (i, testcase) = testcase(input).map_err(|e| e.to_owned()).finish()?;
+        let (_, testcase) = testcase(input).map_err(|e| e.to_owned()).finish()?;
         Ok(testcase)
+    }
+}
+
+impl TestCase {
+    pub fn run(&self) {
+        let mut ctx = EvalContext::new();
+        for stmt in &self.stmts {
+            stmt.run(&mut ctx);
+        }
     }
 }
 
@@ -823,9 +884,35 @@ end loop
 end loop
 
 ";
-        // let (i, prog) = program(input).unwrap();
-        let prog: TestCase = input.parse().unwrap();
-        assert_eq!(prog.signals.len(), 11);
-        assert_eq!(prog.stmts.len(), 7);
+        let testcase: TestCase = input.parse().unwrap();
+        assert_eq!(testcase.signals.len(), 11);
+        assert_eq!(testcase.stmts.len(), 7);
+    }
+
+    #[test]
+    fn run_works() {
+        let input = r"
+BUS-CLK S         A        B        N ALU-~RESET ALU-AUX   OUT           FLAG DLEN DSUM
+
+let ADD = 0;
+let OR  = 1;
+let XOR = 2;
+let AND = 3;
+
+0       0         0        0        0 0          0         X             X    X    X
+0       0         0        0        0 1          0         X             X    X    X
+
+loop (a,2)
+loop (b,2)
+0       (OR)      (a)      (b)      0 1          0         (a|b)         X    X    X
+0       (AND)     (a)      (b)      0 1          0         (a&b)         X    X    X
+0       (XOR)     (a)      (b)      0 1          0         (a^b)         X    X    X
+0       (ADD)     (a)      (b)      0 1          0         (a+b)         X    X    X
+end loop
+end loop
+
+";
+        let testcase: TestCase = input.parse().unwrap();
+        testcase.run();
     }
 }
