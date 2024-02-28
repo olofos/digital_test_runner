@@ -3,13 +3,13 @@ use std::{fmt::Display, mem, str::FromStr};
 
 use nom::{
     branch::alt,
-    bytes::complete::{tag, tag_no_case},
-    character::complete::{alpha1, alphanumeric1, digit0, hex_digit1, oct_digit0, one_of},
-    combinator::{map, map_res, recognize},
+    bytes::complete::{is_not, tag, tag_no_case},
+    character::complete::{alpha1, alphanumeric1, digit0, hex_digit1, newline, oct_digit0, one_of},
+    combinator::{complete, eof, map, map_res, opt, recognize, value},
     error::ParseError,
-    multi::{many0, many1, separated_list0},
-    sequence::{delimited, preceded, tuple},
-    IResult, Parser,
+    multi::{many0, many1, separated_list0, separated_list1},
+    sequence::{delimited, pair, preceded, separated_pair, tuple},
+    Finish, IResult, Parser,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -123,7 +123,7 @@ impl Display for UnaryOp {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Expr {
     Number(i64),
     Variable(String),
@@ -221,9 +221,9 @@ impl BinOpTree {
 }
 
 fn expr(i: &str) -> IResult<&str, Expr> {
-    let (i, (first, rest)) = tuple((
+    let (i, (first, rest)) = pair(
         ws(factor),
-        many0(tuple((
+        many0(pair(
             map_res(
                 alt((
                     tag("!="),
@@ -246,8 +246,8 @@ fn expr(i: &str) -> IResult<&str, Expr> {
                 |s: &str| s.parse::<BinOp>(),
             ),
             ws(factor),
-        ))),
-    ))(i)?;
+        )),
+    )(i)?;
 
     let mut tree = BinOpTree::Atom(first);
     for (op, expr) in rest {
@@ -271,12 +271,12 @@ fn factor(i: &str) -> IResult<&str, Expr> {
             op: UnaryOp::BitNot,
             expr: Box::new(expr),
         }),
-        number,
+        map(number, |n| Expr::Number(n)),
         map(
-            tuple((
+            pair(
                 identifier,
                 delimited(tag("("), separated_list0(tag(","), expr), tag(")")),
-            )),
+            ),
             |(name, params)| Expr::Func { name, params },
         ),
         map(identifier, Expr::Variable),
@@ -284,32 +284,29 @@ fn factor(i: &str) -> IResult<&str, Expr> {
     ))(i)
 }
 
-fn number(i: &str) -> IResult<&str, Expr> {
-    map(
-        alt((
-            map_res(preceded(tag_no_case("0x"), hex_digit1), |src| {
-                i64::from_str_radix(src, 16)
-            }),
-            map_res(
-                preceded(tag_no_case("0b"), recognize(many1(one_of("01")))),
-                |src| i64::from_str_radix(src, 2),
-            ),
-            map_res(recognize(tuple((one_of("123456789"), digit0))), |src| {
-                i64::from_str_radix(src, 10)
-            }),
-            map_res(recognize(tuple((tag("0"), oct_digit0))), |src| {
-                i64::from_str_radix(src, 8)
-            }),
-        )),
-        |n| Expr::Number(n),
-    )(i)
+fn number(i: &str) -> IResult<&str, i64> {
+    alt((
+        map_res(preceded(tag_no_case("0x"), hex_digit1), |src| {
+            i64::from_str_radix(src, 16)
+        }),
+        map_res(
+            preceded(tag_no_case("0b"), recognize(many1(one_of("01")))),
+            |src| i64::from_str_radix(src, 2),
+        ),
+        map_res(recognize(pair(one_of("123456789"), digit0)), |src| {
+            i64::from_str_radix(src, 10)
+        }),
+        map_res(recognize(pair(tag("0"), oct_digit0)), |src| {
+            i64::from_str_radix(src, 8)
+        }),
+    ))(i)
 }
 
 fn identifier(i: &str) -> IResult<&str, String> {
-    let (i, s) = recognize(tuple((
+    let (i, s) = recognize(pair(
         alt((alpha1, tag("_"))),
         many0(alt((alphanumeric1, tag("_")))),
-    )))(i)?;
+    ))(i)?;
     Ok((i, s.to_owned()))
 }
 
@@ -432,6 +429,180 @@ impl EvalContext {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Stmt {
+    Let {
+        name: String,
+        expr: Expr,
+    },
+    DataRow(Vec<DataEntry>),
+    Loop {
+        variable: String,
+        max: i64,
+        stmts: Vec<Stmt>,
+    },
+}
+
+fn stmt(i: &str) -> IResult<&str, Stmt> {
+    delimited(
+        many0(one_of(" \t")),
+        alt((let_stmt, loop_stmt, repeat, data_row, declare, while_stmt)),
+        eol,
+    )(i)
+}
+
+fn comment(i: &str) -> IResult<&str, ()> {
+    value((), pair(tag("#"), is_not("\r\n")))(i)
+}
+
+fn eol(i: &str) -> IResult<&str, ()> {
+    value(
+        (),
+        many1(tuple((many0(one_of(" \t")), opt(comment), newline))),
+    )(i)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DataEntry {
+    Number(i64),
+    Expr(Expr),
+    Bits { number: u64, expr: Expr },
+    X,
+    Z,
+}
+
+fn data_entry(i: &str) -> IResult<&str, DataEntry> {
+    alt((
+        map(number, DataEntry::Number),
+        map(delimited(tag("("), expr, tag(")")), DataEntry::Expr),
+        value(DataEntry::X, tag_no_case("x")),
+        value(DataEntry::Z, tag_no_case("z")),
+        map(
+            delimited(
+                pair(tag_no_case("bits"), ws(tag("("))),
+                separated_pair(ws(number), tag(","), expr),
+                tag(")"),
+            ),
+            |(number, expr)| DataEntry::Bits {
+                number: number as u64,
+                expr,
+            },
+        ),
+    ))(i)
+}
+
+fn data_row(i: &str) -> IResult<&str, Stmt> {
+    map(
+        separated_list1(many1(one_of(" \t")), data_entry),
+        Stmt::DataRow,
+    )(i)
+}
+
+fn let_stmt(i: &str) -> IResult<&str, Stmt> {
+    map(
+        pair(
+            preceded(tag_no_case("let"), ws(identifier)),
+            delimited(tag("="), expr, tag(";")),
+        ),
+        |(name, expr)| Stmt::Let { name, expr },
+    )(i)
+}
+
+fn loop_stmt(i: &str) -> IResult<&str, Stmt> {
+    let (i, (variable, max)) = delimited(
+        pair(tag_no_case("loop"), ws(tag("("))),
+        separated_pair(identifier, ws(tag(",")), number),
+        pair(ws(tag(")")), eol),
+    )(i)?;
+    let (i, stmts) = many0(stmt)(i)?;
+    let (i, _) = pair(many0(one_of(" \t")), tag_no_case("end loop"))(i)?;
+
+    Ok((
+        i,
+        Stmt::Loop {
+            variable,
+            max,
+            stmts,
+        },
+    ))
+}
+
+fn repeat(i: &str) -> IResult<&str, Stmt> {
+    let (i, max) = delimited(
+        pair(tag_no_case("repeat"), ws(tag("("))),
+        number,
+        ws(tag(")")),
+    )(i)?;
+    let (i, stmt) = data_row(i)?;
+    Ok((
+        i,
+        Stmt::Loop {
+            variable: String::from("n"),
+            max,
+            stmts: vec![stmt],
+        },
+    ))
+}
+
+fn declare(i: &str) -> IResult<&str, Stmt> {
+    let (i, (name, expr)) = pair(
+        preceded(tag_no_case("let"), ws(identifier)),
+        delimited(tag("="), expr, tag(";")),
+    )(i)?;
+
+    let (_i, _name, _expr) = (i, name, expr);
+
+    unimplemented!()
+}
+
+fn while_stmt(i: &str) -> IResult<&str, Stmt> {
+    let (i, expr) = delimited(
+        pair(tag_no_case("while"), ws(tag("("))),
+        expr,
+        pair(ws(tag(")")), eol),
+    )(i)?;
+    let (i, stmts) = many0(stmt)(i)?;
+    let (i, _) = pair(many0(one_of(" \t")), tag_no_case("end while"))(i)?;
+
+    let (_i, _expr, _stmts) = (i, expr, stmts);
+
+    unimplemented!()
+}
+
+fn header(i: &str) -> IResult<&str, Vec<String>> {
+    let (i, _) = many0(eol)(i)?;
+    let (i, _) = many0(one_of(" \t"))(i)?;
+    let (i, signals) = separated_list1(
+        many1(one_of(" \t")),
+        map(recognize(is_not(" \r\r\n")), String::from),
+    )(i)?;
+    let (i, _) = eol(i)?;
+
+    Ok((i, signals))
+}
+
+fn testcase(i: &str) -> IResult<&str, TestCase> {
+    let (i, signals) = header(i)?;
+    let (i, stmts) = many1(stmt)(i)?;
+    let (i, _) = pair(many0(eol), eof)(i)?;
+
+    Ok((i, TestCase { signals, stmts }))
+}
+
+pub struct TestCase {
+    signals: Vec<String>,
+    stmts: Vec<Stmt>,
+}
+
+impl FromStr for TestCase {
+    type Err = anyhow::Error;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        let (i, testcase) = testcase(input).map_err(|e| e.to_owned()).finish()?;
+        Ok(testcase)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -448,7 +619,7 @@ mod tests {
     #[case("0B1010", 10)]
     fn number_works(#[case] input: &str, #[case] num: i64) {
         let (_, expr) = number(input).unwrap();
-        assert_eq!(expr, Expr::Number(num))
+        assert_eq!(expr, num)
     }
 
     #[rstest]
@@ -590,5 +761,71 @@ mod tests {
         assert_eq!(i, "");
         let mut ctx = EvalContext::new();
         assert_eq!(expr.eval(&mut ctx).unwrap(), value);
+    }
+
+    #[test]
+    fn stmt_let_works() {
+        let (i, stmt) = let_stmt("let a = 1;").unwrap();
+        assert_eq!(i, "");
+        assert_eq!(
+            stmt,
+            Stmt::Let {
+                name: String::from("a"),
+                expr: Expr::Number(1)
+            }
+        )
+    }
+
+    #[rstest]
+    #[case("1", DataEntry::Number(1))]
+    #[case("x", DataEntry::X)]
+    #[case("X", DataEntry::X)]
+    #[case("z", DataEntry::Z)]
+    #[case("Z", DataEntry::Z)]
+    #[case("(1)", DataEntry::Expr(Expr::Number(1)))]
+    #[case("bits(1,2)", DataEntry::Bits { number: 1, expr: Expr::Number(2)})]
+    fn data_entry_works(#[case] input: &str, #[case] result: DataEntry) {
+        let (i, entry) = data_entry(input).unwrap();
+        assert_eq!(i, "");
+        assert_eq!(entry, result);
+    }
+
+    #[test]
+    fn data_row_works() {
+        let (i, row) = data_row("1 (a+b) X\tZ\t\tbits(1,3*7)").unwrap();
+        assert_eq!(i, "");
+        match row {
+            Stmt::DataRow(entries) => assert_eq!(entries.len(), 5),
+            _ => panic!("Expected a data row"),
+        }
+    }
+
+    #[test]
+    fn can_parse_simple_program() {
+        let input = r"
+BUS-CLK S         A        B        N ALU-~RESET ALU-AUX   OUT           FLAG DLEN DSUM
+
+let ADD = 0;
+let OR  = 1;
+let XOR = 2;
+let AND = 3;
+
+0       0         0        0        0 0          0         X             X    X    X
+0       0         0        0        0 1          0         X             X    X    X
+
+loop (a,2)
+loop (b,2)
+0       (OR)      (a)      (b)      0 1          0         (a|b)         X    X    X
+0       (AND)     (a)      (b)      0 1          0         (a&b)         X    X    X
+0       (XOR)     (a)      (b)      0 1          0         (a^b)         X    X    X
+0       (ADD)     (a)      (b)      0 1          0         (a+b)         X    X    X
+end loop
+end loop
+
+";
+        // let (i, prog) = program(input).unwrap();
+        let prog: TestCase = input.parse().unwrap();
+        assert_eq!(prog.signals.len(), 11);
+        assert_eq!(prog.stmts.len(), 7);
     }
 }
