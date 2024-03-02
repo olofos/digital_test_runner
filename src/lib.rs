@@ -531,7 +531,7 @@ fn data_entry(i: &str) -> IResult<&str, DataEntry> {
         value(DataEntry::Z, tag_no_case("z")),
         map(
             delimited(
-                pair(tag_no_case("bits"), ws(tag("("))),
+                pair(tag("bits"), ws(tag("("))),
                 separated_pair(ws(number), tag(","), expr),
                 tag(")"),
             ),
@@ -553,7 +553,7 @@ fn data_row(i: &str) -> IResult<&str, Stmt> {
 fn let_stmt(i: &str) -> IResult<&str, Stmt> {
     map(
         pair(
-            preceded(tag_no_case("let"), ws(identifier)),
+            preceded(tag("let"), ws(identifier)),
             delimited(tag("="), expr, tag(";")),
         ),
         |(name, expr)| Stmt::Let { name, expr },
@@ -562,12 +562,12 @@ fn let_stmt(i: &str) -> IResult<&str, Stmt> {
 
 fn loop_stmt(i: &str) -> IResult<&str, Stmt> {
     let (i, (variable, max)) = delimited(
-        pair(tag_no_case("loop"), ws(tag("("))),
+        pair(tag("loop"), ws(tag("("))),
         separated_pair(identifier, ws(tag(",")), number),
         pair(ws(tag(")")), eol),
     )(i)?;
     let (i, stmts) = many0(stmt)(i)?;
-    let (i, _) = pair(many0(one_of(" \t")), tag_no_case("end loop"))(i)?;
+    let (i, _) = pair(many0(one_of(" \t")), tag("end loop"))(i)?;
 
     Ok((
         i,
@@ -580,11 +580,7 @@ fn loop_stmt(i: &str) -> IResult<&str, Stmt> {
 }
 
 fn repeat(i: &str) -> IResult<&str, Stmt> {
-    let (i, max) = delimited(
-        pair(tag_no_case("repeat"), ws(tag("("))),
-        number,
-        ws(tag(")")),
-    )(i)?;
+    let (i, max) = delimited(pair(tag("repeat"), ws(tag("("))), number, ws(tag(")")))(i)?;
     let (i, stmt) = data_row(i)?;
     Ok((
         i,
@@ -598,7 +594,7 @@ fn repeat(i: &str) -> IResult<&str, Stmt> {
 
 fn declare(i: &str) -> IResult<&str, Stmt> {
     let (i, (name, expr)) = pair(
-        preceded(tag_no_case("let"), ws(identifier)),
+        preceded(tag("let"), ws(identifier)),
         delimited(tag("="), expr, tag(";")),
     )(i)?;
 
@@ -609,12 +605,12 @@ fn declare(i: &str) -> IResult<&str, Stmt> {
 
 fn while_stmt(i: &str) -> IResult<&str, Stmt> {
     let (i, expr) = delimited(
-        pair(tag_no_case("while"), ws(tag("("))),
+        pair(tag("while"), ws(tag("("))),
         expr,
         pair(ws(tag(")")), eol),
     )(i)?;
     let (i, stmts) = many0(stmt)(i)?;
-    let (i, _) = pair(many0(one_of(" \t")), tag_no_case("end while"))(i)?;
+    let (i, _) = pair(many0(one_of(" \t")), tag("end while"))(i)?;
 
     let (_i, _expr, _stmts) = (i, expr, stmts);
 
