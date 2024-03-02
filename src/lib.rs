@@ -380,14 +380,20 @@ struct EvalContext {
     values: Vec<(String, i64)>,
     frame_stack: Vec<usize>,
     rng: StdRng,
+    seed: u64,
 }
 
 impl EvalContext {
     fn new() -> Self {
+        let mut seed_bytes: [u8; 8] = Default::default();
+        getrandom::getrandom(&mut seed_bytes).unwrap();
+        let seed = u64::from_le_bytes(seed_bytes);
+
         Self {
             values: vec![],
             frame_stack: vec![],
-            rng: StdRng::from_entropy(),
+            rng: StdRng::seed_from_u64(seed),
+            seed,
         }
     }
 
@@ -396,6 +402,7 @@ impl EvalContext {
             values: vec![],
             frame_stack: vec![],
             rng: StdRng::seed_from_u64(seed),
+            seed,
         }
     }
 
@@ -427,6 +434,10 @@ impl EvalContext {
             .find(|entry| entry.0 == name)
             .map(|entry| entry.1)
     }
+
+    fn reset_random_seed(&mut self) {
+        self.rng = StdRng::seed_from_u64(self.seed);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -441,6 +452,7 @@ enum Stmt {
         max: i64,
         stmts: Vec<Stmt>,
     },
+    ResetRandom,
 }
 
 impl Stmt {
@@ -472,6 +484,9 @@ impl Stmt {
                 }
                 ctx.pop_frame();
             }
+            Self::ResetRandom => {
+                ctx.reset_random_seed();
+            }
         }
     }
 }
@@ -479,7 +494,15 @@ impl Stmt {
 fn stmt(i: &str) -> IResult<&str, Stmt> {
     delimited(
         many0(one_of(" \t")),
-        alt((let_stmt, loop_stmt, repeat, data_row, declare, while_stmt)),
+        alt((
+            let_stmt,
+            loop_stmt,
+            repeat,
+            data_row,
+            declare,
+            while_stmt,
+            reset_random,
+        )),
         eol,
     )(i)
 }
@@ -615,6 +638,11 @@ fn while_stmt(i: &str) -> IResult<&str, Stmt> {
     let (_i, _expr, _stmts) = (i, expr, stmts);
 
     unimplemented!()
+}
+
+fn reset_random(i: &str) -> IResult<&str, Stmt> {
+    let (i, _) = pair(tag("resetRandom"), ws(tag(";")))(i)?;
+    Ok((i, Stmt::ResetRandom))
 }
 
 fn header(i: &str) -> IResult<&str, Vec<String>> {
