@@ -94,7 +94,11 @@ pub fn parse(input: &str) -> anyhow::Result<(Vec<Signal>, Vec<Signal>, Vec<TestC
     let test_cases = visual_elements(&doc, "Testcase")
         .into_iter()
         .filter_map(|node| {
-            let name = attrib(node, "Label")?.text()?.to_string();
+            let name: String = if let Some(label_node) = attrib(node, "Label") {
+                label_node.text()?.to_string()
+            } else {
+                String::from("(unnamed)")
+            };
             let test_data_node = attrib(node, "Testdata")?;
             if test_data_node.tag_name().name() != "testData" {
                 return None;
