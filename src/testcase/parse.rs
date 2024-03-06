@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
-use crate::testcase::{BinOp, DataEntry, Expr, Stmt, TestCase, UnaryOp};
+use crate::expr::{BinOp, Expr, UnaryOp};
+use crate::testcase::{DataEntry, Stmt, TestCase};
 
 use nom::{
     branch::alt,
