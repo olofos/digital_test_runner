@@ -6,6 +6,13 @@ pub struct TestCase {
     test_data: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct DigFile {
+    pub inputs: Vec<Signal>,
+    pub outputs: Vec<Signal>,
+    pub test_cases: Vec<TestCase>,
+}
+
 fn visual_elements<'a, 'b>(
     doc: &'a roxmltree::Document<'b>,
     name: &str,
@@ -65,7 +72,7 @@ fn extract_signal_data<'a, 'b>(node: roxmltree::Node<'a, 'b>) -> Option<(&'a str
     Some((label, bits))
 }
 
-pub fn parse(input: &str) -> anyhow::Result<(Vec<Signal>, Vec<Signal>, Vec<TestCase>)> {
+pub fn parse(input: &str) -> anyhow::Result<DigFile> {
     let doc = roxmltree::Document::parse(&input)?;
 
     let outputs = visual_elements(&doc, "Out")
@@ -113,5 +120,9 @@ pub fn parse(input: &str) -> anyhow::Result<(Vec<Signal>, Vec<Signal>, Vec<TestC
         })
         .collect::<Vec<_>>();
 
-    Ok((inputs, outputs, test_cases))
+    Ok(DigFile {
+        inputs,
+        outputs,
+        test_cases,
+    })
 }
