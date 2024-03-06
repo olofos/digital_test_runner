@@ -1,15 +1,18 @@
+pub mod dig;
 mod expr;
 mod testcase;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Signal {
-    name: String,
-    bits: u8,
-    dir: SignalDir,
+pub struct Signal {
+    pub name: String,
+    pub bits: u8,
+    pub dir: SignalDir,
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-enum SignalDir {
+pub enum SignalDir {
     Input,
     Output,
 }
+
+pub use testcase::TestCase;

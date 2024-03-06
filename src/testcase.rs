@@ -85,19 +85,20 @@ enum Stmt {
 }
 
 impl Stmt {
-    fn run(&self, ctx: &mut EvalContext) {
+    fn run(&self, ctx: &mut EvalContext) -> Vec<Vec<DataResult>> {
         match self {
             Self::Let { name, expr } => {
                 let value = expr.eval(ctx).unwrap();
                 ctx.set(name, value);
+                vec![]
             }
             Self::DataRow(entries) => {
                 let data = entries
                     .iter()
                     .map(|entry| entry.run(ctx))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                println!("{data}");
+                    .flatten()
+                    .collect::<Vec<_>>();
+                vec![data]
             }
             Self::Loop {
                 variable,
@@ -105,16 +106,19 @@ impl Stmt {
                 stmts,
             } => {
                 ctx.push_frame();
+                let mut result = vec![];
                 for i in 0..*max {
                     ctx.set(variable, i);
                     for stmt in stmts {
-                        stmt.run(ctx);
+                        result.extend(stmt.run(ctx));
                     }
                 }
                 ctx.pop_frame();
+                result
             }
             Self::ResetRandom => {
                 ctx.reset_random_seed();
+                vec![]
             }
         }
     }
@@ -129,27 +133,33 @@ enum DataEntry {
     Z,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DataResult {
+    Number(i64),
+    X,
+    Z,
+}
+
 impl DataEntry {
-    fn run(&self, ctx: &mut EvalContext) -> String {
+    fn run(&self, ctx: &mut EvalContext) -> Vec<DataResult> {
         match self {
-            Self::Number(n) => format!("{n}"),
-            Self::Expr(expr) => format!("{}", expr.eval(ctx).unwrap()),
+            Self::Number(n) => vec![DataResult::Number(*n)],
+            Self::Expr(expr) => vec![DataResult::Number(expr.eval(ctx).unwrap())],
             Self::Bits { number, expr } => {
                 let value = expr.eval(ctx).unwrap();
                 (0..*number)
                     .rev()
-                    .map(|n| format!("{}", (value >> n) & 1))
+                    .map(|n| DataResult::Number((value >> n) & 1))
                     .collect::<Vec<_>>()
-                    .join(" ")
             }
-            Self::X => String::from("X"),
-            Self::Z => String::from("Z"),
+            Self::X => vec![DataResult::X],
+            Self::Z => vec![DataResult::Z],
         }
     }
 }
 
 pub struct TestCase {
-    signals: Vec<String>,
+    signal_names: Vec<String>,
     stmts: Vec<Stmt>,
 }
 
@@ -162,11 +172,13 @@ impl FromStr for TestCase {
 }
 
 impl TestCase {
-    pub fn run(&self) {
+    pub fn run(&self) -> Vec<Vec<DataResult>> {
         let mut ctx = EvalContext::new();
-        for stmt in &self.stmts {
-            stmt.run(&mut ctx);
-        }
+        self.stmts
+            .iter()
+            .map(|stmt| stmt.run(&mut ctx))
+            .flatten()
+            .collect::<Vec<_>>()
     }
 }
 
@@ -223,7 +235,7 @@ end loop
 
 ";
         let testcase: TestCase = input.parse().unwrap();
-        assert_eq!(testcase.signals.len(), 11);
+        assert_eq!(testcase.signal_names.len(), 11);
         assert_eq!(testcase.stmts.len(), 7);
     }
 
@@ -237,8 +249,8 @@ let OR  = 1;
 let XOR = 2;
 let AND = 3;
 
-0       0         0        0        0 0          0         X             X    X    X
-0       0         0        0        0 1          0         X             X    X    X
+0       0      0        0        0 0          0         X             X    X    X
+0       0      0        0        0 1          0         X             X    X    X
 
 loop (a,2)
 loop (b,2)
@@ -251,6 +263,18 @@ end loop
 
 ";
         let testcase: TestCase = input.parse().unwrap();
-        testcase.run();
+        let result = testcase.run();
+        for row in result {
+            let s = row
+                .iter()
+                .map(|entry| match entry {
+                    DataResult::Number(n) => format!("{n}"),
+                    DataResult::X => String::from("X"),
+                    DataResult::Z => String::from("Z"),
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            println!("{s}");
+        }
     }
 }

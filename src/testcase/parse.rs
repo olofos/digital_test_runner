@@ -306,7 +306,13 @@ fn testcase(i: &str) -> IResult<&str, TestCase> {
     let (i, stmts) = many1(stmt)(i)?;
     let (i, _) = pair(many0(eol), eof)(i)?;
 
-    Ok((i, TestCase { signals, stmts }))
+    Ok((
+        i,
+        TestCase {
+            signal_names: signals,
+            stmts,
+        },
+    ))
 }
 
 pub fn parse(input: &str) -> Result<TestCase, anyhow::Error> {
@@ -511,7 +517,7 @@ end loop
 
 ";
         let testcase: TestCase = input.parse().unwrap();
-        assert_eq!(testcase.signals.len(), 11);
+        assert_eq!(testcase.signal_names.len(), 11);
         assert_eq!(testcase.stmts.len(), 7);
     }
 
