@@ -1,4 +1,4 @@
-use crate::testcase::EvalContext;
+use crate::eval_context::EvalContext;
 use rand::Rng;
 use std::{fmt::Display, str::FromStr};
 
