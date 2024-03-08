@@ -75,8 +75,8 @@ impl Display for BinOp {
 impl BinOp {
     pub fn precedence(&self) -> u8 {
         match self {
-            Self::Equal => 7,
-            Self::NotEqual => 7,
+            Self::Equal => 8,
+            Self::NotEqual => 8,
             Self::GreaterThan => 7,
             Self::LessThan => 7,
             Self::GreaterThanOrEqual => 7,
