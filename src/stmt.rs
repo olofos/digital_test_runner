@@ -39,7 +39,6 @@ fn expand_bits(stmts: Vec<Stmt>) -> Vec<Stmt> {
                         DataEntry::Bits { number, expr } => {
                             let name = format!("#{temp_number}");
                             temp_number += 1;
-                            vars.push((name.clone(), expr));
                             for i in 0..number {
                                 let left = Expr::BinOp {
                                     op: BinOp::ShiftRight,
@@ -53,6 +52,7 @@ fn expand_bits(stmts: Vec<Stmt>) -> Vec<Stmt> {
                                 };
                                 entries.push(DataEntry::Expr(expr));
                             }
+                            vars.push((name, expr));
                         }
                         _ => entries.push(entry),
                     }
