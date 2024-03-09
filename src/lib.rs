@@ -34,12 +34,13 @@ pub struct OutputSignal {
     pub bits: u8,
 }
 
-pub struct TestCase {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedTestCase {
     pub(crate) signal_names: Vec<String>,
     pub(crate) stmts: Vec<stmt::Stmt>,
 }
 
-impl FromStr for TestCase {
+impl FromStr for ParsedTestCase {
     type Err = anyhow::Error;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
@@ -47,7 +48,7 @@ impl FromStr for TestCase {
     }
 }
 
-impl TestCase {
+impl ParsedTestCase {
     pub fn run(&self) -> Vec<Vec<stmt::DataResult>> {
         let mut ctx = eval_context::EvalContext::new();
         self.stmts

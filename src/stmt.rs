@@ -93,7 +93,7 @@ impl DataEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::TestCase;
+    use crate::ParsedTestCase;
 
     #[test]
     fn can_parse_simple_program() {
@@ -118,7 +118,7 @@ end loop
 end loop
 
 ";
-        let testcase: TestCase = input.parse().unwrap();
+        let testcase: ParsedTestCase = input.parse().unwrap();
         assert_eq!(testcase.signal_names.len(), 11);
         assert_eq!(testcase.stmts.len(), 7);
     }
@@ -146,7 +146,7 @@ end loop
 end loop
 
 ";
-        let testcase: TestCase = input.parse().unwrap();
+        let testcase: ParsedTestCase = input.parse().unwrap();
         let result = testcase.run();
         for row in result {
             let s = row
