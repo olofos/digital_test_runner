@@ -1,6 +1,5 @@
 use crate::eval_context::EvalContext;
 use crate::expr::Expr;
-use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Stmt {
@@ -18,7 +17,7 @@ pub(crate) enum Stmt {
 }
 
 impl Stmt {
-    fn run(&self, ctx: &mut EvalContext) -> Vec<Vec<DataResult>> {
+    pub(crate) fn run(&self, ctx: &mut EvalContext) -> Vec<Vec<DataResult>> {
         match self {
             Self::Let { name, expr } => {
                 let value = expr.eval(ctx).unwrap();
@@ -91,33 +90,10 @@ impl DataEntry {
     }
 }
 
-pub struct TestCase {
-    pub(crate) signal_names: Vec<String>,
-    pub(crate) stmts: Vec<Stmt>,
-}
-
-impl FromStr for TestCase {
-    type Err = anyhow::Error;
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        crate::parse::parse(input)
-    }
-}
-
-impl TestCase {
-    pub fn run(&self) -> Vec<Vec<DataResult>> {
-        let mut ctx = EvalContext::new();
-        self.stmts
-            .iter()
-            .map(|stmt| stmt.run(&mut ctx))
-            .flatten()
-            .collect::<Vec<_>>()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TestCase;
 
     #[test]
     fn can_parse_simple_program() {

@@ -4,6 +4,8 @@ mod expr;
 mod parse;
 mod stmt;
 
+use std::str::FromStr;
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum InputValue {
     Value(i64),
@@ -32,4 +34,26 @@ pub struct OutputSignal {
     pub bits: u8,
 }
 
-pub use stmt::TestCase;
+pub struct TestCase {
+    pub(crate) signal_names: Vec<String>,
+    pub(crate) stmts: Vec<stmt::Stmt>,
+}
+
+impl FromStr for TestCase {
+    type Err = anyhow::Error;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        crate::parse::parse(input)
+    }
+}
+
+impl TestCase {
+    pub fn run(&self) -> Vec<Vec<stmt::DataResult>> {
+        let mut ctx = eval_context::EvalContext::new();
+        self.stmts
+            .iter()
+            .map(|stmt| stmt.run(&mut ctx))
+            .flatten()
+            .collect::<Vec<_>>()
+    }
+}
