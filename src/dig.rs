@@ -1,7 +1,7 @@
 use crate::{InputSignal, InputValue, OutputSignal};
 
 #[derive(Debug, Clone)]
-pub struct TestCase {
+pub struct TestCaseDescription {
     pub name: String,
     pub test_data: String,
 }
@@ -10,7 +10,7 @@ pub struct TestCase {
 pub struct DigFile {
     pub inputs: Vec<InputSignal>,
     pub outputs: Vec<OutputSignal>,
-    pub test_cases: Vec<TestCase>,
+    pub test_cases: Vec<TestCaseDescription>,
 }
 
 fn visual_elements<'a, 'b>(
@@ -144,7 +144,7 @@ pub fn parse(input: &str) -> anyhow::Result<DigFile> {
             }
             let test_data = data_string_node.text()?.to_string();
 
-            Some(TestCase { name, test_data })
+            Some(TestCaseDescription { name, test_data })
         })
         .collect::<Vec<_>>();
 
