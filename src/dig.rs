@@ -1,15 +1,15 @@
-use crate::{Signal, SignalDir};
+use crate::{InputSignal, InputValue, OutputSignal};
 
 #[derive(Debug, Clone)]
 pub struct TestCase {
     pub name: String,
-    test_data: String,
+    pub test_data: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct DigFile {
-    pub inputs: Vec<Signal>,
-    pub outputs: Vec<Signal>,
+    pub inputs: Vec<InputSignal>,
+    pub outputs: Vec<OutputSignal>,
     pub test_cases: Vec<TestCase>,
 }
 
@@ -72,31 +72,59 @@ fn extract_signal_data<'a, 'b>(node: roxmltree::Node<'a, 'b>) -> Option<(&'a str
     Some((label, bits))
 }
 
+fn extract_input_data<'a, 'b>(node: roxmltree::Node<'a, 'b>) -> InputValue {
+    let (default_v, default_z) = if let Some(default_node) = attrib(node, "InDefault") {
+        (
+            default_node
+                .attribute("v")
+                .map(|v| i64::from_str_radix(v, 10).ok())
+                .flatten(),
+            default_node.attribute("z") == Some("true"),
+        )
+    } else {
+        (None, false)
+    };
+
+    if default_z {
+        InputValue::Z
+    } else if let Some(v) = default_v {
+        InputValue::Value(v)
+    } else {
+        InputValue::Value(0)
+    }
+}
+
 pub fn parse(input: &str) -> anyhow::Result<DigFile> {
     let doc = roxmltree::Document::parse(&input)?;
 
     let outputs = visual_elements(&doc, "Out")
         .into_iter()
         .filter_map(|node| extract_signal_data(node))
-        .map(|(name, bits)| Signal {
+        .map(|(name, bits)| OutputSignal {
             name: name.to_string(),
             bits,
-            dir: SignalDir::Output,
         })
-        .collect::<Vec<Signal>>();
+        .collect();
 
     let input_iter = visual_elements(&doc, "In")
         .into_iter()
         .chain(visual_elements(&doc, "Clock"));
 
     let inputs = input_iter
-        .filter_map(|node| extract_signal_data(node))
-        .map(|(name, bits)| Signal {
+        .filter_map(|node| {
+            if let Some((name, bits)) = extract_signal_data(node) {
+                let default = extract_input_data(node);
+                Some((name, bits, default))
+            } else {
+                None
+            }
+        })
+        .map(|(name, bits, default)| InputSignal {
             name: name.to_string(),
             bits,
-            dir: SignalDir::Input,
+            default,
         })
-        .collect::<Vec<Signal>>();
+        .collect();
 
     let test_cases = visual_elements(&doc, "Testcase")
         .into_iter()
