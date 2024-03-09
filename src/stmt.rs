@@ -1,5 +1,5 @@
 use crate::eval_context::EvalContext;
-use crate::expr::Expr;
+use crate::expr::{BinOp, Expr};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Stmt {
@@ -14,6 +14,59 @@ pub(crate) enum Stmt {
         stmts: Vec<Stmt>,
     },
     ResetRandom,
+}
+
+fn expand_bits(stmts: Vec<Stmt>) -> Vec<Stmt> {
+    let mut result = Vec::with_capacity(stmts.len());
+    let mut temp_number = 0;
+
+    for stmt in stmts {
+        match stmt {
+            Stmt::Loop {
+                variable,
+                max,
+                stmts,
+            } => result.push(Stmt::Loop {
+                variable,
+                max,
+                stmts: expand_bits(stmts),
+            }),
+            Stmt::DataRow(orig_entries) => {
+                let mut entries = Vec::with_capacity(orig_entries.len());
+                let mut vars: Vec<(String, Expr)> = vec![];
+                for entry in orig_entries {
+                    match entry {
+                        DataEntry::Bits { number, expr } => {
+                            let name = format!("#{temp_number}");
+                            temp_number += 1;
+                            vars.push((name.clone(), expr));
+                            for i in 0..number {
+                                let left = Expr::BinOp {
+                                    op: BinOp::ShiftRight,
+                                    left: Box::new(Expr::Variable(name.clone())),
+                                    right: Box::new(Expr::Number(i as i64)),
+                                };
+                                let expr = Expr::BinOp {
+                                    op: BinOp::And,
+                                    left: Box::new(left),
+                                    right: Box::new(Expr::Number(1)),
+                                };
+                                entries.push(DataEntry::Expr(expr));
+                            }
+                        }
+                        _ => entries.push(entry),
+                    }
+                }
+                for (name, expr) in vars {
+                    result.push(Stmt::Let { name, expr });
+                }
+                result.push(Stmt::DataRow(entries))
+            }
+            _ => result.push(stmt),
+        }
+    }
+
+    result
 }
 
 impl Stmt {
@@ -56,6 +109,38 @@ impl Stmt {
     }
 }
 
+impl std::fmt::Display for Stmt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Let { name, expr } => {
+                write!(f, "let {name} = {expr};")
+            }
+            Self::Loop {
+                variable,
+                max,
+                stmts,
+            } => {
+                writeln!(f, "loop({variable},{max})")?;
+                for stmt in stmts {
+                    writeln!(f, "  {stmt}")?;
+                }
+                write!(f, "end loop")
+            }
+            Self::ResetRandom => {
+                write!(f, "resetRandom;")
+            }
+            Self::DataRow(entries) => {
+                let s = entries
+                    .iter()
+                    .map(|entry| format!("{entry}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                write!(f, "{s}")
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum DataEntry {
     Number(i64),
@@ -86,6 +171,28 @@ impl DataEntry {
             }
             Self::X => vec![DataResult::X],
             Self::Z => vec![DataResult::Z],
+        }
+    }
+}
+
+impl std::fmt::Display for DataEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Number(n) => {
+                write!(f, "{n}")
+            }
+            Self::Expr(expr) => {
+                write!(f, "({expr})")
+            }
+            Self::Bits { number, expr } => {
+                write!(f, "bits({number},{expr})")
+            }
+            Self::X => {
+                write!(f, "X")
+            }
+            Self::Z => {
+                write!(f, "Z")
+            }
         }
     }
 }
@@ -159,6 +266,35 @@ end loop
                 .collect::<Vec<_>>()
                 .join(" ");
             println!("{s}");
+        }
+    }
+
+    #[test]
+    fn expand_bits_works() {
+        let input = r#"A B C D
+bits(2,0b10) bits(2,0b10)
+bits(4,0b1010)
+"#;
+        let testcase: ParsedTestCase = input.parse().unwrap();
+        let expanded = expand_bits(testcase.stmts);
+        assert_eq!(expanded.len(), 5);
+        assert!(matches!(expanded[0], Stmt::Let { name: _, expr: _ }));
+        assert!(matches!(expanded[1], Stmt::Let { name: _, expr: _ }));
+        match &expanded[2] {
+            Stmt::DataRow(entries) => {
+                assert_eq!(entries.len(), 4);
+            }
+            _ => panic!("Expected a data row"),
+        }
+        assert!(matches!(expanded[3], Stmt::Let { name: _, expr: _ }));
+        match &expanded[4] {
+            Stmt::DataRow(entries) => {
+                assert_eq!(entries.len(), 4);
+            }
+            _ => panic!("Expected a data row"),
+        }
+        for stmt in expanded {
+            println!("{stmt}");
         }
     }
 }
