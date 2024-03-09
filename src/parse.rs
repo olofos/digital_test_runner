@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::expr::{BinOp, Expr, UnaryOp};
-use crate::testcase::{DataEntry, Stmt, TestCase};
+use crate::stmt::{DataEntry, Stmt, TestCase};
 
 use nom::{
     branch::alt,
@@ -323,7 +323,7 @@ pub fn parse(input: &str) -> Result<TestCase, anyhow::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testcase::EvalContext;
+    use crate::eval_context::EvalContext;
     use rstest::rstest;
 
     #[rstest]

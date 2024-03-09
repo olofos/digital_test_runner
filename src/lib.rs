@@ -1,7 +1,8 @@
 pub mod dig;
 mod eval_context;
 mod expr;
-mod testcase;
+mod parse;
+mod stmt;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum InputValue {
@@ -31,4 +32,4 @@ pub struct OutputSignal {
     pub bits: u8,
 }
 
-pub use testcase::TestCase;
+pub use stmt::TestCase;

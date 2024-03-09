@@ -2,10 +2,8 @@ use crate::eval_context::EvalContext;
 use crate::expr::Expr;
 use std::str::FromStr;
 
-mod parse;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Stmt {
+pub(crate) enum Stmt {
     Let {
         name: String,
         expr: Expr,
@@ -60,7 +58,7 @@ impl Stmt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum DataEntry {
+pub(crate) enum DataEntry {
     Number(i64),
     Expr(Expr),
     Bits { number: u64, expr: Expr },
@@ -94,15 +92,15 @@ impl DataEntry {
 }
 
 pub struct TestCase {
-    signal_names: Vec<String>,
-    stmts: Vec<Stmt>,
+    pub(crate) signal_names: Vec<String>,
+    pub(crate) stmts: Vec<Stmt>,
 }
 
 impl FromStr for TestCase {
     type Err = anyhow::Error;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
-        parse::parse(input)
+        crate::parse::parse(input)
     }
 }
 
