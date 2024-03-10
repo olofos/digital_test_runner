@@ -15,22 +15,20 @@ pub struct DigFile {
 
 fn visual_elements<'a, 'b>(
     doc: &'a roxmltree::Document<'b>,
-    name: &str,
-) -> Vec<roxmltree::Node<'a, 'b>> {
-    doc.descendants()
-        .filter(|visual_element_node| {
-            if visual_element_node.tag_name().name() != "visualElement" {
-                return false;
-            }
-            let Some(name_node) = visual_element_node
-                .descendants()
-                .find(|n| n.tag_name().name() == "elementName")
-            else {
-                return false;
-            };
-            name_node.text() == Some(name)
-        })
-        .collect()
+    name: &'static str,
+) -> impl Iterator<Item = roxmltree::Node<'a, 'b>> {
+    doc.descendants().filter(|visual_element_node| {
+        if visual_element_node.tag_name().name() != "visualElement" {
+            return false;
+        }
+        let Some(name_node) = visual_element_node
+            .descendants()
+            .find(|n| n.tag_name().name() == "elementName")
+        else {
+            return false;
+        };
+        name_node.text() == Some(name)
+    })
 }
 
 fn attrib<'a, 'b>(node: roxmltree::Node<'a, 'b>, label: &str) -> Option<roxmltree::Node<'a, 'b>> {
