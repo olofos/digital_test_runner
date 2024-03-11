@@ -80,8 +80,7 @@ impl Stmt {
             Self::DataRow(entries) => {
                 let data = entries
                     .iter()
-                    .map(|entry| entry.run(ctx))
-                    .flatten()
+                    .flat_map(|entry| entry.run(ctx))
                     .collect::<Vec<_>>();
                 vec![data]
             }

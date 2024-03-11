@@ -52,7 +52,7 @@ fn attrib<'a, 'b>(node: roxmltree::Node<'a, 'b>, label: &str) -> Option<roxmltre
     None
 }
 
-fn extract_signal_data<'a, 'b>(node: roxmltree::Node<'a, 'b>) -> Option<(&'a str, u8)> {
+fn extract_signal_data<'a>(node: roxmltree::Node<'a, '_>) -> Option<(&'a str, u8)> {
     let Some(label_node) = attrib(node, "Label") else {
         return None;
     };
@@ -62,7 +62,7 @@ fn extract_signal_data<'a, 'b>(node: roxmltree::Node<'a, 'b>) -> Option<(&'a str
 
     let bits = if let Some(bits_node) = attrib(node, "Bits") {
         let bits_text = bits_node.text().unwrap_or("1");
-        u8::from_str_radix(bits_text, 10).unwrap_or(1)
+        bits_text.parse().unwrap_or(1)
     } else {
         1
     };
@@ -70,13 +70,10 @@ fn extract_signal_data<'a, 'b>(node: roxmltree::Node<'a, 'b>) -> Option<(&'a str
     Some((label, bits))
 }
 
-fn extract_input_data<'a, 'b>(node: roxmltree::Node<'a, 'b>) -> InputValue {
+fn extract_input_data(node: roxmltree::Node) -> InputValue {
     let (default_v, default_z) = if let Some(default_node) = attrib(node, "InDefault") {
         (
-            default_node
-                .attribute("v")
-                .map(|v| i64::from_str_radix(v, 10).ok())
-                .flatten(),
+            default_node.attribute("v").and_then(|v| v.parse().ok()),
             default_node.attribute("z") == Some("true"),
         )
     } else {
@@ -93,10 +90,9 @@ fn extract_input_data<'a, 'b>(node: roxmltree::Node<'a, 'b>) -> InputValue {
 }
 
 pub fn parse(input: &str) -> anyhow::Result<DigFile> {
-    let doc = roxmltree::Document::parse(&input)?;
+    let doc = roxmltree::Document::parse(input)?;
 
     let outputs = visual_elements(&doc, "Out")
-        .into_iter()
         .filter_map(|node| extract_signal_data(node))
         .map(|(name, bits)| OutputSignal {
             name: name.to_string(),
@@ -104,9 +100,7 @@ pub fn parse(input: &str) -> anyhow::Result<DigFile> {
         })
         .collect();
 
-    let input_iter = visual_elements(&doc, "In")
-        .into_iter()
-        .chain(visual_elements(&doc, "Clock"));
+    let input_iter = visual_elements(&doc, "In").chain(visual_elements(&doc, "Clock"));
 
     let inputs = input_iter
         .filter_map(|node| {
@@ -125,7 +119,6 @@ pub fn parse(input: &str) -> anyhow::Result<DigFile> {
         .collect();
 
     let test_cases = visual_elements(&doc, "Testcase")
-        .into_iter()
         .filter_map(|node| {
             let name: String = if let Some(label_node) = attrib(node, "Label") {
                 label_node.text()?.to_string()

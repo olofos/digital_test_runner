@@ -53,8 +53,7 @@ impl ParsedTestCase {
         let mut ctx = eval_context::EvalContext::new();
         self.stmts
             .iter()
-            .map(|stmt| stmt.run(&mut ctx))
-            .flatten()
+            .flat_map(|stmt| stmt.run(&mut ctx))
             .collect::<Vec<_>>()
     }
 }

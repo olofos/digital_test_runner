@@ -54,13 +54,13 @@ impl BinOpTree {
         }
     }
 
-    fn to_expr(self) -> Expr {
+    fn into_expr(self) -> Expr {
         match self {
             Self::Atom(expr) => expr,
             Self::BinOp { op, left, right } => Expr::BinOp {
                 op,
-                left: Box::new(left.to_expr()),
-                right: Box::new(right.to_expr()),
+                left: Box::new(left.into_expr()),
+                right: Box::new(right.into_expr()),
             },
             Self::Dummy => unreachable!(),
         }
@@ -108,7 +108,7 @@ fn expr(i: &str) -> IResult<&str, Expr> {
         tree.add(op, expr);
     }
 
-    Ok((i, tree.to_expr()))
+    Ok((i, tree.into_expr()))
 }
 
 fn factor(i: &str) -> IResult<&str, Expr> {
@@ -125,7 +125,7 @@ fn factor(i: &str) -> IResult<&str, Expr> {
             op: UnaryOp::BitNot,
             expr: Box::new(expr),
         }),
-        map(number, |n| Expr::Number(n)),
+        map(number, Expr::Number),
         map(
             pair(
                 identifier,
@@ -147,8 +147,8 @@ fn number(i: &str) -> IResult<&str, i64> {
             preceded(tag_no_case("0b"), recognize(many1(one_of("01")))),
             |src| i64::from_str_radix(src, 2),
         ),
-        map_res(recognize(pair(one_of("123456789"), digit0)), |src| {
-            i64::from_str_radix(src, 10)
+        map_res(recognize(pair(one_of("123456789"), digit0)), |src: &str| {
+            src.parse()
         }),
         map_res(recognize(pair(tag("0"), oct_digit0)), |src| {
             i64::from_str_radix(src, 8)
