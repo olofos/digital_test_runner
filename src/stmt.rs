@@ -16,7 +16,7 @@ pub(crate) enum Stmt {
     ResetRandom,
 }
 
-fn expand_bits(stmts: Vec<Stmt>) -> Vec<Stmt> {
+pub(crate) fn expand_bits(stmts: Vec<Stmt>) -> Vec<Stmt> {
     let mut result = Vec::with_capacity(stmts.len());
     let mut temp_number = 0;
 
@@ -61,6 +61,89 @@ fn expand_bits(stmts: Vec<Stmt>) -> Vec<Stmt> {
                     result.push(Stmt::Let { name, expr });
                 }
                 result.push(Stmt::DataRow(entries))
+            }
+            _ => result.push(stmt),
+        }
+    }
+
+    result
+}
+
+pub(crate) fn reorder(
+    stmts: Vec<Stmt>,
+    input_indices: &[usize],
+    output_indices: &[usize],
+) -> Vec<Stmt> {
+    let mut result = Vec::with_capacity(stmts.len());
+
+    for stmt in stmts {
+        match stmt {
+            Stmt::Loop {
+                variable,
+                max,
+                stmts,
+            } => result.push(Stmt::Loop {
+                variable,
+                max,
+                stmts: reorder(stmts, input_indices, output_indices),
+            }),
+            Stmt::DataRow(orig_entries) => {
+                if orig_entries.len() != input_indices.len() + output_indices.len() {
+                    panic!("Wrong length data row");
+                }
+                let mut entries = Vec::with_capacity(orig_entries.len());
+                for &i in input_indices {
+                    entries.push(orig_entries[i].clone());
+                }
+                for &i in output_indices {
+                    entries.push(orig_entries[i].clone());
+                }
+
+                result.push(Stmt::DataRow(entries))
+            }
+            _ => result.push(stmt),
+        }
+    }
+
+    result
+}
+
+pub(crate) fn expand_input_x(stmts: Vec<Stmt>, num_inputs: usize) -> Vec<Stmt> {
+    let mut result = Vec::with_capacity(stmts.len());
+
+    for stmt in stmts {
+        match stmt {
+            Stmt::Loop {
+                variable,
+                max,
+                stmts,
+            } => result.push(Stmt::Loop {
+                variable,
+                max,
+                stmts: expand_input_x(stmts, num_inputs),
+            }),
+            Stmt::DataRow(orig_entries) => {
+                let x_positions = orig_entries
+                    .iter()
+                    .enumerate()
+                    .take(num_inputs)
+                    .filter_map(|(i, entry)| {
+                        if *entry == DataEntry::X {
+                            Some(i)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                let mut row_result = vec![orig_entries; 1 << x_positions.len()];
+
+                for (x_index, pos) in x_positions.into_iter().enumerate() {
+                    for i in 0..row_result.len() {
+                        row_result[i][pos] = DataEntry::Number(((i >> x_index) & 1) as i64);
+                    }
+                }
+                result.extend(row_result.into_iter().map(Stmt::DataRow));
             }
             _ => result.push(stmt),
         }
@@ -121,7 +204,7 @@ impl std::fmt::Display for Stmt {
             } => {
                 writeln!(f, "loop({variable},{max})")?;
                 for stmt in stmts {
-                    writeln!(f, "  {stmt}")?;
+                    writeln!(f, "{stmt}")?;
                 }
                 write!(f, "end loop")
             }
@@ -300,5 +383,24 @@ bits(4,0b1010)
         for stmt in expanded {
             println!("{stmt}");
         }
+    }
+
+    #[test]
+    fn expand_input_x_works() {
+        let input = r#"A B
+X X
+"#;
+        let testcase: ParsedTestCase = input.parse().unwrap();
+        let expanded = expand_input_x(testcase.stmts, 2);
+        assert_eq!(expanded.len(), 4);
+        assert_eq!(
+            expanded,
+            vec![
+                Stmt::DataRow(vec![DataEntry::Number(0), DataEntry::Number(0)]),
+                Stmt::DataRow(vec![DataEntry::Number(1), DataEntry::Number(0)]),
+                Stmt::DataRow(vec![DataEntry::Number(0), DataEntry::Number(1)]),
+                Stmt::DataRow(vec![DataEntry::Number(1), DataEntry::Number(1)])
+            ]
+        );
     }
 }
