@@ -125,6 +125,7 @@ impl ParsedTestCase {
 
         let stmts = stmt::expand_bits(self.stmts);
         let stmts = stmt::expand_input_x(stmts, &input_indices);
+        let stmts = stmt::expand_input_c(stmts, &input_indices, &output_indices);
         let stmts = stmt::reorder(stmts, &input_indices, &output_indices);
 
         Ok(TestCase {

@@ -99,6 +99,68 @@ pub(crate) fn expand_bits(stmts: Vec<Stmt>) -> Vec<Stmt> {
     })
 }
 
+pub(crate) fn expand_input_x(stmts: Vec<Stmt>, input_indices: &[usize]) -> Vec<Stmt> {
+    map_data_rows(stmts, |orig_entries| {
+        let x_positions = input_indices
+            .iter()
+            .filter_map(|&i| {
+                if orig_entries[i] == DataEntry::X {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let mut row_result = vec![orig_entries; 1 << x_positions.len()];
+
+        for (x_index, pos) in x_positions.into_iter().enumerate() {
+            for (row_index, row) in row_result.iter_mut().enumerate() {
+                row[pos] = DataEntry::Number(((row_index >> x_index) & 1) as i64);
+            }
+        }
+        row_result.into_iter().map(Stmt::DataRow).collect()
+    })
+}
+
+pub(crate) fn expand_input_c(
+    stmts: Vec<Stmt>,
+    input_indices: &[usize],
+    output_indices: &[usize],
+) -> Vec<Stmt> {
+    map_data_rows(stmts, |orig_entries| {
+        let c_positions = input_indices
+            .iter()
+            .filter_map(|&i| {
+                if orig_entries[i] == DataEntry::C {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        if c_positions.is_empty() {
+            return vec![Stmt::DataRow(orig_entries)];
+        }
+
+        let mut row_result = vec![orig_entries; 3];
+
+        for i in c_positions {
+            row_result[0][i] = DataEntry::Number(0);
+            row_result[1][i] = DataEntry::Number(1);
+            row_result[2][i] = DataEntry::Number(0);
+        }
+
+        for &i in output_indices {
+            row_result[0][i] = DataEntry::X;
+            row_result[1][i] = DataEntry::X;
+        }
+
+        row_result.into_iter().map(Stmt::DataRow).collect()
+    })
+}
+
 fn to_ordered(stmts: Vec<Stmt>, input_len: usize) -> Vec<OrderedStmt> {
     let mut result = Vec::with_capacity(stmts.len());
 
@@ -147,30 +209,6 @@ pub(crate) fn reorder(
     });
 
     to_ordered(stmts, input_indices.len())
-}
-
-pub(crate) fn expand_input_x(stmts: Vec<Stmt>, input_indices: &[usize]) -> Vec<Stmt> {
-    map_data_rows(stmts, |orig_entries| {
-        let x_positions = input_indices
-            .iter()
-            .filter_map(|&i| {
-                if orig_entries[i] == DataEntry::X {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
-
-        let mut row_result = vec![orig_entries; 1 << x_positions.len()];
-
-        for (x_index, pos) in x_positions.into_iter().enumerate() {
-            for (row_index, row) in row_result.iter_mut().enumerate() {
-                row[pos] = DataEntry::Number(((row_index >> x_index) & 1) as i64);
-            }
-        }
-        row_result.into_iter().map(Stmt::DataRow).collect()
-    })
 }
 
 impl Stmt {
@@ -494,6 +532,39 @@ X 0 X 0
                     DataEntry::Number(1),
                     DataEntry::Number(0)
                 ])
+            ]
+        );
+    }
+
+    #[test]
+    fn expand_input_c_works() {
+        let input = r#"A B C D
+C 0 1 1
+"#;
+        let testcase: ParsedTestCase = input.parse().unwrap();
+        let expanded = expand_input_c(testcase.stmts, &[0, 2], &[1, 3]);
+        assert_eq!(expanded.len(), 3);
+        assert_eq!(
+            expanded,
+            vec![
+                Stmt::DataRow(vec![
+                    DataEntry::Number(0),
+                    DataEntry::X,
+                    DataEntry::Number(1),
+                    DataEntry::X
+                ]),
+                Stmt::DataRow(vec![
+                    DataEntry::Number(1),
+                    DataEntry::X,
+                    DataEntry::Number(1),
+                    DataEntry::X
+                ]),
+                Stmt::DataRow(vec![
+                    DataEntry::Number(0),
+                    DataEntry::Number(0),
+                    DataEntry::Number(1),
+                    DataEntry::Number(1)
+                ]),
             ]
         );
     }
