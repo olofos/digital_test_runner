@@ -165,8 +165,8 @@ pub(crate) fn expand_input_x(stmts: Vec<Stmt>, input_indices: &[usize]) -> Vec<S
         let mut row_result = vec![orig_entries; 1 << x_positions.len()];
 
         for (x_index, pos) in x_positions.into_iter().enumerate() {
-            for i in 0..row_result.len() {
-                row_result[i][pos] = DataEntry::Number(((i >> x_index) & 1) as i64);
+            for (row_index, row) in row_result.iter_mut().enumerate() {
+                row[pos] = DataEntry::Number(((row_index >> x_index) & 1) as i64);
             }
         }
         row_result.into_iter().map(Stmt::DataRow).collect()
