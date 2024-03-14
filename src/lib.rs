@@ -36,7 +36,7 @@ pub struct OutputSignal {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TestCase {
-    stmts: Vec<stmt::Stmt>,
+    stmts: Vec<stmt::OrderedStmt>,
     inputs: Vec<InputSignal>,
     outputs: Vec<OutputSignal>,
 }

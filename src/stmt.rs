@@ -16,6 +16,24 @@ pub(crate) enum Stmt {
     ResetRandom,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum OrderedStmt {
+    Let {
+        name: String,
+        expr: Expr,
+    },
+    DataRow {
+        inputs: Vec<DataEntry>,
+        outputs: Vec<DataEntry>,
+    },
+    Loop {
+        variable: String,
+        max: i64,
+        stmts: Vec<OrderedStmt>,
+    },
+    ResetRandom,
+}
+
 pub(crate) fn map_data_rows(
     stmts: Vec<Stmt>,
     mut f: impl FnMut(Vec<DataEntry>) -> Vec<Stmt> + Clone,
@@ -81,12 +99,39 @@ pub(crate) fn expand_bits(stmts: Vec<Stmt>) -> Vec<Stmt> {
     })
 }
 
+fn to_ordered(stmts: Vec<Stmt>, input_len: usize) -> Vec<OrderedStmt> {
+    let mut result = Vec::with_capacity(stmts.len());
+
+    for stmt in stmts {
+        result.push(match stmt {
+            Stmt::Let { name, expr } => OrderedStmt::Let { name, expr },
+            Stmt::ResetRandom => OrderedStmt::ResetRandom,
+            Stmt::Loop {
+                variable,
+                max,
+                stmts,
+            } => OrderedStmt::Loop {
+                variable,
+                max,
+                stmts: to_ordered(stmts, input_len),
+            },
+            Stmt::DataRow(mut entries) => {
+                let outputs = entries.split_off(input_len);
+                let inputs = entries;
+                OrderedStmt::DataRow { inputs, outputs }
+            }
+        });
+    }
+
+    result
+}
+
 pub(crate) fn reorder(
     stmts: Vec<Stmt>,
     input_indices: &[usize],
     output_indices: &[usize],
-) -> Vec<Stmt> {
-    map_data_rows(stmts, |orig_entries| {
+) -> Vec<OrderedStmt> {
+    let stmts = map_data_rows(stmts, |orig_entries| {
         if orig_entries.len() != input_indices.len() + output_indices.len() {
             panic!("Wrong length data row");
         }
@@ -99,7 +144,9 @@ pub(crate) fn reorder(
         }
 
         vec![Stmt::DataRow(entries)]
-    })
+    });
+
+    to_ordered(stmts, input_indices.len())
 }
 
 pub(crate) fn expand_input_x(stmts: Vec<Stmt>, input_indices: &[usize]) -> Vec<Stmt> {
@@ -188,6 +235,39 @@ impl std::fmt::Display for Stmt {
             Self::DataRow(entries) => {
                 let s = entries
                     .iter()
+                    .map(|entry| format!("{entry}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                write!(f, "{s}")
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for OrderedStmt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Let { name, expr } => {
+                write!(f, "let {name} = {expr};")
+            }
+            Self::Loop {
+                variable,
+                max,
+                stmts,
+            } => {
+                writeln!(f, "loop({variable},{max})")?;
+                for stmt in stmts {
+                    writeln!(f, "{stmt}")?;
+                }
+                write!(f, "end loop")
+            }
+            Self::ResetRandom => {
+                write!(f, "resetRandom;")
+            }
+            Self::DataRow { inputs, outputs } => {
+                let s = inputs
+                    .iter()
+                    .chain(outputs.iter())
                     .map(|entry| format!("{entry}"))
                     .collect::<Vec<_>>()
                     .join(" ");
@@ -367,12 +447,16 @@ bits(4,0b1010)
         let input_expected = "A C B D\n0 0 0 0\n0 0 0 1\n0 1 0 0\n0 1 0 1\n0 0 1 0\n0 0 1 1\n0 1 1 0\n0 1 1 1\n1 0 0 0\n1 0 0 1\n1 1 0 0\n1 1 0 1\n1 0 1 0\n1 0 1 1\n1 1 1 0\n1 1 1 1\n";
         let expected = input_expected.parse::<ParsedTestCase>().unwrap().stmts;
         let stmts = reorder(testcase.stmts.clone(), &[0, 2], &[1, 3]);
-        assert_eq!(stmts, expected);
+        for (stmt, expected) in stmts.into_iter().zip(expected.into_iter()) {
+            assert_eq!(format!("{stmt}"), format!("{expected}"));
+        }
 
         let input_expected = "B D A C\n0 0 0 0\n0 1 0 0\n0 0 0 1\n0 1 0 1\n1 0 0 0\n1 1 0 0\n1 0 0 1\n1 1 0 1\n0 0 1 0\n0 1 1 0\n0 0 1 1\n0 1 1 1\n1 0 1 0\n1 1 1 0\n1 0 1 1\n1 1 1 1\n";
         let expected = input_expected.parse::<ParsedTestCase>().unwrap().stmts;
         let stmts = reorder(testcase.stmts.clone(), &[1, 3], &[0, 2]);
-        assert_eq!(stmts, expected);
+        for (stmt, expected) in stmts.into_iter().zip(expected.into_iter()) {
+            assert_eq!(format!("{stmt}"), format!("{expected}"));
+        }
     }
 
     #[test]
