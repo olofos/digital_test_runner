@@ -4,7 +4,7 @@ mod expr;
 mod parse;
 mod stmt;
 
-use std::str::FromStr;
+use std::{fmt::Display, str::FromStr};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum InputValue {
@@ -32,6 +32,31 @@ pub struct InputSignal {
 pub struct OutputSignal {
     pub name: String,
     pub bits: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TestCase {
+    stmts: Vec<stmt::Stmt>,
+    inputs: Vec<InputSignal>,
+    outputs: Vec<OutputSignal>,
+}
+
+impl Display for TestCase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let input_names = self.inputs.iter().map(|s| s.name.clone());
+        let output_names = self.outputs.iter().map(|s| s.name.clone());
+
+        let names = input_names
+            .chain(output_names)
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        writeln!(f, "{names}")?;
+        for stmt in &self.stmts {
+            writeln!(f, "{stmt}")?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
