@@ -147,6 +147,7 @@ pub(crate) enum DataEntry {
     Bits { number: u64, expr: Expr },
     X,
     Z,
+    C,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -170,6 +171,7 @@ impl DataEntry {
             }
             Self::X => vec![DataResult::X],
             Self::Z => vec![DataResult::Z],
+            Self::C => unimplemented!(),
         }
     }
 }
@@ -191,6 +193,9 @@ impl std::fmt::Display for DataEntry {
             }
             Self::Z => {
                 write!(f, "Z")
+            }
+            Self::C => {
+                write!(f, "C")
             }
         }
     }

@@ -197,6 +197,7 @@ fn data_entry(i: &str) -> IResult<&str, DataEntry> {
         map(delimited(tag("("), expr, tag(")")), DataEntry::Expr),
         value(DataEntry::X, tag_no_case("x")),
         value(DataEntry::Z, tag_no_case("z")),
+        value(DataEntry::C, tag_no_case("c")),
         map(
             delimited(
                 pair(tag("bits"), ws(tag("("))),
