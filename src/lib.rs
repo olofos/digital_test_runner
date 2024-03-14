@@ -81,4 +81,44 @@ impl ParsedTestCase {
             .flat_map(|stmt| stmt.run(&mut ctx))
             .collect::<Vec<_>>()
     }
+
+    pub fn try_into_test_case(
+        self,
+        known_inputs: &[InputSignal],
+        known_outputs: &[OutputSignal],
+    ) -> anyhow::Result<TestCase> {
+        let mut inputs: Vec<InputSignal> = vec![];
+        let mut outputs: Vec<OutputSignal> = vec![];
+
+        let mut input_indices: Vec<usize> = vec![];
+        let mut output_indices: Vec<usize> = vec![];
+
+        for (i, signal_name) in self.signal_names.into_iter().enumerate() {
+            if let Some(input) = known_inputs
+                .iter()
+                .find(|signal| signal.name == signal_name)
+            {
+                inputs.push(input.clone());
+                input_indices.push(i);
+            } else if let Some(output) = known_outputs
+                .iter()
+                .find(|signal| signal.name == signal_name)
+            {
+                outputs.push(output.clone());
+                output_indices.push(i);
+            } else {
+                anyhow::bail!("Unknown signal {signal_name}");
+            }
+        }
+
+        let stmts = stmt::expand_bits(self.stmts);
+        let stmts = stmt::reorder(stmts, &input_indices, &output_indices);
+        let stmts = stmt::expand_input_x(stmts, inputs.len());
+
+        Ok(TestCase {
+            stmts,
+            inputs,
+            outputs,
+        })
+    }
 }
