@@ -102,14 +102,12 @@ pub(crate) fn reorder(
     })
 }
 
-pub(crate) fn expand_input_x(stmts: Vec<Stmt>, num_inputs: usize) -> Vec<Stmt> {
+pub(crate) fn expand_input_x(stmts: Vec<Stmt>, input_indices: &[usize]) -> Vec<Stmt> {
     map_data_rows(stmts, |orig_entries| {
-        let x_positions = orig_entries
+        let x_positions = input_indices
             .iter()
-            .enumerate()
-            .take(num_inputs)
-            .filter_map(|(i, entry)| {
-                if *entry == DataEntry::X {
+            .filter_map(|&i| {
+                if orig_entries[i] == DataEntry::X {
                     Some(i)
                 } else {
                     None
@@ -379,19 +377,39 @@ bits(4,0b1010)
 
     #[test]
     fn expand_input_x_works() {
-        let input = r#"A B
-X X
+        let input = r#"A B C D
+X 0 X 0
 "#;
         let testcase: ParsedTestCase = input.parse().unwrap();
-        let expanded = expand_input_x(testcase.stmts, 2);
+        let expanded = expand_input_x(testcase.stmts, &[0, 2]);
         assert_eq!(expanded.len(), 4);
         assert_eq!(
             expanded,
             vec![
-                Stmt::DataRow(vec![DataEntry::Number(0), DataEntry::Number(0)]),
-                Stmt::DataRow(vec![DataEntry::Number(1), DataEntry::Number(0)]),
-                Stmt::DataRow(vec![DataEntry::Number(0), DataEntry::Number(1)]),
-                Stmt::DataRow(vec![DataEntry::Number(1), DataEntry::Number(1)])
+                Stmt::DataRow(vec![
+                    DataEntry::Number(0),
+                    DataEntry::Number(0),
+                    DataEntry::Number(0),
+                    DataEntry::Number(0)
+                ]),
+                Stmt::DataRow(vec![
+                    DataEntry::Number(1),
+                    DataEntry::Number(0),
+                    DataEntry::Number(0),
+                    DataEntry::Number(0)
+                ]),
+                Stmt::DataRow(vec![
+                    DataEntry::Number(0),
+                    DataEntry::Number(0),
+                    DataEntry::Number(1),
+                    DataEntry::Number(0)
+                ]),
+                Stmt::DataRow(vec![
+                    DataEntry::Number(1),
+                    DataEntry::Number(0),
+                    DataEntry::Number(1),
+                    DataEntry::Number(0)
+                ])
             ]
         );
     }
