@@ -73,6 +73,18 @@ impl FromStr for ParsedTestCase {
     }
 }
 
+impl Display for ParsedTestCase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let names = self.signal_names.join(" ");
+
+        writeln!(f, "{names}")?;
+        for stmt in &self.stmts {
+            writeln!(f, "{stmt}")?;
+        }
+        Ok(())
+    }
+}
+
 impl ParsedTestCase {
     pub fn run(&self) -> Vec<Vec<stmt::DataResult>> {
         let mut ctx = eval_context::EvalContext::new();
