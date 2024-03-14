@@ -16,63 +16,9 @@ pub(crate) enum Stmt {
     ResetRandom,
 }
 
-pub(crate) fn expand_bits(stmts: Vec<Stmt>) -> Vec<Stmt> {
-    let mut result = Vec::with_capacity(stmts.len());
-    let mut temp_number = 0;
-
-    for stmt in stmts {
-        match stmt {
-            Stmt::Loop {
-                variable,
-                max,
-                stmts,
-            } => result.push(Stmt::Loop {
-                variable,
-                max,
-                stmts: expand_bits(stmts),
-            }),
-            Stmt::DataRow(orig_entries) => {
-                let mut entries = Vec::with_capacity(orig_entries.len());
-                let mut vars: Vec<(String, Expr)> = vec![];
-                for entry in orig_entries {
-                    match entry {
-                        DataEntry::Bits { number, expr } => {
-                            let name = format!("#{temp_number}");
-                            temp_number += 1;
-                            for i in 0..number {
-                                let left = Expr::BinOp {
-                                    op: BinOp::ShiftRight,
-                                    left: Box::new(Expr::Variable(name.clone())),
-                                    right: Box::new(Expr::Number(i as i64)),
-                                };
-                                let expr = Expr::BinOp {
-                                    op: BinOp::And,
-                                    left: Box::new(left),
-                                    right: Box::new(Expr::Number(1)),
-                                };
-                                entries.push(DataEntry::Expr(expr));
-                            }
-                            vars.push((name, expr));
-                        }
-                        _ => entries.push(entry),
-                    }
-                }
-                for (name, expr) in vars {
-                    result.push(Stmt::Let { name, expr });
-                }
-                result.push(Stmt::DataRow(entries))
-            }
-            _ => result.push(stmt),
-        }
-    }
-
-    result
-}
-
-pub(crate) fn reorder(
+pub(crate) fn map_data_rows(
     stmts: Vec<Stmt>,
-    input_indices: &[usize],
-    output_indices: &[usize],
+    mut f: impl FnMut(Vec<DataEntry>) -> Vec<Stmt> + Clone,
 ) -> Vec<Stmt> {
     let mut result = Vec::with_capacity(stmts.len());
 
@@ -85,21 +31,10 @@ pub(crate) fn reorder(
             } => result.push(Stmt::Loop {
                 variable,
                 max,
-                stmts: reorder(stmts, input_indices, output_indices),
+                stmts: map_data_rows(stmts, f.clone()),
             }),
             Stmt::DataRow(orig_entries) => {
-                if orig_entries.len() != input_indices.len() + output_indices.len() {
-                    panic!("Wrong length data row");
-                }
-                let mut entries = Vec::with_capacity(orig_entries.len());
-                for &i in input_indices {
-                    entries.push(orig_entries[i].clone());
-                }
-                for &i in output_indices {
-                    entries.push(orig_entries[i].clone());
-                }
-
-                result.push(Stmt::DataRow(entries))
+                result.extend(f(orig_entries));
             }
             _ => result.push(stmt),
         }
@@ -108,48 +43,89 @@ pub(crate) fn reorder(
     result
 }
 
-pub(crate) fn expand_input_x(stmts: Vec<Stmt>, num_inputs: usize) -> Vec<Stmt> {
-    let mut result = Vec::with_capacity(stmts.len());
+pub(crate) fn expand_bits(stmts: Vec<Stmt>) -> Vec<Stmt> {
+    let mut temp_number = 0;
 
-    for stmt in stmts {
-        match stmt {
-            Stmt::Loop {
-                variable,
-                max,
-                stmts,
-            } => result.push(Stmt::Loop {
-                variable,
-                max,
-                stmts: expand_input_x(stmts, num_inputs),
-            }),
-            Stmt::DataRow(orig_entries) => {
-                let x_positions = orig_entries
-                    .iter()
-                    .enumerate()
-                    .take(num_inputs)
-                    .filter_map(|(i, entry)| {
-                        if *entry == DataEntry::X {
-                            Some(i)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>();
-
-                let mut row_result = vec![orig_entries; 1 << x_positions.len()];
-
-                for (x_index, pos) in x_positions.into_iter().enumerate() {
-                    for i in 0..row_result.len() {
-                        row_result[i][pos] = DataEntry::Number(((i >> x_index) & 1) as i64);
+    map_data_rows(stmts, move |orig_entries| {
+        let mut entries = Vec::with_capacity(orig_entries.len());
+        let mut vars: Vec<(String, Expr)> = vec![];
+        let mut result = vec![];
+        for entry in orig_entries {
+            match entry {
+                DataEntry::Bits { number, expr } => {
+                    let name = format!("#{temp_number}");
+                    temp_number += 1;
+                    for i in 0..number {
+                        let left = Expr::BinOp {
+                            op: BinOp::ShiftRight,
+                            left: Box::new(Expr::Variable(name.clone())),
+                            right: Box::new(Expr::Number(i as i64)),
+                        };
+                        let expr = Expr::BinOp {
+                            op: BinOp::And,
+                            left: Box::new(left),
+                            right: Box::new(Expr::Number(1)),
+                        };
+                        entries.push(DataEntry::Expr(expr));
                     }
+                    vars.push((name, expr));
                 }
-                result.extend(row_result.into_iter().map(Stmt::DataRow));
+                _ => entries.push(entry),
             }
-            _ => result.push(stmt),
         }
-    }
+        for (name, expr) in vars {
+            result.push(Stmt::Let { name, expr });
+        }
+        result.push(Stmt::DataRow(entries));
+        result
+    })
+}
 
-    result
+pub(crate) fn reorder(
+    stmts: Vec<Stmt>,
+    input_indices: &[usize],
+    output_indices: &[usize],
+) -> Vec<Stmt> {
+    map_data_rows(stmts, |orig_entries| {
+        if orig_entries.len() != input_indices.len() + output_indices.len() {
+            panic!("Wrong length data row");
+        }
+        let mut entries = Vec::with_capacity(orig_entries.len());
+        for &i in input_indices {
+            entries.push(orig_entries[i].clone());
+        }
+        for &i in output_indices {
+            entries.push(orig_entries[i].clone());
+        }
+
+        vec![Stmt::DataRow(entries)]
+    })
+}
+
+pub(crate) fn expand_input_x(stmts: Vec<Stmt>, num_inputs: usize) -> Vec<Stmt> {
+    map_data_rows(stmts, |orig_entries| {
+        let x_positions = orig_entries
+            .iter()
+            .enumerate()
+            .take(num_inputs)
+            .filter_map(|(i, entry)| {
+                if *entry == DataEntry::X {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let mut row_result = vec![orig_entries; 1 << x_positions.len()];
+
+        for (x_index, pos) in x_positions.into_iter().enumerate() {
+            for i in 0..row_result.len() {
+                row_result[i][pos] = DataEntry::Number(((i >> x_index) & 1) as i64);
+            }
+        }
+        row_result.into_iter().map(Stmt::DataRow).collect()
+    })
 }
 
 impl Stmt {
@@ -383,6 +359,22 @@ bits(4,0b1010)
         for stmt in expanded {
             println!("{stmt}");
         }
+    }
+
+    #[test]
+    fn reorder_works() {
+        let input = "A B C D\n0 0 0 0\n0 0 0 1\n0 0 1 0\n0 0 1 1\n0 1 0 0\n0 1 0 1\n0 1 1 0\n0 1 1 1\n1 0 0 0\n1 0 0 1\n1 0 1 0\n1 0 1 1\n1 1 0 0\n1 1 0 1\n1 1 1 0\n1 1 1 1\n";
+        let testcase: ParsedTestCase = input.parse().unwrap();
+
+        let input_expected = "A C B D\n0 0 0 0\n0 0 0 1\n0 1 0 0\n0 1 0 1\n0 0 1 0\n0 0 1 1\n0 1 1 0\n0 1 1 1\n1 0 0 0\n1 0 0 1\n1 1 0 0\n1 1 0 1\n1 0 1 0\n1 0 1 1\n1 1 1 0\n1 1 1 1\n";
+        let expected = input_expected.parse::<ParsedTestCase>().unwrap().stmts;
+        let stmts = reorder(testcase.stmts.clone(), &[0, 2], &[1, 3]);
+        assert_eq!(stmts, expected);
+
+        let input_expected = "B D A C\n0 0 0 0\n0 1 0 0\n0 0 0 1\n0 1 0 1\n1 0 0 0\n1 1 0 0\n1 0 0 1\n1 1 0 1\n0 0 1 0\n0 1 1 0\n0 0 1 1\n0 1 1 1\n1 0 1 0\n1 1 1 0\n1 0 1 1\n1 1 1 1\n";
+        let expected = input_expected.parse::<ParsedTestCase>().unwrap().stmts;
+        let stmts = reorder(testcase.stmts.clone(), &[1, 3], &[0, 2]);
+        assert_eq!(stmts, expected);
     }
 
     #[test]
