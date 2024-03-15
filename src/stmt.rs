@@ -7,13 +7,15 @@ pub(crate) enum Stmt {
         name: String,
         expr: Expr,
     },
-    DataRow(Vec<DataEntry>),
+    DataRow {
+        entries: Vec<DataEntry>,
+    },
     Loop {
         variable: String,
         max: i64,
         stmts: Vec<Stmt>,
     },
-    ResetRandom,
+    ResetRandom {},
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,7 +33,7 @@ pub(crate) enum OrderedStmt {
         max: i64,
         stmts: Vec<OrderedStmt>,
     },
-    ResetRandom,
+    ResetRandom {},
 }
 
 pub(crate) fn map_data_rows(
@@ -51,7 +53,9 @@ pub(crate) fn map_data_rows(
                 max,
                 stmts: map_data_rows(stmts, f.clone()),
             }),
-            Stmt::DataRow(orig_entries) => {
+            Stmt::DataRow {
+                entries: orig_entries,
+            } => {
                 result.extend(f(orig_entries));
             }
             _ => result.push(stmt),
@@ -94,7 +98,7 @@ pub(crate) fn expand_bits(stmts: Vec<Stmt>) -> Vec<Stmt> {
         for (name, expr) in vars {
             result.push(Stmt::Let { name, expr });
         }
-        result.push(Stmt::DataRow(entries));
+        result.push(Stmt::DataRow { entries });
         result
     })
 }
@@ -119,7 +123,10 @@ pub(crate) fn expand_input_x(stmts: Vec<Stmt>, input_indices: &[usize]) -> Vec<S
                 row[pos] = DataEntry::Number(((row_index >> x_index) & 1) as i64);
             }
         }
-        row_result.into_iter().map(Stmt::DataRow).collect()
+        row_result
+            .into_iter()
+            .map(|entries| Stmt::DataRow { entries })
+            .collect()
     })
 }
 
@@ -141,7 +148,9 @@ pub(crate) fn expand_input_c(
             .collect::<Vec<_>>();
 
         if c_positions.is_empty() {
-            return vec![Stmt::DataRow(orig_entries)];
+            return vec![Stmt::DataRow {
+                entries: orig_entries,
+            }];
         }
 
         let mut row_result = vec![orig_entries; 3];
@@ -157,7 +166,10 @@ pub(crate) fn expand_input_c(
             row_result[1][i] = DataEntry::X;
         }
 
-        row_result.into_iter().map(Stmt::DataRow).collect()
+        row_result
+            .into_iter()
+            .map(|entries| Stmt::DataRow { entries })
+            .collect()
     })
 }
 
@@ -167,7 +179,7 @@ fn to_ordered(stmts: Vec<Stmt>, input_len: usize) -> Vec<OrderedStmt> {
     for stmt in stmts {
         result.push(match stmt {
             Stmt::Let { name, expr } => OrderedStmt::Let { name, expr },
-            Stmt::ResetRandom => OrderedStmt::ResetRandom,
+            Stmt::ResetRandom {} => OrderedStmt::ResetRandom {},
             Stmt::Loop {
                 variable,
                 max,
@@ -177,7 +189,7 @@ fn to_ordered(stmts: Vec<Stmt>, input_len: usize) -> Vec<OrderedStmt> {
                 max,
                 stmts: to_ordered(stmts, input_len),
             },
-            Stmt::DataRow(mut entries) => {
+            Stmt::DataRow { mut entries } => {
                 let outputs = entries.split_off(input_len);
                 let inputs = entries;
                 OrderedStmt::DataRow { inputs, outputs }
@@ -206,7 +218,7 @@ pub(crate) fn reorder(
             entries.push(std::mem::replace(&mut orig_entries[i], dummy.clone()));
         }
 
-        vec![Stmt::DataRow(entries)]
+        vec![Stmt::DataRow { entries }]
     });
 
     to_ordered(stmts, input_indices.len())
@@ -220,7 +232,7 @@ impl Stmt {
                 ctx.set(name, value);
                 vec![]
             }
-            Self::DataRow(entries) => {
+            Self::DataRow { entries } => {
                 let data = entries
                     .iter()
                     .flat_map(|entry| entry.run(ctx))
@@ -243,7 +255,7 @@ impl Stmt {
                 ctx.pop_frame();
                 result
             }
-            Self::ResetRandom => {
+            Self::ResetRandom {} => {
                 ctx.reset_random_seed();
                 vec![]
             }
@@ -268,10 +280,10 @@ impl std::fmt::Display for Stmt {
                 }
                 write!(f, "end loop")
             }
-            Self::ResetRandom => {
+            Self::ResetRandom {} => {
                 write!(f, "resetRandom;")
             }
-            Self::DataRow(entries) => {
+            Self::DataRow { entries } => {
                 let s = entries
                     .iter()
                     .map(|entry| format!("{entry}"))
@@ -300,7 +312,7 @@ impl std::fmt::Display for OrderedStmt {
                 }
                 write!(f, "end loop")
             }
-            Self::ResetRandom => {
+            Self::ResetRandom {} => {
                 write!(f, "resetRandom;")
             }
             Self::DataRow { inputs, outputs } => {
@@ -461,14 +473,14 @@ bits(4,0b1010)
         assert!(matches!(expanded[0], Stmt::Let { name: _, expr: _ }));
         assert!(matches!(expanded[1], Stmt::Let { name: _, expr: _ }));
         match &expanded[2] {
-            Stmt::DataRow(entries) => {
+            Stmt::DataRow { entries } => {
                 assert_eq!(entries.len(), 4);
             }
             _ => panic!("Expected a data row"),
         }
         assert!(matches!(expanded[3], Stmt::Let { name: _, expr: _ }));
         match &expanded[4] {
-            Stmt::DataRow(entries) => {
+            Stmt::DataRow { entries } => {
                 assert_eq!(entries.len(), 4);
             }
             _ => panic!("Expected a data row"),
@@ -509,30 +521,38 @@ X 0 X 0
         assert_eq!(
             expanded,
             vec![
-                Stmt::DataRow(vec![
-                    DataEntry::Number(0),
-                    DataEntry::Number(0),
-                    DataEntry::Number(0),
-                    DataEntry::Number(0)
-                ]),
-                Stmt::DataRow(vec![
-                    DataEntry::Number(1),
-                    DataEntry::Number(0),
-                    DataEntry::Number(0),
-                    DataEntry::Number(0)
-                ]),
-                Stmt::DataRow(vec![
-                    DataEntry::Number(0),
-                    DataEntry::Number(0),
-                    DataEntry::Number(1),
-                    DataEntry::Number(0)
-                ]),
-                Stmt::DataRow(vec![
-                    DataEntry::Number(1),
-                    DataEntry::Number(0),
-                    DataEntry::Number(1),
-                    DataEntry::Number(0)
-                ])
+                Stmt::DataRow {
+                    entries: vec![
+                        DataEntry::Number(0),
+                        DataEntry::Number(0),
+                        DataEntry::Number(0),
+                        DataEntry::Number(0)
+                    ]
+                },
+                Stmt::DataRow {
+                    entries: vec![
+                        DataEntry::Number(1),
+                        DataEntry::Number(0),
+                        DataEntry::Number(0),
+                        DataEntry::Number(0)
+                    ]
+                },
+                Stmt::DataRow {
+                    entries: vec![
+                        DataEntry::Number(0),
+                        DataEntry::Number(0),
+                        DataEntry::Number(1),
+                        DataEntry::Number(0)
+                    ]
+                },
+                Stmt::DataRow {
+                    entries: vec![
+                        DataEntry::Number(1),
+                        DataEntry::Number(0),
+                        DataEntry::Number(1),
+                        DataEntry::Number(0)
+                    ]
+                }
             ]
         );
     }
@@ -548,24 +568,30 @@ C 0 1 1
         assert_eq!(
             expanded,
             vec![
-                Stmt::DataRow(vec![
-                    DataEntry::Number(0),
-                    DataEntry::X,
-                    DataEntry::Number(1),
-                    DataEntry::X
-                ]),
-                Stmt::DataRow(vec![
-                    DataEntry::Number(1),
-                    DataEntry::X,
-                    DataEntry::Number(1),
-                    DataEntry::X
-                ]),
-                Stmt::DataRow(vec![
-                    DataEntry::Number(0),
-                    DataEntry::Number(0),
-                    DataEntry::Number(1),
-                    DataEntry::Number(1)
-                ]),
+                Stmt::DataRow {
+                    entries: vec![
+                        DataEntry::Number(0),
+                        DataEntry::X,
+                        DataEntry::Number(1),
+                        DataEntry::X
+                    ]
+                },
+                Stmt::DataRow {
+                    entries: vec![
+                        DataEntry::Number(1),
+                        DataEntry::X,
+                        DataEntry::Number(1),
+                        DataEntry::X
+                    ]
+                },
+                Stmt::DataRow {
+                    entries: vec![
+                        DataEntry::Number(0),
+                        DataEntry::Number(0),
+                        DataEntry::Number(1),
+                        DataEntry::Number(1)
+                    ]
+                },
             ]
         );
     }
