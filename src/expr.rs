@@ -1,5 +1,4 @@
 use crate::eval_context::EvalContext;
-use rand::Rng;
 use std::{fmt::Display, str::FromStr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,7 +151,7 @@ impl Display for Expr {
 }
 
 impl Expr {
-    pub fn eval(&self, ctx: &mut EvalContext) -> anyhow::Result<i64> {
+    pub fn eval(&self, ctx: &EvalContext) -> anyhow::Result<i64> {
         match self {
             Self::Number(n) => Ok(*n),
             Self::Variable(name) => ctx
@@ -192,7 +191,7 @@ impl Expr {
                 "random" => {
                     if params.len() == 1 {
                         let max = params[0].eval(ctx)?;
-                        Ok(ctx.rng.gen_range(1..max))
+                        Ok(ctx.random(1..max))
                     } else {
                         anyhow::bail!("The function 'random' takes one parameter")
                     }

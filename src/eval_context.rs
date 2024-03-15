@@ -1,10 +1,11 @@
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{rngs::StdRng, Rng, SeedableRng};
+use std::cell::RefCell;
 
 #[derive(Debug)]
 pub(crate) struct EvalContext {
     values: Vec<(String, i64)>,
     frame_stack: Vec<usize>,
-    pub rng: StdRng,
+    rng: RefCell<StdRng>,
     seed: u64,
 }
 
@@ -17,7 +18,7 @@ impl EvalContext {
         Self {
             values: vec![],
             frame_stack: vec![],
-            rng: StdRng::seed_from_u64(seed),
+            rng: RefCell::new(StdRng::seed_from_u64(seed)),
             seed,
         }
     }
@@ -26,7 +27,7 @@ impl EvalContext {
         Self {
             values: vec![],
             frame_stack: vec![],
-            rng: StdRng::seed_from_u64(seed),
+            rng: RefCell::new(StdRng::seed_from_u64(seed)),
             seed,
         }
     }
@@ -61,7 +62,11 @@ impl EvalContext {
     }
 
     pub fn reset_random_seed(&mut self) {
-        self.rng = StdRng::seed_from_u64(self.seed);
+        self.rng = RefCell::new(StdRng::seed_from_u64(self.seed));
+    }
+
+    pub fn random<R: rand::distributions::uniform::SampleRange<i64>>(&self, range: R) -> i64 {
+        self.rng.borrow_mut().gen_range(range)
     }
 }
 
