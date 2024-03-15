@@ -6,16 +6,21 @@ pub(crate) enum Stmt {
     Let {
         name: String,
         expr: Expr,
+        line: u32,
     },
     DataRow {
         entries: Vec<DataEntry>,
+        line: u32,
     },
     Loop {
         variable: String,
         max: i64,
         stmts: Vec<Stmt>,
+        line: u32,
     },
-    ResetRandom {},
+    ResetRandom {
+        line: u32,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,22 +28,27 @@ pub(crate) enum OrderedStmt {
     Let {
         name: String,
         expr: Expr,
+        line: u32,
     },
     DataRow {
         inputs: Vec<DataEntry>,
         outputs: Vec<DataEntry>,
+        line: u32,
     },
     Loop {
         variable: String,
         max: i64,
         stmts: Vec<OrderedStmt>,
+        line: u32,
     },
-    ResetRandom {},
+    ResetRandom {
+        line: u32,
+    },
 }
 
 pub(crate) fn map_data_rows(
     stmts: Vec<Stmt>,
-    mut f: impl FnMut(Vec<DataEntry>) -> Vec<Stmt> + Clone,
+    mut f: impl FnMut(Vec<DataEntry>, u32) -> Vec<Stmt> + Clone,
 ) -> Vec<Stmt> {
     let mut result = Vec::with_capacity(stmts.len());
 
@@ -48,15 +58,18 @@ pub(crate) fn map_data_rows(
                 variable,
                 max,
                 stmts,
+                line,
             } => result.push(Stmt::Loop {
                 variable,
                 max,
                 stmts: map_data_rows(stmts, f.clone()),
+                line,
             }),
             Stmt::DataRow {
                 entries: orig_entries,
+                line,
             } => {
-                result.extend(f(orig_entries));
+                result.extend(f(orig_entries, line));
             }
             _ => result.push(stmt),
         }
@@ -68,7 +81,7 @@ pub(crate) fn map_data_rows(
 pub(crate) fn expand_bits(stmts: Vec<Stmt>) -> Vec<Stmt> {
     let mut temp_number = 0;
 
-    map_data_rows(stmts, move |orig_entries| {
+    map_data_rows(stmts, move |orig_entries, line| {
         let mut entries = Vec::with_capacity(orig_entries.len());
         let mut vars: Vec<(String, Expr)> = vec![];
         let mut result = vec![];
@@ -96,15 +109,15 @@ pub(crate) fn expand_bits(stmts: Vec<Stmt>) -> Vec<Stmt> {
             }
         }
         for (name, expr) in vars {
-            result.push(Stmt::Let { name, expr });
+            result.push(Stmt::Let { name, expr, line });
         }
-        result.push(Stmt::DataRow { entries });
+        result.push(Stmt::DataRow { entries, line });
         result
     })
 }
 
 pub(crate) fn expand_input_x(stmts: Vec<Stmt>, input_indices: &[usize]) -> Vec<Stmt> {
-    map_data_rows(stmts, |orig_entries| {
+    map_data_rows(stmts, |orig_entries, line| {
         let x_positions = input_indices
             .iter()
             .filter_map(|&i| {
@@ -125,7 +138,7 @@ pub(crate) fn expand_input_x(stmts: Vec<Stmt>, input_indices: &[usize]) -> Vec<S
         }
         row_result
             .into_iter()
-            .map(|entries| Stmt::DataRow { entries })
+            .map(|entries| Stmt::DataRow { entries, line })
             .collect()
     })
 }
@@ -135,7 +148,7 @@ pub(crate) fn expand_input_c(
     input_indices: &[usize],
     output_indices: &[usize],
 ) -> Vec<Stmt> {
-    map_data_rows(stmts, |orig_entries| {
+    map_data_rows(stmts, |orig_entries, line| {
         let c_positions = input_indices
             .iter()
             .filter_map(|&i| {
@@ -150,6 +163,7 @@ pub(crate) fn expand_input_c(
         if c_positions.is_empty() {
             return vec![Stmt::DataRow {
                 entries: orig_entries,
+                line,
             }];
         }
 
@@ -168,7 +182,7 @@ pub(crate) fn expand_input_c(
 
         row_result
             .into_iter()
-            .map(|entries| Stmt::DataRow { entries })
+            .map(|entries| Stmt::DataRow { entries, line })
             .collect()
     })
 }
@@ -178,21 +192,27 @@ fn to_ordered(stmts: Vec<Stmt>, input_len: usize) -> Vec<OrderedStmt> {
 
     for stmt in stmts {
         result.push(match stmt {
-            Stmt::Let { name, expr } => OrderedStmt::Let { name, expr },
-            Stmt::ResetRandom {} => OrderedStmt::ResetRandom {},
+            Stmt::Let { name, expr, line } => OrderedStmt::Let { name, expr, line },
+            Stmt::ResetRandom { line } => OrderedStmt::ResetRandom { line },
             Stmt::Loop {
                 variable,
                 max,
                 stmts,
+                line,
             } => OrderedStmt::Loop {
                 variable,
                 max,
                 stmts: to_ordered(stmts, input_len),
+                line,
             },
-            Stmt::DataRow { mut entries } => {
+            Stmt::DataRow { mut entries, line } => {
                 let outputs = entries.split_off(input_len);
                 let inputs = entries;
-                OrderedStmt::DataRow { inputs, outputs }
+                OrderedStmt::DataRow {
+                    inputs,
+                    outputs,
+                    line,
+                }
             }
         });
     }
@@ -205,7 +225,7 @@ pub(crate) fn reorder(
     input_indices: &[usize],
     output_indices: &[usize],
 ) -> Vec<OrderedStmt> {
-    let stmts = map_data_rows(stmts, |mut orig_entries| {
+    let stmts = map_data_rows(stmts, |mut orig_entries, line| {
         let dummy = DataEntry::X;
         if orig_entries.len() != input_indices.len() + output_indices.len() {
             panic!("Wrong length data row");
@@ -218,7 +238,7 @@ pub(crate) fn reorder(
             entries.push(std::mem::replace(&mut orig_entries[i], dummy.clone()));
         }
 
-        vec![Stmt::DataRow { entries }]
+        vec![Stmt::DataRow { entries, line }]
     });
 
     to_ordered(stmts, input_indices.len())
@@ -227,12 +247,16 @@ pub(crate) fn reorder(
 impl Stmt {
     pub(crate) fn run(&self, ctx: &mut EvalContext) -> Vec<Vec<DataResult>> {
         match self {
-            Self::Let { name, expr } => {
+            Self::Let {
+                name,
+                expr,
+                line: _,
+            } => {
                 let value = expr.eval(ctx).unwrap();
                 ctx.set(name, value);
                 vec![]
             }
-            Self::DataRow { entries } => {
+            Self::DataRow { entries, line: _ } => {
                 let data = entries
                     .iter()
                     .flat_map(|entry| entry.run(ctx))
@@ -243,6 +267,7 @@ impl Stmt {
                 variable,
                 max,
                 stmts,
+                line: _,
             } => {
                 ctx.push_frame();
                 let mut result = vec![];
@@ -255,7 +280,7 @@ impl Stmt {
                 ctx.pop_frame();
                 result
             }
-            Self::ResetRandom {} => {
+            Self::ResetRandom { line: _ } => {
                 ctx.reset_random_seed();
                 vec![]
             }
@@ -266,13 +291,18 @@ impl Stmt {
 impl std::fmt::Display for Stmt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Let { name, expr } => {
+            Self::Let {
+                name,
+                expr,
+                line: _,
+            } => {
                 write!(f, "let {name} = {expr};")
             }
             Self::Loop {
                 variable,
                 max,
                 stmts,
+                line: _,
             } => {
                 writeln!(f, "loop({variable},{max})")?;
                 for stmt in stmts {
@@ -280,10 +310,10 @@ impl std::fmt::Display for Stmt {
                 }
                 write!(f, "end loop")
             }
-            Self::ResetRandom {} => {
+            Self::ResetRandom { line: _ } => {
                 write!(f, "resetRandom;")
             }
-            Self::DataRow { entries } => {
+            Self::DataRow { entries, line: _ } => {
                 let s = entries
                     .iter()
                     .map(|entry| format!("{entry}"))
@@ -298,13 +328,18 @@ impl std::fmt::Display for Stmt {
 impl std::fmt::Display for OrderedStmt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Let { name, expr } => {
+            Self::Let {
+                name,
+                expr,
+                line: _,
+            } => {
                 write!(f, "let {name} = {expr};")
             }
             Self::Loop {
                 variable,
                 max,
                 stmts,
+                line: _,
             } => {
                 writeln!(f, "loop({variable},{max})")?;
                 for stmt in stmts {
@@ -312,10 +347,14 @@ impl std::fmt::Display for OrderedStmt {
                 }
                 write!(f, "end loop")
             }
-            Self::ResetRandom {} => {
+            Self::ResetRandom { line: _ } => {
                 write!(f, "resetRandom;")
             }
-            Self::DataRow { inputs, outputs } => {
+            Self::DataRow {
+                inputs,
+                outputs,
+                line: _,
+            } => {
                 let s = inputs
                     .iter()
                     .chain(outputs.iter())
@@ -470,17 +509,17 @@ bits(4,0b1010)
         let testcase: ParsedTestCase = input.parse().unwrap();
         let expanded = expand_bits(testcase.stmts);
         assert_eq!(expanded.len(), 5);
-        assert!(matches!(expanded[0], Stmt::Let { name: _, expr: _ }));
-        assert!(matches!(expanded[1], Stmt::Let { name: _, expr: _ }));
+        assert!(matches!(expanded[0], Stmt::Let { .. }));
+        assert!(matches!(expanded[1], Stmt::Let { .. }));
         match &expanded[2] {
-            Stmt::DataRow { entries } => {
+            Stmt::DataRow { entries, .. } => {
                 assert_eq!(entries.len(), 4);
             }
             _ => panic!("Expected a data row"),
         }
-        assert!(matches!(expanded[3], Stmt::Let { name: _, expr: _ }));
+        assert!(matches!(expanded[3], Stmt::Let { .. }));
         match &expanded[4] {
-            Stmt::DataRow { entries } => {
+            Stmt::DataRow { entries, .. } => {
                 assert_eq!(entries.len(), 4);
             }
             _ => panic!("Expected a data row"),
@@ -527,7 +566,8 @@ X 0 X 0
                         DataEntry::Number(0),
                         DataEntry::Number(0),
                         DataEntry::Number(0)
-                    ]
+                    ],
+                    line: 2
                 },
                 Stmt::DataRow {
                     entries: vec![
@@ -535,7 +575,8 @@ X 0 X 0
                         DataEntry::Number(0),
                         DataEntry::Number(0),
                         DataEntry::Number(0)
-                    ]
+                    ],
+                    line: 2
                 },
                 Stmt::DataRow {
                     entries: vec![
@@ -543,7 +584,8 @@ X 0 X 0
                         DataEntry::Number(0),
                         DataEntry::Number(1),
                         DataEntry::Number(0)
-                    ]
+                    ],
+                    line: 2
                 },
                 Stmt::DataRow {
                     entries: vec![
@@ -551,7 +593,8 @@ X 0 X 0
                         DataEntry::Number(0),
                         DataEntry::Number(1),
                         DataEntry::Number(0)
-                    ]
+                    ],
+                    line: 2
                 }
             ]
         );
@@ -574,7 +617,8 @@ C 0 1 1
                         DataEntry::X,
                         DataEntry::Number(1),
                         DataEntry::X
-                    ]
+                    ],
+                    line: 2
                 },
                 Stmt::DataRow {
                     entries: vec![
@@ -582,7 +626,8 @@ C 0 1 1
                         DataEntry::X,
                         DataEntry::Number(1),
                         DataEntry::X
-                    ]
+                    ],
+                    line: 2
                 },
                 Stmt::DataRow {
                     entries: vec![
@@ -590,7 +635,8 @@ C 0 1 1
                         DataEntry::Number(0),
                         DataEntry::Number(1),
                         DataEntry::Number(1)
-                    ]
+                    ],
+                    line: 2
                 },
             ]
         );

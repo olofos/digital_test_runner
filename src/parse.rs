@@ -15,6 +15,8 @@ use nom::{
     Finish, IResult, Parser,
 };
 
+type Span<'a> = nom_locate::LocatedSpan<&'a str>;
+
 /// Used to parse strings of binary operators.
 /// We construct a separate tree of only the binary operators on the same level, so that we don't recurse into expressions in brackets
 #[derive(Debug, Clone)]
@@ -67,14 +69,14 @@ impl BinOpTree {
     }
 }
 
-fn ws<'a, F, O, E: ParseError<&'a str>>(inner: F) -> impl Parser<&'a str, O, E>
+fn ws<'a, F, O, E: ParseError<Span<'a>>>(inner: F) -> impl Parser<Span<'a>, O, E>
 where
-    F: Parser<&'a str, O, E>,
+    F: Parser<Span<'a>, O, E>,
 {
     delimited(many0(one_of(" \t")), inner, many0(one_of(" \t")))
 }
 
-fn expr(i: &str) -> IResult<&str, Expr> {
+fn expr(i: Span) -> IResult<Span, Expr> {
     let (i, (first, rest)) = pair(
         ws(factor),
         many0(pair(
@@ -97,7 +99,7 @@ fn expr(i: &str) -> IResult<&str, Expr> {
                     tag("/"),
                     tag("%"),
                 )),
-                |s: &str| s.parse::<BinOp>(),
+                |s: Span| s.parse::<BinOp>(),
             ),
             ws(factor),
         )),
@@ -111,7 +113,7 @@ fn expr(i: &str) -> IResult<&str, Expr> {
     Ok((i, tree.into_expr()))
 }
 
-fn factor(i: &str) -> IResult<&str, Expr> {
+fn factor(i: Span) -> IResult<Span, Expr> {
     alt((
         map(preceded(tag("-"), factor), |expr| Expr::UnaryOp {
             op: UnaryOp::Minus,
@@ -138,44 +140,44 @@ fn factor(i: &str) -> IResult<&str, Expr> {
     ))(i)
 }
 
-fn number(i: &str) -> IResult<&str, i64> {
+fn number(i: Span) -> IResult<Span, i64> {
     alt((
-        map_res(preceded(tag_no_case("0x"), hex_digit1), |src| {
-            i64::from_str_radix(src, 16)
+        map_res(preceded(tag_no_case("0x"), hex_digit1), |src: Span| {
+            i64::from_str_radix(src.fragment(), 16)
         }),
         map_res(
             preceded(tag_no_case("0b"), recognize(many1(one_of("01")))),
-            |src| i64::from_str_radix(src, 2),
+            |src: Span| i64::from_str_radix(src.fragment(), 2),
         ),
-        map_res(recognize(pair(one_of("123456789"), digit0)), |src: &str| {
+        map_res(recognize(pair(one_of("123456789"), digit0)), |src: Span| {
             src.parse()
         }),
-        map_res(recognize(pair(tag("0"), oct_digit0)), |src| {
-            i64::from_str_radix(src, 8)
+        map_res(recognize(pair(tag("0"), oct_digit0)), |src: Span| {
+            i64::from_str_radix(src.fragment(), 8)
         }),
     ))(i)
 }
 
-fn identifier(i: &str) -> IResult<&str, String> {
+fn identifier(i: Span) -> IResult<Span, String> {
     let (i, s) = recognize(pair(
         alt((alpha1, tag("_"))),
         many0(alt((alphanumeric1, tag("_")))),
     ))(i)?;
-    Ok((i, s.to_owned()))
+    Ok((i, s.into_fragment().to_owned()))
 }
 
-fn comment(i: &str) -> IResult<&str, ()> {
+fn comment(i: Span) -> IResult<Span, ()> {
     value((), pair(tag("#"), is_not("\r\n")))(i)
 }
 
-fn eol(i: &str) -> IResult<&str, ()> {
+fn eol(i: Span) -> IResult<Span, ()> {
     value(
         (),
         many1(tuple((many0(one_of(" \t")), opt(comment), newline))),
     )(i)
 }
 
-fn stmt(i: &str) -> IResult<&str, Stmt> {
+fn stmt(i: Span) -> IResult<Span, Stmt> {
     delimited(
         many0(one_of(" \t")),
         alt((
@@ -191,7 +193,7 @@ fn stmt(i: &str) -> IResult<&str, Stmt> {
     )(i)
 }
 
-fn data_entry(i: &str) -> IResult<&str, DataEntry> {
+fn data_entry(i: Span) -> IResult<Span, DataEntry> {
     alt((
         map(number, DataEntry::Number),
         map(delimited(tag("("), expr, tag(")")), DataEntry::Expr),
@@ -212,24 +214,31 @@ fn data_entry(i: &str) -> IResult<&str, DataEntry> {
     ))(i)
 }
 
-fn data_row(i: &str) -> IResult<&str, Stmt> {
+fn data_row(i: Span) -> IResult<Span, Stmt> {
     map(
         separated_list1(many1(one_of(" \t")), data_entry),
-        Stmt::DataRow,
+        |entries| Stmt::DataRow {
+            entries,
+            line: i.location_line(),
+        },
     )(i)
 }
 
-fn let_stmt(i: &str) -> IResult<&str, Stmt> {
+fn let_stmt(i: Span) -> IResult<Span, Stmt> {
     map(
         pair(
             preceded(tag("let"), ws(identifier)),
             delimited(tag("="), expr, tag(";")),
         ),
-        |(name, expr)| Stmt::Let { name, expr },
+        |(name, expr)| Stmt::Let {
+            name,
+            expr,
+            line: i.location_line(),
+        },
     )(i)
 }
 
-fn loop_stmt(i: &str) -> IResult<&str, Stmt> {
+fn loop_stmt(i: Span) -> IResult<Span, Stmt> {
     let (i, (variable, max)) = delimited(
         pair(tag("loop"), ws(tag("("))),
         separated_pair(identifier, ws(tag(",")), number),
@@ -244,11 +253,12 @@ fn loop_stmt(i: &str) -> IResult<&str, Stmt> {
             variable,
             max,
             stmts,
+            line: i.location_line(),
         },
     ))
 }
 
-fn repeat(i: &str) -> IResult<&str, Stmt> {
+fn repeat(i: Span) -> IResult<Span, Stmt> {
     let (i, max) = delimited(pair(tag("repeat"), ws(tag("("))), number, ws(tag(")")))(i)?;
     let (i, stmt) = data_row(i)?;
     Ok((
@@ -257,11 +267,12 @@ fn repeat(i: &str) -> IResult<&str, Stmt> {
             variable: String::from("n"),
             max,
             stmts: vec![stmt],
+            line: i.location_line(),
         },
     ))
 }
 
-fn declare(i: &str) -> IResult<&str, Stmt> {
+fn declare(i: Span) -> IResult<Span, Stmt> {
     let (i, (name, expr)) = pair(
         preceded(tag("let"), ws(identifier)),
         delimited(tag("="), expr, tag(";")),
@@ -272,7 +283,7 @@ fn declare(i: &str) -> IResult<&str, Stmt> {
     unimplemented!()
 }
 
-fn while_stmt(i: &str) -> IResult<&str, Stmt> {
+fn while_stmt(i: Span) -> IResult<Span, Stmt> {
     let (i, expr) = delimited(
         pair(tag("while"), ws(tag("("))),
         expr,
@@ -286,24 +297,31 @@ fn while_stmt(i: &str) -> IResult<&str, Stmt> {
     unimplemented!()
 }
 
-fn reset_random(i: &str) -> IResult<&str, Stmt> {
+fn reset_random(i: Span) -> IResult<Span, Stmt> {
     let (i, _) = pair(tag("resetRandom"), ws(tag(";")))(i)?;
-    Ok((i, Stmt::ResetRandom))
+    Ok((
+        i,
+        Stmt::ResetRandom {
+            line: i.location_line(),
+        },
+    ))
 }
 
-fn header(i: &str) -> IResult<&str, Vec<String>> {
+fn header(i: Span) -> IResult<Span, Vec<String>> {
     let (i, _) = many0(eol)(i)?;
     let (i, _) = many0(one_of(" \t"))(i)?;
     let (i, signals) = separated_list1(
         many1(one_of(" \t")),
-        map(recognize(is_not(" \r\r\n")), String::from),
+        map(recognize(is_not(" \r\r\n")), |span: Span| {
+            String::from(span.into_fragment())
+        }),
     )(i)?;
     let (i, _) = eol(i)?;
 
     Ok((i, signals))
 }
 
-fn testcase(i: &str) -> IResult<&str, ParsedTestCase> {
+fn testcase(i: Span) -> IResult<Span, ParsedTestCase> {
     let (i, signals) = header(i)?;
     let (i, stmts) = many1(stmt)(i)?;
     let (i, _) = pair(many0(eol), eof)(i)?;
@@ -318,7 +336,12 @@ fn testcase(i: &str) -> IResult<&str, ParsedTestCase> {
 }
 
 pub fn parse(input: &str) -> Result<ParsedTestCase, anyhow::Error> {
-    let (_, testcase) = testcase(input).map_err(|e| e.to_owned()).finish()?;
+    let (_, testcase) = nom::combinator::complete(testcase)(Span::new(input))
+        .finish()
+        .map_err(|e| nom::error::Error {
+            input: e.input.into_fragment().to_string(),
+            code: e.code,
+        })?;
     Ok(testcase)
 }
 
@@ -338,6 +361,7 @@ mod tests {
     #[case("0b1010", 10)]
     #[case("0B1010", 10)]
     fn number_works(#[case] input: &str, #[case] num: i64) {
+        let input = Span::new(input);
         let (_, expr) = number(input).unwrap();
         assert_eq!(expr, num)
     }
@@ -348,8 +372,9 @@ mod tests {
     #[case("_")]
     #[case("_1_a_A")]
     fn identifier_works(#[case] input: &str) {
+        let input = Span::new(input);
         let (_, id) = identifier(input).unwrap();
-        assert_eq!(id, String::from(input))
+        assert_eq!(id, String::from(input.into_fragment()))
     }
 
     #[rstest]
@@ -379,8 +404,9 @@ mod tests {
     #[case("1/2", "(1 / 2)")]
     #[case("1%2", "(1 % 2)")]
     fn expr_works(#[case] input: &str, #[case] result: &str) {
+        let input = Span::new(input);
         let (i, expr) = expr(input).unwrap();
-        assert_eq!(i, "");
+        assert_eq!(i.into_fragment(), "");
         assert_eq!(format!("{expr}"), result);
     }
 
@@ -391,8 +417,9 @@ mod tests {
     #[case("1+2+3=2*3", 1)]
     #[case("1+2+3=b*c", 1)]
     fn eval_works(#[case] input: &str, #[case] value: i64) {
+        let input = Span::new(input);
         let (i, expr) = expr(input).unwrap();
-        assert_eq!(i, "");
+        assert_eq!(i.into_fragment(), "");
         let mut ctx = EvalContext::new();
         ctx.set("a", 1);
         ctx.set("b", 2);
@@ -415,8 +442,9 @@ mod tests {
     #[case("7/3", 2)]
     #[case("7%3", 1)]
     fn eval_works_for_binop(#[case] input: &str, #[case] value: i64) {
+        let input = Span::new(input);
         let (i, expr) = expr(input).unwrap();
-        assert_eq!(i, "");
+        assert_eq!(i.into_fragment(), "");
         let mut ctx = EvalContext::new();
         ctx.set("a", 1);
         ctx.set("b", 2);
@@ -429,8 +457,9 @@ mod tests {
     #[case("~3", !3)]
     #[case("!3", 0)]
     fn eval_works_for_unart_op(#[case] input: &str, #[case] value: i64) {
+        let input = Span::new(input);
         let (i, expr) = expr(input).unwrap();
-        assert_eq!(i, "");
+        assert_eq!(i.into_fragment(), "");
         let mut ctx = EvalContext::new();
         ctx.set("a", 1);
         ctx.set("b", 2);
@@ -440,8 +469,8 @@ mod tests {
 
     #[test]
     fn eval_random_works() {
-        let (i, expr) = expr("random(10)").unwrap();
-        assert_eq!(i, "");
+        let (i, expr) = expr(Span::new("random(10)")).unwrap();
+        assert_eq!(i.into_fragment(), "");
         let mut ctx = EvalContext::with_seed(0);
         assert_eq!(expr.eval(&mut ctx).unwrap(), 1);
         assert_eq!(expr.eval(&mut ctx).unwrap(), 6);
@@ -452,21 +481,23 @@ mod tests {
     #[case("ite(0,2,3)", 3)]
     #[case("ite(1,2,3)", 2)]
     fn eval_ite_works(#[case] input: &str, #[case] value: i64) {
+        let input = Span::new(input);
         let (i, expr) = expr(input).unwrap();
-        assert_eq!(i, "");
+        assert_eq!(i.into_fragment(), "");
         let mut ctx = EvalContext::new();
         assert_eq!(expr.eval(&mut ctx).unwrap(), value);
     }
 
     #[test]
     fn stmt_let_works() {
-        let (i, stmt) = let_stmt("let a = 1;").unwrap();
-        assert_eq!(i, "");
+        let (i, stmt) = let_stmt(Span::from("let a = 1;")).unwrap();
+        assert_eq!(i.into_fragment(), "");
         assert_eq!(
             stmt,
             Stmt::Let {
                 name: String::from("a"),
-                expr: Expr::Number(1)
+                expr: Expr::Number(1),
+                line: 1,
             }
         )
     }
@@ -480,17 +511,18 @@ mod tests {
     #[case("(1)", DataEntry::Expr(Expr::Number(1)))]
     #[case("bits(1,2)", DataEntry::Bits { number: 1, expr: Expr::Number(2)})]
     fn data_entry_works(#[case] input: &str, #[case] result: DataEntry) {
+        let input = Span::new(input);
         let (i, entry) = data_entry(input).unwrap();
-        assert_eq!(i, "");
+        assert_eq!(i.into_fragment(), "");
         assert_eq!(entry, result);
     }
 
     #[test]
     fn data_row_works() {
-        let (i, row) = data_row("1 (a+b) X\tZ\t\tbits(1,3*7)").unwrap();
-        assert_eq!(i, "");
+        let (i, row) = data_row(Span::new("1 (a+b) X\tZ\t\tbits(1,3*7)")).unwrap();
+        assert_eq!(i.into_fragment(), "");
         match row {
-            Stmt::DataRow(entries) => assert_eq!(entries.len(), 5),
+            Stmt::DataRow { entries, .. } => assert_eq!(entries.len(), 5),
             _ => panic!("Expected a data row"),
         }
     }
