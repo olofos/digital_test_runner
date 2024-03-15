@@ -193,16 +193,17 @@ pub(crate) fn reorder(
     input_indices: &[usize],
     output_indices: &[usize],
 ) -> Vec<OrderedStmt> {
-    let stmts = map_data_rows(stmts, |orig_entries| {
+    let stmts = map_data_rows(stmts, |mut orig_entries| {
+        let dummy = DataEntry::X;
         if orig_entries.len() != input_indices.len() + output_indices.len() {
             panic!("Wrong length data row");
         }
         let mut entries = Vec::with_capacity(orig_entries.len());
         for &i in input_indices {
-            entries.push(orig_entries[i].clone());
+            entries.push(std::mem::replace(&mut orig_entries[i], dummy.clone()));
         }
         for &i in output_indices {
-            entries.push(orig_entries[i].clone());
+            entries.push(std::mem::replace(&mut orig_entries[i], dummy.clone()));
         }
 
         vec![Stmt::DataRow(entries)]
@@ -489,9 +490,9 @@ bits(4,0b1010)
             assert_eq!(format!("{stmt}"), format!("{expected}"));
         }
 
-        let input_expected = "B D A C\n0 0 0 0\n0 1 0 0\n0 0 0 1\n0 1 0 1\n1 0 0 0\n1 1 0 0\n1 0 0 1\n1 1 0 1\n0 0 1 0\n0 1 1 0\n0 0 1 1\n0 1 1 1\n1 0 1 0\n1 1 1 0\n1 0 1 1\n1 1 1 1\n";
+        let input_expected = "B D C A\n0 0 0 0\n0 1 0 0\n0 0 1 0\n0 1 1 0\n1 0 0 0\n1 1 0 0\n1 0 1 0\n1 1 1 0\n0 0 0 1\n0 1 0 1\n0 0 1 1\n0 1 1 1\n1 0 0 1\n1 1 0 1\n1 0 1 1\n1 1 1 1\n";
         let expected = input_expected.parse::<ParsedTestCase>().unwrap().stmts;
-        let stmts = reorder(testcase.stmts.clone(), &[1, 3], &[0, 2]);
+        let stmts = reorder(testcase.stmts.clone(), &[1, 3], &[2, 0]);
         for (stmt, expected) in stmts.into_iter().zip(expected.into_iter()) {
             assert_eq!(format!("{stmt}"), format!("{expected}"));
         }
