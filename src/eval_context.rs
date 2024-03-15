@@ -32,13 +32,20 @@ impl EvalContext {
         }
     }
 
-    pub fn push_frame(&mut self) {
+    fn push_frame(&mut self) {
         self.frame_stack.push(self.values.len())
     }
 
-    pub fn pop_frame(&mut self) {
+    fn pop_frame(&mut self) {
         let len = self.frame_stack.pop().unwrap_or(0);
         self.values.truncate(len);
+    }
+
+    pub fn new_frame<T>(&mut self, mut f: impl FnMut(&mut Self) -> T) -> T {
+        self.push_frame();
+        let result = f(self);
+        self.pop_frame();
+        result
     }
 
     pub fn set(&mut self, name: &str, value: i64) {
@@ -87,13 +94,13 @@ mod tests {
         assert_eq!(ctx.get("a"), Some(4));
         assert_eq!(ctx.get("b"), Some(2));
         assert_eq!(ctx.get("c"), Some(3));
-        ctx.push_frame();
-        ctx.set("a", 5);
-        ctx.set("b", 6);
-        assert_eq!(ctx.get("a"), Some(5));
-        assert_eq!(ctx.get("b"), Some(6));
-        assert_eq!(ctx.get("c"), Some(3));
-        ctx.pop_frame();
+        ctx.new_frame(|ctx| {
+            ctx.set("a", 5);
+            ctx.set("b", 6);
+            assert_eq!(ctx.get("a"), Some(5));
+            assert_eq!(ctx.get("b"), Some(6));
+            assert_eq!(ctx.get("c"), Some(3));
+        });
         assert_eq!(ctx.get("a"), Some(4));
         assert_eq!(ctx.get("b"), Some(2));
         assert_eq!(ctx.get("c"), Some(3));

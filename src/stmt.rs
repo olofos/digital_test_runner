@@ -268,8 +268,7 @@ impl Stmt {
                 max,
                 stmts,
                 line: _,
-            } => {
-                ctx.push_frame();
+            } => ctx.new_frame(|ctx| {
                 let mut result = vec![];
                 for i in 0..*max {
                     ctx.set(variable, i);
@@ -277,9 +276,8 @@ impl Stmt {
                         result.extend(stmt.run(ctx));
                     }
                 }
-                ctx.pop_frame();
                 result
-            }
+            }),
             Self::ResetRandom { line: _ } => {
                 ctx.reset_random_seed();
                 vec![]
