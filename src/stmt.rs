@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::eval_context::EvalContext;
 use crate::expr::{BinOp, Expr};
 
@@ -244,8 +246,8 @@ pub(crate) fn reorder(
     to_ordered(stmts, input_indices.len())
 }
 
-impl Stmt {
-    pub(crate) fn run(&self, ctx: &mut EvalContext) -> Vec<Vec<DataResult>> {
+impl OrderedStmt {
+    pub(crate) fn run(&self, ctx: &mut EvalContext) -> Vec<ResultRow> {
         match self {
             Self::Let {
                 name,
@@ -256,12 +258,24 @@ impl Stmt {
                 ctx.set(name, value);
                 vec![]
             }
-            Self::DataRow { entries, line: _ } => {
-                let data = entries
+            Self::DataRow {
+                inputs,
+                outputs,
+                line,
+            } => {
+                let inputs = inputs
                     .iter()
                     .flat_map(|entry| entry.run(ctx))
                     .collect::<Vec<_>>();
-                vec![data]
+                let outputs = outputs
+                    .iter()
+                    .flat_map(|entry| entry.run(ctx))
+                    .collect::<Vec<_>>();
+                vec![ResultRow {
+                    inputs,
+                    outputs,
+                    line: *line,
+                }]
             }
             Self::Loop {
                 variable,
@@ -382,6 +396,44 @@ pub enum DataResult {
     Z,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResultRow {
+    inputs: Vec<DataResult>,
+    outputs: Vec<DataResult>,
+    line: u32,
+}
+
+impl Display for ResultRow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: ", self.line)?;
+        let s = self
+            .inputs
+            .iter()
+            .map(|entry| match entry {
+                DataResult::Number(n) => format!("{n}"),
+                DataResult::X => String::from("X"),
+                DataResult::Z => String::from("Z"),
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        write!(f, "[ {s} ]")?;
+        write!(f, " ")?;
+
+        let s = self
+            .outputs
+            .iter()
+            .map(|entry| match entry {
+                DataResult::Number(n) => format!("{n}"),
+                DataResult::X => String::from("X"),
+                DataResult::Z => String::from("Z"),
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        write!(f, "[ {s} ]")
+    }
+}
+
 impl DataEntry {
     fn run(&self, ctx: &mut EvalContext) -> Vec<DataResult> {
         match self {
@@ -457,45 +509,6 @@ end loop
         let testcase: ParsedTestCase = input.parse().unwrap();
         assert_eq!(testcase.signal_names.len(), 11);
         assert_eq!(testcase.stmts.len(), 7);
-    }
-
-    #[test]
-    fn run_works() {
-        let input = r"
-BUS-CLK S         A        B        N ALU-~RESET ALU-AUX   OUT           FLAG DLEN DSUM
-
-let ADD = 0;
-let OR  = 1;
-let XOR = 2;
-let AND = 3;
-
-0       0      0        0        0 0          0         X             X    X    X
-0       0      0        0        0 1          0         X             X    X    X
-
-loop (a,2)
-loop (b,2)
-0       (OR)      (a)      (b)      0 1          0         (a|b)         X    X    X
-0       (AND)     (a)      (b)      0 1          0         (a&b)         X    X    X
-0       (XOR)     (a)      (b)      0 1          0         (a^b)         X    X    X
-0       (ADD)     (a)      (b)      0 1          0         (a+b)         X    X    X
-end loop
-end loop
-
-";
-        let testcase: ParsedTestCase = input.parse().unwrap();
-        let result = testcase.run();
-        for row in result {
-            let s = row
-                .iter()
-                .map(|entry| match entry {
-                    DataResult::Number(n) => format!("{n}"),
-                    DataResult::X => String::from("X"),
-                    DataResult::Z => String::from("Z"),
-                })
-                .collect::<Vec<_>>()
-                .join(" ");
-            println!("{s}");
-        }
     }
 
     #[test]

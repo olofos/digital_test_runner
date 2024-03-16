@@ -85,15 +85,17 @@ impl Display for ParsedTestCase {
     }
 }
 
-impl ParsedTestCase {
-    pub fn run(&self) -> Vec<Vec<stmt::DataResult>> {
+impl TestCase {
+    pub fn run(&self) -> Vec<stmt::ResultRow> {
         let mut ctx = eval_context::EvalContext::new();
         self.stmts
             .iter()
             .flat_map(|stmt| stmt.run(&mut ctx))
             .collect::<Vec<_>>()
     }
+}
 
+impl ParsedTestCase {
     pub fn try_into_test_case(
         self,
         known_inputs: &[InputSignal],
@@ -133,5 +135,58 @@ impl ParsedTestCase {
             inputs,
             outputs,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn run_works() {
+        let input = r"
+BUS-CLK S         A        B        N ALU-~RESET ALU-AUX   OUT           FLAG DLEN DSUM
+
+let ADD = 0;
+let OR  = 1;
+let XOR = 2;
+let AND = 3;
+
+0       0         0        0        0 0          0         X             X    X    X
+0       0         0        0        0 1          0         X             X    X    X
+
+loop (a,2)
+loop (b,2)
+0       (OR)      (a)      (b)      0 1          0         (a|b)         X    X    X
+0       (AND)     (a)      (b)      0 1          0         (a&b)         X    X    X
+0       (XOR)     (a)      (b)      0 1          0         (a^b)         X    X    X
+0       (ADD)     (a)      (b)      0 1          0         (a+b)         X    X    X
+end loop
+end loop
+
+";
+        let known_inputs = ["BUS-CLK", "S", "A", "B", "N", "ALU-~RESET", "ALU-AUX"]
+            .into_iter()
+            .map(|name| InputSignal {
+                name: String::from(name),
+                bits: 1,
+                default: InputValue::Value(0),
+            })
+            .collect::<Vec<_>>();
+        let known_outputs = ["OUT", "FLAG", "DLEN", "DSUM"]
+            .into_iter()
+            .map(|name| OutputSignal {
+                name: String::from(name),
+                bits: 1,
+            })
+            .collect::<Vec<_>>();
+        let testcase: ParsedTestCase = input.parse().unwrap();
+        let testcase = testcase
+            .try_into_test_case(&known_inputs, &known_outputs)
+            .unwrap();
+        let result = testcase.run();
+        for row in result {
+            println!("{row}");
+        }
     }
 }
