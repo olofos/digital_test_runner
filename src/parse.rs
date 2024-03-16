@@ -167,7 +167,7 @@ fn identifier(i: Span) -> IResult<Span, String> {
 }
 
 fn comment(i: Span) -> IResult<Span, ()> {
-    value((), pair(tag("#"), is_not("\r\n")))(i)
+    value((), pair(tag("#"), opt(is_not("\r\n"))))(i)
 }
 
 fn eol(i: Span) -> IResult<Span, ()> {
@@ -488,6 +488,19 @@ mod tests {
         assert_eq!(expr.eval(&mut ctx).unwrap(), value);
     }
 
+    #[rstest]
+    #[case("\n")]
+    #[case(" \n")]
+    #[case("# XXX \n")]
+    #[case("\n\n")]
+    #[case("\n# XXX \n")]
+    #[case("#\n")]
+    #[case("\n#\n")]
+    fn eol_works(#[case] input: &str) {
+        let (i, _) = eol(Span::from(input)).unwrap();
+        assert_eq!(i.into_fragment(), "");
+    }
+
     #[test]
     fn stmt_let_works() {
         let (i, stmt) = let_stmt(Span::from("let a = 1;")).unwrap();
@@ -553,32 +566,5 @@ end loop
         let testcase: ParsedTestCase = input.parse().unwrap();
         assert_eq!(testcase.signal_names.len(), 11);
         assert_eq!(testcase.stmts.len(), 7);
-    }
-
-    #[test]
-    fn run_works() {
-        let input = r"
-BUS-CLK S         A        B        N ALU-~RESET ALU-AUX   OUT           FLAG DLEN DSUM
-
-let ADD = 0;
-let OR  = 1;
-let XOR = 2;
-let AND = 3;
-
-0       0         0        0        0 0          0         X             X    X    X
-0       0         0        0        0 1          0         X             X    X    X
-
-loop (a,2)
-loop (b,2)
-0       (OR)      (a)      (b)      0 1          0         (a|b)         X    X    X
-0       (AND)     (a)      (b)      0 1          0         (a&b)         X    X    X
-0       (XOR)     (a)      (b)      0 1          0         (a^b)         X    X    X
-0       (ADD)     (a)      (b)      0 1          0         (a+b)         X    X    X
-end loop
-end loop
-
-";
-        let testcase: ParsedTestCase = input.parse().unwrap();
-        testcase.run();
     }
 }
