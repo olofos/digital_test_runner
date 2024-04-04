@@ -50,34 +50,38 @@ pub(crate) enum OrderedStmt {
 
 pub(crate) fn map_data_rows(
     stmts: Vec<Stmt>,
-    mut f: impl FnMut(Vec<DataEntry>, u32) -> Vec<Stmt> + Clone,
+    mut f: impl FnMut(Vec<DataEntry>, u32) -> Vec<Stmt>,
 ) -> Vec<Stmt> {
-    let mut result = Vec::with_capacity(stmts.len());
+    fn inner(stmts: Vec<Stmt>, f: &mut impl FnMut(Vec<DataEntry>, u32) -> Vec<Stmt>) -> Vec<Stmt> {
+        let mut result = Vec::with_capacity(stmts.len());
 
-    for stmt in stmts {
-        match stmt {
-            Stmt::Loop {
-                variable,
-                max,
-                stmts,
-                line,
-            } => result.push(Stmt::Loop {
-                variable,
-                max,
-                stmts: map_data_rows(stmts, f.clone()),
-                line,
-            }),
-            Stmt::DataRow {
-                entries: orig_entries,
-                line,
-            } => {
-                result.extend(f(orig_entries, line));
+        for stmt in stmts {
+            match stmt {
+                Stmt::Loop {
+                    variable,
+                    max,
+                    stmts,
+                    line,
+                } => result.push(Stmt::Loop {
+                    variable,
+                    max,
+                    stmts: inner(stmts, f),
+                    line,
+                }),
+                Stmt::DataRow {
+                    entries: orig_entries,
+                    line,
+                } => {
+                    result.extend(f(orig_entries, line));
+                }
+                _ => result.push(stmt),
             }
-            _ => result.push(stmt),
         }
+
+        result
     }
 
-    result
+    inner(stmts, &mut f)
 }
 
 pub(crate) fn expand_bits(stmts: Vec<Stmt>) -> Vec<Stmt> {
