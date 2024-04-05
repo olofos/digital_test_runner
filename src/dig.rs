@@ -32,12 +32,10 @@ fn visual_elements<'a, 'b>(
 }
 
 fn attrib<'a, 'b>(node: roxmltree::Node<'a, 'b>, label: &str) -> Option<roxmltree::Node<'a, 'b>> {
-    let Some(attribs) = node
+    let attribs = node
         .descendants()
-        .find(|n| n.tag_name().name() == "elementAttributes")
-    else {
-        return None;
-    };
+        .find(|n| n.tag_name().name() == "elementAttributes")?;
+
     for entry in attribs
         .descendants()
         .filter(|n| n.tag_name().name() == "entry")
@@ -53,19 +51,12 @@ fn attrib<'a, 'b>(node: roxmltree::Node<'a, 'b>, label: &str) -> Option<roxmltre
 }
 
 fn extract_signal_data<'a>(node: roxmltree::Node<'a, '_>) -> Option<(&'a str, u8)> {
-    let Some(label_node) = attrib(node, "Label") else {
-        return None;
-    };
-    let Some(label) = label_node.text() else {
-        return None;
-    };
+    let label_node = attrib(node, "Label")?;
+    let label = label_node.text()?;
 
-    let bits = if let Some(bits_node) = attrib(node, "Bits") {
-        let bits_text = bits_node.text().unwrap_or("1");
-        bits_text.parse().unwrap_or(1)
-    } else {
-        1
-    };
+    let bits = attrib(node, "Bits")
+        .and_then(|node| node.text()?.parse().ok())
+        .unwrap_or(1);
 
     Some((label, bits))
 }
