@@ -166,62 +166,71 @@ impl<'a> TestCaseLoader<'a, Vec<InputSignal>, Vec<OutputSignal>> {
         let stmts = stmt::expand(parsed_test_case.stmts, &input_indices, &output_indices);
         let stmts = stmt::insert_bits(stmts, extended_bits);
 
-        let old_inputs = self.inputs.split_off(0);
-        let old_outputs = self.outputs.split_off(0);
-
-        for input in old_inputs {
-            if let Some((_, bits)) = self
-                .expanded_signals
-                .iter()
-                .find(|(name, _)| *name == input.name)
-            {
-                for i in 0..*bits {
-                    let default = match input.default {
-                        InputValue::Z => InputValue::Z,
-                        InputValue::Value(n) => InputValue::Value(n & (1 << i)),
-                    };
-                    self.inputs.push(InputSignal {
-                        name: format!("{}:{i}", input.name),
-                        bits: 1,
-                        default,
-                    });
+        self.inputs = self
+            .inputs
+            .into_iter()
+            .flat_map(|sig| {
+                if let Some((name, bits)) = self
+                    .expanded_signals
+                    .iter()
+                    .find(|(name, _)| *name == sig.name)
+                {
+                    (0..*bits)
+                        .map(|i| {
+                            let default = match sig.default {
+                                InputValue::Z => InputValue::Z,
+                                InputValue::Value(n) => InputValue::Value(n & (1 << i)),
+                            };
+                            InputSignal {
+                                name: format!("{}:{i}", name),
+                                bits: 1,
+                                default,
+                            }
+                        })
+                        .collect()
+                } else {
+                    vec![sig]
                 }
-            } else {
-                self.inputs.push(input);
-            }
-        }
+            })
+            .collect();
 
-        for output in old_outputs {
-            if let Some((_, bits)) = self
-                .expanded_signals
-                .iter()
-                .find(|(name, _)| *name == output.name)
-            {
-                for i in 0..*bits {
-                    self.outputs.push(OutputSignal {
-                        name: format!("{}:{i}", output.name),
-                        bits: 1,
-                    });
+        self.outputs = self
+            .outputs
+            .into_iter()
+            .flat_map(|sig| {
+                if let Some((name, bits)) = self
+                    .expanded_signals
+                    .iter()
+                    .find(|(name, _)| *name == sig.name)
+                {
+                    (0..*bits)
+                        .map(|i| OutputSignal {
+                            name: format!("{}:{i}", name),
+                            bits: 1,
+                        })
+                        .collect()
+                } else {
+                    vec![sig]
                 }
-            } else {
-                self.outputs.push(output);
-            }
-        }
+            })
+            .collect();
 
-        let mut signal_names = vec![];
-        for name in &parsed_test_case.signal_names {
-            if let Some((_, bits)) = self
-                .expanded_signals
-                .iter()
-                .find(|(expanded_name, _)| expanded_name == &name)
-            {
-                for i in 0..*bits {
-                    signal_names.push(format!("{name}:{i}"));
+        let signal_names: Vec<_> = parsed_test_case
+            .signal_names
+            .iter()
+            .cloned()
+            .flat_map(|sig_name| {
+                if let Some((name, bits)) = self
+                    .expanded_signals
+                    .iter()
+                    .find(|(name, _)| *name == sig_name)
+                {
+                    (0..*bits).map(|i| format!("{}:{i}", name)).collect()
+                } else {
+                    vec![sig_name]
                 }
-            } else {
-                signal_names.push(name.clone());
-            }
-        }
+            })
+            .collect();
 
         let (inputs, input_indices, outputs, output_indices) =
             self.get_inputs_and_outputs(&signal_names)?;
