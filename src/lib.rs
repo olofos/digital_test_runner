@@ -111,6 +111,29 @@ impl<'a, I, O> TestCaseLoader<'a, I, O> {
     }
 }
 
+fn expand_names<T>(
+    items: impl IntoIterator<Item = T>,
+    expanded_signals: &Vec<(&str, u64)>,
+    extract_name: impl Fn(&T) -> &str,
+    new_value: impl Fn(String, u64, &T) -> T,
+) -> Vec<T> {
+    items
+        .into_iter()
+        .flat_map(|sig| {
+            if let Some((name, bits)) = expanded_signals
+                .iter()
+                .find(|(name, _)| *name == extract_name(&sig))
+            {
+                (0..*bits)
+                    .map(|i| new_value(format!("{}:{i}", name), i, &sig))
+                    .collect()
+            } else {
+                vec![sig]
+            }
+        })
+        .collect()
+}
+
 impl<'a> TestCaseLoader<'a, Vec<InputSignal>, Vec<OutputSignal>> {
     fn get_inputs_and_outputs(
         &self,
@@ -166,71 +189,36 @@ impl<'a> TestCaseLoader<'a, Vec<InputSignal>, Vec<OutputSignal>> {
         let stmts = stmt::expand(parsed_test_case.stmts, &input_indices, &output_indices);
         let stmts = stmt::insert_bits(stmts, extended_bits);
 
-        self.inputs = self
-            .inputs
-            .into_iter()
-            .flat_map(|sig| {
-                if let Some((name, bits)) = self
-                    .expanded_signals
-                    .iter()
-                    .find(|(name, _)| *name == sig.name)
-                {
-                    (0..*bits)
-                        .map(|i| {
-                            let default = match sig.default {
-                                InputValue::Z => InputValue::Z,
-                                InputValue::Value(n) => InputValue::Value(n & (1 << i)),
-                            };
-                            InputSignal {
-                                name: format!("{}:{i}", name),
-                                bits: 1,
-                                default,
-                            }
-                        })
-                        .collect()
-                } else {
-                    vec![sig]
+        self.inputs = expand_names(
+            self.inputs,
+            &self.expanded_signals,
+            |sig| &sig.name,
+            |name, bit, sig| {
+                let default = match sig.default {
+                    InputValue::Z => InputValue::Z,
+                    InputValue::Value(n) => InputValue::Value(n & (1 << bit)),
+                };
+                InputSignal {
+                    name,
+                    bits: 1,
+                    default,
                 }
-            })
-            .collect();
+            },
+        );
 
-        self.outputs = self
-            .outputs
-            .into_iter()
-            .flat_map(|sig| {
-                if let Some((name, bits)) = self
-                    .expanded_signals
-                    .iter()
-                    .find(|(name, _)| *name == sig.name)
-                {
-                    (0..*bits)
-                        .map(|i| OutputSignal {
-                            name: format!("{}:{i}", name),
-                            bits: 1,
-                        })
-                        .collect()
-                } else {
-                    vec![sig]
-                }
-            })
-            .collect();
+        self.outputs = expand_names(
+            self.outputs,
+            &self.expanded_signals,
+            |sig| &sig.name,
+            |name, _, _| OutputSignal { name, bits: 1 },
+        );
 
-        let signal_names: Vec<_> = parsed_test_case
-            .signal_names
-            .iter()
-            .cloned()
-            .flat_map(|sig_name| {
-                if let Some((name, bits)) = self
-                    .expanded_signals
-                    .iter()
-                    .find(|(name, _)| *name == sig_name)
-                {
-                    (0..*bits).map(|i| format!("{}:{i}", name)).collect()
-                } else {
-                    vec![sig_name]
-                }
-            })
-            .collect();
+        let signal_names: Vec<_> = expand_names(
+            parsed_test_case.signal_names,
+            &self.expanded_signals,
+            |name| name,
+            |name, _, _| name,
+        );
 
         let (inputs, input_indices, outputs, output_indices) =
             self.get_inputs_and_outputs(&signal_names)?;
