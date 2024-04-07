@@ -84,7 +84,7 @@ pub(crate) fn map_data_rows(
     inner(stmts, &mut f)
 }
 
-pub(crate) fn expand_bits(stmts: Vec<Stmt>) -> Vec<Stmt> {
+fn expand_bits(stmts: Vec<Stmt>) -> Vec<Stmt> {
     let mut temp_number = 0;
 
     map_data_rows(stmts, move |orig_entries, line| {
@@ -122,7 +122,7 @@ pub(crate) fn expand_bits(stmts: Vec<Stmt>) -> Vec<Stmt> {
     })
 }
 
-pub(crate) fn expand_input_x(stmts: Vec<Stmt>, input_indices: &[usize]) -> Vec<Stmt> {
+fn expand_input_x(stmts: Vec<Stmt>, input_indices: &[usize]) -> Vec<Stmt> {
     map_data_rows(stmts, |orig_entries, line| {
         let x_positions = input_indices
             .iter()
@@ -149,7 +149,7 @@ pub(crate) fn expand_input_x(stmts: Vec<Stmt>, input_indices: &[usize]) -> Vec<S
     })
 }
 
-pub(crate) fn expand_input_c(
+fn expand_input_c(
     stmts: Vec<Stmt>,
     input_indices: &[usize],
     output_indices: &[usize],
@@ -190,6 +190,47 @@ pub(crate) fn expand_input_c(
             .into_iter()
             .map(|entries| Stmt::DataRow { entries, line })
             .collect()
+    })
+}
+
+pub(crate) fn expand(
+    stmts: Vec<Stmt>,
+    input_indices: &[usize],
+    output_indices: &[usize],
+) -> Vec<Stmt> {
+    let stmts = expand_bits(stmts);
+    let stmts = expand_input_x(stmts, input_indices);
+    let stmts = expand_input_c(stmts, input_indices, output_indices);
+    stmts
+}
+
+pub(crate) fn insert_bits(stmts: Vec<Stmt>, bits: Vec<Option<u64>>) -> Vec<Stmt> {
+    map_data_rows(stmts, |orig_entries, line| {
+        assert_eq!(orig_entries.len(), bits.len());
+        let mut entries = Vec::with_capacity(orig_entries.len());
+
+        for (entry, bits) in orig_entries.into_iter().zip(&bits) {
+            if let Some(bits) = *bits {
+                match entry {
+                    DataEntry::Bits { number: _, expr: _ } => unimplemented!(),
+                    DataEntry::C => unimplemented!(),
+                    DataEntry::X | DataEntry::Z => {
+                        for _ in 0..bits {
+                            entries.push(entry.clone());
+                        }
+                    }
+                    DataEntry::Expr(expr) => entries.push(DataEntry::Bits { number: bits, expr }),
+                    DataEntry::Number(n) => entries.push(DataEntry::Bits {
+                        number: bits,
+                        expr: Expr::Number(n),
+                    }),
+                }
+            } else {
+                entries.push(entry);
+            }
+        }
+
+        vec![Stmt::DataRow { entries, line }]
     })
 }
 

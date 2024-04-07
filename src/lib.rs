@@ -59,6 +59,185 @@ impl Display for TestCase {
     }
 }
 
+pub struct TestCaseLoader<'a, I, O> {
+    source: &'a str,
+    inputs: I,
+    outputs: O,
+    expanded_signals: Vec<(&'a str, u64)>,
+}
+
+impl<'a> TestCaseLoader<'a, (), ()> {
+    pub fn new(source: &str) -> TestCaseLoader<(), ()> {
+        TestCaseLoader {
+            source,
+            inputs: (),
+            outputs: (),
+            expanded_signals: vec![],
+        }
+    }
+
+    pub fn try_from_dig(
+        dig: &'a crate::dig::DigFile,
+        n: usize,
+    ) -> anyhow::Result<TestCaseLoader<Vec<InputSignal>, Vec<OutputSignal>>> {
+        if n >= dig.test_cases.len() {
+            anyhow::bail!(
+                "Trying to load test case #{n}, but file only contains {} test cases",
+                dig.test_cases.len()
+            );
+        }
+        let loader = TestCaseLoader::new(&dig.test_cases[n].test_data);
+        Ok(loader.with_signals(dig.inputs.clone(), dig.outputs.clone()))
+    }
+
+    pub fn with_signals(
+        self,
+        inputs: Vec<InputSignal>,
+        outputs: Vec<OutputSignal>,
+    ) -> TestCaseLoader<'a, Vec<InputSignal>, Vec<OutputSignal>> {
+        TestCaseLoader {
+            source: self.source,
+            inputs,
+            outputs,
+            expanded_signals: self.expanded_signals,
+        }
+    }
+}
+
+impl<'a, I, O> TestCaseLoader<'a, I, O> {
+    pub fn expand(mut self, name: &'a str, bits: u64) -> Self {
+        self.expanded_signals.push((name, bits));
+        self
+    }
+}
+
+impl<'a> TestCaseLoader<'a, Vec<InputSignal>, Vec<OutputSignal>> {
+    fn get_inputs_and_outputs(
+        &self,
+        signal_names: &[String],
+    ) -> anyhow::Result<(Vec<InputSignal>, Vec<usize>, Vec<OutputSignal>, Vec<usize>)> {
+        let mut inputs: Vec<InputSignal> = vec![];
+        let mut outputs: Vec<OutputSignal> = vec![];
+
+        let mut input_indices: Vec<usize> = vec![];
+        let mut output_indices: Vec<usize> = vec![];
+
+        for (i, signal_name) in signal_names.iter().enumerate() {
+            if let Some(input) = self
+                .inputs
+                .iter()
+                .find(|signal| &signal.name == signal_name)
+            {
+                inputs.push(input.clone());
+                input_indices.push(i);
+            } else if let Some(output) = self
+                .outputs
+                .iter()
+                .find(|signal| &signal.name == signal_name)
+            {
+                outputs.push(output.clone());
+                output_indices.push(i);
+            } else {
+                anyhow::bail!("Unknown signal {signal_name}");
+            }
+        }
+
+        Ok((inputs, input_indices, outputs, output_indices))
+    }
+
+    pub fn try_build(mut self) -> anyhow::Result<TestCase> {
+        let parsed_test_case: ParsedTestCase = self.source.parse()?;
+
+        let mut extended_bits: Vec<Option<u64>> = vec![None; parsed_test_case.signal_names.len()];
+        for (extended_signal, bits) in &self.expanded_signals {
+            let index = parsed_test_case
+                .signal_names
+                .iter()
+                .position(|signal_name| signal_name == extended_signal)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Signal {extended_signal} not found in parsed test case")
+                })?;
+            extended_bits[index] = Some(*bits);
+        }
+
+        let (_, input_indices, _, output_indices) =
+            self.get_inputs_and_outputs(&parsed_test_case.signal_names)?;
+
+        let stmts = stmt::expand(parsed_test_case.stmts, &input_indices, &output_indices);
+        let stmts = stmt::insert_bits(stmts, extended_bits);
+
+        let old_inputs = self.inputs.split_off(0);
+        let old_outputs = self.outputs.split_off(0);
+
+        for input in old_inputs {
+            if let Some((_, bits)) = self
+                .expanded_signals
+                .iter()
+                .find(|(name, _)| *name == input.name)
+            {
+                for i in 0..*bits {
+                    let default = match input.default {
+                        InputValue::Z => InputValue::Z,
+                        InputValue::Value(n) => InputValue::Value(n & (1 << i)),
+                    };
+                    self.inputs.push(InputSignal {
+                        name: format!("{}:{i}", input.name),
+                        bits: 1,
+                        default,
+                    });
+                }
+            } else {
+                self.inputs.push(input);
+            }
+        }
+
+        for output in old_outputs {
+            if let Some((_, bits)) = self
+                .expanded_signals
+                .iter()
+                .find(|(name, _)| *name == output.name)
+            {
+                for i in 0..*bits {
+                    self.outputs.push(OutputSignal {
+                        name: format!("{}:{i}", output.name),
+                        bits: 1,
+                    });
+                }
+            } else {
+                self.outputs.push(output);
+            }
+        }
+
+        let mut signal_names = vec![];
+        for name in &parsed_test_case.signal_names {
+            if let Some((_, bits)) = self
+                .expanded_signals
+                .iter()
+                .find(|(expanded_name, _)| expanded_name == &name)
+            {
+                for i in 0..*bits {
+                    signal_names.push(format!("{name}:{i}"));
+                }
+            } else {
+                signal_names.push(name.clone());
+            }
+        }
+
+        let (inputs, input_indices, outputs, output_indices) =
+            self.get_inputs_and_outputs(&signal_names)?;
+
+        let stmts = stmt::expand(stmts, &input_indices, &output_indices);
+
+        let stmts = stmt::reorder(stmts, &input_indices, &output_indices);
+
+        Ok(TestCase {
+            stmts,
+            inputs,
+            outputs,
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedTestCase {
     pub(crate) signal_names: Vec<String>,
@@ -92,49 +271,6 @@ impl TestCase {
             .iter()
             .flat_map(|stmt| stmt.run(&mut ctx))
             .collect::<Vec<_>>()
-    }
-}
-
-impl ParsedTestCase {
-    pub fn try_into_test_case(
-        self,
-        known_inputs: &[InputSignal],
-        known_outputs: &[OutputSignal],
-    ) -> anyhow::Result<TestCase> {
-        let mut inputs: Vec<InputSignal> = vec![];
-        let mut outputs: Vec<OutputSignal> = vec![];
-
-        let mut input_indices: Vec<usize> = vec![];
-        let mut output_indices: Vec<usize> = vec![];
-
-        for (i, signal_name) in self.signal_names.into_iter().enumerate() {
-            if let Some(input) = known_inputs
-                .iter()
-                .find(|signal| signal.name == signal_name)
-            {
-                inputs.push(input.clone());
-                input_indices.push(i);
-            } else if let Some(output) = known_outputs
-                .iter()
-                .find(|signal| signal.name == signal_name)
-            {
-                outputs.push(output.clone());
-                output_indices.push(i);
-            } else {
-                anyhow::bail!("Unknown signal {signal_name}");
-            }
-        }
-
-        let stmts = stmt::expand_bits(self.stmts);
-        let stmts = stmt::expand_input_x(stmts, &input_indices);
-        let stmts = stmt::expand_input_c(stmts, &input_indices, &output_indices);
-        let stmts = stmt::reorder(stmts, &input_indices, &output_indices);
-
-        Ok(TestCase {
-            stmts,
-            inputs,
-            outputs,
-        })
     }
 }
 
@@ -180,9 +316,10 @@ end loop
                 bits: 1,
             })
             .collect::<Vec<_>>();
-        let testcase: ParsedTestCase = input.parse().unwrap();
-        let testcase = testcase
-            .try_into_test_case(&known_inputs, &known_outputs)
+        let testcase = TestCaseLoader::new(input)
+            .with_signals(known_inputs, known_outputs)
+            .expand("S", 3)
+            .try_build()
             .unwrap();
         let result = testcase.run();
         for row in result {
