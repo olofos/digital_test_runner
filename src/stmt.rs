@@ -126,13 +126,8 @@ fn expand_input_x(stmts: Vec<Stmt>, input_indices: &[usize]) -> Vec<Stmt> {
     map_data_rows(stmts, |orig_entries, line| {
         let x_positions = input_indices
             .iter()
-            .filter_map(|&i| {
-                if orig_entries[i] == DataEntry::X {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
+            .filter(|&&i| orig_entries[i] == DataEntry::X)
+            .copied()
             .collect::<Vec<_>>();
 
         let mut row_result = vec![orig_entries; 1 << x_positions.len()];
@@ -157,13 +152,8 @@ fn expand_input_c(
     map_data_rows(stmts, |orig_entries, line| {
         let c_positions = input_indices
             .iter()
-            .filter_map(|&i| {
-                if orig_entries[i] == DataEntry::C {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
+            .filter(|&&i| orig_entries[i] == DataEntry::C)
+            .copied()
             .collect::<Vec<_>>();
 
         if c_positions.is_empty() {
@@ -204,7 +194,7 @@ pub(crate) fn expand(
     stmts
 }
 
-pub(crate) fn insert_bits(stmts: Vec<Stmt>, bits: Vec<Option<u64>>) -> Vec<Stmt> {
+pub(crate) fn insert_bits(stmts: Vec<Stmt>, bits: Vec<Option<u8>>) -> Vec<Stmt> {
     map_data_rows(stmts, |orig_entries, line| {
         assert_eq!(orig_entries.len(), bits.len());
         let mut entries = Vec::with_capacity(orig_entries.len());
@@ -428,7 +418,7 @@ impl std::fmt::Display for OrderedStmt {
 pub(crate) enum DataEntry {
     Number(i64),
     Expr(Expr),
-    Bits { number: u64, expr: Expr },
+    Bits { number: u8, expr: Expr },
     X,
     Z,
     C,

@@ -63,7 +63,7 @@ pub struct TestCaseLoader<'a, I, O> {
     source: &'a str,
     inputs: I,
     outputs: O,
-    expanded_signals: Vec<(&'a str, u64)>,
+    expanded_signals: Vec<(&'a str, u8)>,
 }
 
 impl<'a> TestCaseLoader<'a, (), ()> {
@@ -105,7 +105,7 @@ impl<'a> TestCaseLoader<'a, (), ()> {
 }
 
 impl<'a, I, O> TestCaseLoader<'a, I, O> {
-    pub fn expand(mut self, name: &'a str, bits: u64) -> Self {
+    pub fn expand(mut self, name: &'a str, bits: u8) -> Self {
         self.expanded_signals.push((name, bits));
         self
     }
@@ -113,9 +113,9 @@ impl<'a, I, O> TestCaseLoader<'a, I, O> {
 
 fn expand_names<T>(
     items: impl IntoIterator<Item = T>,
-    expanded_signals: &[(&str, u64)],
+    expanded_signals: &[(&str, u8)],
     extract_name: impl Fn(&T) -> &str,
-    new_value: impl Fn(String, u64, &T) -> T,
+    new_value: impl Fn(String, u8, &T) -> T,
 ) -> Vec<T> {
     items
         .into_iter()
@@ -134,11 +134,12 @@ fn expand_names<T>(
         .collect()
 }
 
+type IOSignalsAndIndices = (Vec<InputSignal>, Vec<usize>, Vec<OutputSignal>, Vec<usize>);
 impl<'a> TestCaseLoader<'a, Vec<InputSignal>, Vec<OutputSignal>> {
     fn get_inputs_and_outputs(
         &self,
         signal_names: &[String],
-    ) -> anyhow::Result<(Vec<InputSignal>, Vec<usize>, Vec<OutputSignal>, Vec<usize>)> {
+    ) -> anyhow::Result<IOSignalsAndIndices> {
         let mut inputs: Vec<InputSignal> = vec![];
         let mut outputs: Vec<OutputSignal> = vec![];
 
@@ -171,7 +172,7 @@ impl<'a> TestCaseLoader<'a, Vec<InputSignal>, Vec<OutputSignal>> {
     pub fn try_build(mut self) -> anyhow::Result<TestCase> {
         let parsed_test_case: ParsedTestCase = self.source.parse()?;
 
-        let mut extended_bits: Vec<Option<u64>> = vec![None; parsed_test_case.signal_names.len()];
+        let mut extended_bits = vec![None; parsed_test_case.signal_names.len()];
         for (extended_signal, bits) in &self.expanded_signals {
             let index = parsed_test_case
                 .signal_names
@@ -333,7 +334,7 @@ end loop
     #[case(&[("c", 2)], &["a", "b", "c:0", "c:1"])]
     #[case(&[("d", 2)], &["a", "b", "c"])]
     #[case(&[("a",2), ("b",3), ("c", 2)], &["a:0", "a:1", "b:0", "b:1", "b:2", "c:0", "c:1"])]
-    fn expand_names_works(#[case] pattern: &[(&str, u64)], #[case] expected: &[&str]) {
+    fn expand_names_works(#[case] pattern: &[(&str, u8)], #[case] expected: &[&str]) {
         assert_eq!(
             expand_names(["a", "b", "c"], pattern, |s| s, |s, _, _| s.leak()),
             expected

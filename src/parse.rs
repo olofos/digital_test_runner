@@ -207,7 +207,7 @@ fn data_entry(i: Span) -> IResult<Span, DataEntry> {
                 tag(")"),
             ),
             |(number, expr)| DataEntry::Bits {
-                number: number as u64,
+                number: number as u8,
                 expr,
             },
         ),
