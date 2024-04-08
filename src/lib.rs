@@ -113,7 +113,7 @@ impl<'a, I, O> TestCaseLoader<'a, I, O> {
 
 fn expand_names<T>(
     items: impl IntoIterator<Item = T>,
-    expanded_signals: &Vec<(&str, u64)>,
+    expanded_signals: &[(&str, u64)],
     extract_name: impl Fn(&T) -> &str,
     new_value: impl Fn(String, u64, &T) -> T,
 ) -> Vec<T> {
@@ -274,6 +274,7 @@ impl TestCase {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     #[test]
     fn run_works() {
@@ -322,5 +323,20 @@ end loop
         for row in result {
             println!("{row}");
         }
+    }
+
+    #[rstest]
+    #[case(&[("a", 0)], &["b", "c"])]
+    #[case(&[("a", 1)], &["a:0", "b", "c"])]
+    #[case(&[("a", 2)], &["a:0", "a:1", "b", "c"])]
+    #[case(&[("b", 2)], &["a", "b:0", "b:1", "c"])]
+    #[case(&[("c", 2)], &["a", "b", "c:0", "c:1"])]
+    #[case(&[("d", 2)], &["a", "b", "c"])]
+    #[case(&[("a",2), ("b",3), ("c", 2)], &["a:0", "a:1", "b:0", "b:1", "b:2", "c:0", "c:1"])]
+    fn expand_names_works(#[case] pattern: &[(&str, u64)], #[case] expected: &[&str]) {
+        assert_eq!(
+            expand_names(["a", "b", "c"], pattern, |s| s, |s, _, _| s.leak()),
+            expected
+        )
     }
 }
