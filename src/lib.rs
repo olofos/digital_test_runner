@@ -272,6 +272,8 @@ impl TestCase {
     }
 }
 
+pub use stmt::DataResult;
+
 #[cfg(test)]
 mod tests {
     use super::*;
