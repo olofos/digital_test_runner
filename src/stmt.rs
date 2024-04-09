@@ -433,9 +433,9 @@ pub enum DataResult {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResultRow {
-    inputs: Vec<DataResult>,
-    outputs: Vec<DataResult>,
-    line: u32,
+    pub inputs: Vec<DataResult>,
+    pub outputs: Vec<DataResult>,
+    pub line: u32,
 }
 
 impl Display for ResultRow {
