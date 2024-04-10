@@ -239,7 +239,7 @@ impl<'a> TestCaseLoader<'a, Vec<InputSignal>, Vec<OutputSignal>> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedTestCase {
     pub(crate) signal_names: Vec<String>,
-    pub(crate) stmts: Vec<stmt::Stmt>,
+    pub(crate) stmts: Vec<stmt::RawStmt>,
 }
 
 impl FromStr for ParsedTestCase {

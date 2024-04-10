@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::expr::{BinOp, Expr, UnaryOp};
-use crate::stmt::{DataEntry, Stmt};
+use crate::stmt::{DataEntry, RawData, RawStmt};
 use crate::ParsedTestCase;
 
 use nom::{
@@ -177,7 +177,7 @@ fn eol(i: Span) -> IResult<Span, ()> {
     )(i)
 }
 
-fn stmt(i: Span) -> IResult<Span, Stmt> {
+fn stmt(i: Span) -> IResult<Span, RawStmt> {
     delimited(
         many0(one_of(" \t")),
         alt((
@@ -214,23 +214,22 @@ fn data_entry(i: Span) -> IResult<Span, DataEntry> {
     ))(i)
 }
 
-fn data_row(i: Span) -> IResult<Span, Stmt> {
-    map(
-        separated_list1(many1(one_of(" \t")), data_entry),
-        |entries| Stmt::DataRow {
-            entries,
+fn data_row(i: Span) -> IResult<Span, RawStmt> {
+    map(separated_list1(many1(one_of(" \t")), data_entry), |data| {
+        RawStmt::DataRow {
+            data: RawData(data),
             line: i.location_line(),
-        },
-    )(i)
+        }
+    })(i)
 }
 
-fn let_stmt(i: Span) -> IResult<Span, Stmt> {
+fn let_stmt(i: Span) -> IResult<Span, RawStmt> {
     map(
         pair(
             preceded(tag("let"), ws(identifier)),
             delimited(tag("="), expr, tag(";")),
         ),
-        |(name, expr)| Stmt::Let {
+        |(name, expr)| RawStmt::Let {
             name,
             expr,
             line: i.location_line(),
@@ -238,7 +237,7 @@ fn let_stmt(i: Span) -> IResult<Span, Stmt> {
     )(i)
 }
 
-fn loop_stmt(i: Span) -> IResult<Span, Stmt> {
+fn loop_stmt(i: Span) -> IResult<Span, RawStmt> {
     let (i, (variable, max)) = delimited(
         pair(tag("loop"), ws(tag("("))),
         separated_pair(identifier, ws(tag(",")), number),
@@ -249,7 +248,7 @@ fn loop_stmt(i: Span) -> IResult<Span, Stmt> {
 
     Ok((
         i,
-        Stmt::Loop {
+        RawStmt::Loop {
             variable,
             max,
             stmts,
@@ -258,12 +257,12 @@ fn loop_stmt(i: Span) -> IResult<Span, Stmt> {
     ))
 }
 
-fn repeat(i: Span) -> IResult<Span, Stmt> {
+fn repeat(i: Span) -> IResult<Span, RawStmt> {
     let (i, max) = delimited(pair(tag("repeat"), ws(tag("("))), number, ws(tag(")")))(i)?;
     let (i, stmt) = data_row(i)?;
     Ok((
         i,
-        Stmt::Loop {
+        RawStmt::Loop {
             variable: String::from("n"),
             max,
             stmts: vec![stmt],
@@ -272,7 +271,7 @@ fn repeat(i: Span) -> IResult<Span, Stmt> {
     ))
 }
 
-fn declare(i: Span) -> IResult<Span, Stmt> {
+fn declare(i: Span) -> IResult<Span, RawStmt> {
     let (i, (name, expr)) = pair(
         preceded(tag("let"), ws(identifier)),
         delimited(tag("="), expr, tag(";")),
@@ -283,7 +282,7 @@ fn declare(i: Span) -> IResult<Span, Stmt> {
     unimplemented!()
 }
 
-fn while_stmt(i: Span) -> IResult<Span, Stmt> {
+fn while_stmt(i: Span) -> IResult<Span, RawStmt> {
     let (i, expr) = delimited(
         pair(tag("while"), ws(tag("("))),
         expr,
@@ -297,11 +296,11 @@ fn while_stmt(i: Span) -> IResult<Span, Stmt> {
     unimplemented!()
 }
 
-fn reset_random(i: Span) -> IResult<Span, Stmt> {
+fn reset_random(i: Span) -> IResult<Span, RawStmt> {
     let (i, _) = pair(tag("resetRandom"), ws(tag(";")))(i)?;
     Ok((
         i,
-        Stmt::ResetRandom {
+        RawStmt::ResetRandom {
             line: i.location_line(),
         },
     ))
@@ -507,7 +506,7 @@ mod tests {
         assert_eq!(i.into_fragment(), "");
         assert_eq!(
             stmt,
-            Stmt::Let {
+            RawStmt::Let {
                 name: String::from("a"),
                 expr: Expr::Number(1),
                 line: 1,
@@ -535,7 +534,7 @@ mod tests {
         let (i, row) = data_row(Span::new("1 (a+b) X\tZ\t\tbits(1,3*7)")).unwrap();
         assert_eq!(i.into_fragment(), "");
         match row {
-            Stmt::DataRow { entries, .. } => assert_eq!(entries.len(), 5),
+            RawStmt::DataRow { data, .. } => assert_eq!(data.0.len(), 5),
             _ => panic!("Expected a data row"),
         }
     }
