@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use crate::eval_context::EvalContext;
 use crate::expr::{BinOp, Expr};
 
@@ -343,7 +341,7 @@ impl OrderedStmt {
     }
 }
 
-impl std::fmt::Display for RawStmt {
+impl<T: std::fmt::Display> std::fmt::Display for Stmt<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Let {
@@ -369,56 +367,34 @@ impl std::fmt::Display for RawStmt {
                 write!(f, "resetRandom;")
             }
             Self::DataRow { data, line: _ } => {
-                let s = data
-                    .0
-                    .iter()
-                    .map(|entry| format!("{entry}"))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                write!(f, "{s}")
+                write!(f, "{data}")
             }
         }
     }
 }
 
-impl std::fmt::Display for OrderedStmt {
+impl std::fmt::Display for RawData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Let {
-                name,
-                expr,
-                line: _,
-            } => {
-                write!(f, "let {name} = {expr};")
-            }
-            Self::Loop {
-                variable,
-                max,
-                stmts,
-                line: _,
-            } => {
-                writeln!(f, "loop({variable},{max})")?;
-                for stmt in stmts {
-                    writeln!(f, "{stmt}")?;
-                }
-                write!(f, "end loop")
-            }
-            Self::ResetRandom { line: _ } => {
-                write!(f, "resetRandom;")
-            }
-            Self::DataRow {
-                data: OrderedData { inputs, outputs },
-                line: _,
-            } => {
-                let s = inputs
-                    .iter()
-                    .chain(outputs.iter())
-                    .map(|entry| format!("{entry}"))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                write!(f, "{s}")
-            }
-        }
+        let s = self
+            .0
+            .iter()
+            .map(|entry| format!("{entry}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        write!(f, "{s}")
+    }
+}
+
+impl std::fmt::Display for OrderedData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = self
+            .inputs
+            .iter()
+            .chain(self.outputs.iter())
+            .map(|entry| format!("{entry}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        write!(f, "{s}")
     }
 }
 
@@ -446,7 +422,7 @@ pub struct ResultRow {
     pub line: u32,
 }
 
-impl Display for ResultRow {
+impl std::fmt::Display for ResultRow {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}: ", self.line)?;
         let s = self
