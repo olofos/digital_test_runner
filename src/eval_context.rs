@@ -15,12 +15,7 @@ impl EvalContext {
         getrandom::getrandom(&mut seed_bytes).unwrap();
         let seed = u64::from_le_bytes(seed_bytes);
 
-        Self {
-            values: vec![],
-            frame_stack: vec![],
-            rng: RefCell::new(StdRng::seed_from_u64(seed)),
-            seed,
-        }
+        Self::with_seed(seed)
     }
 
     pub fn with_seed(seed: u64) -> Self {
