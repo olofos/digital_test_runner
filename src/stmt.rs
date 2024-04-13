@@ -288,8 +288,46 @@ pub(crate) fn reorder(
     to_ordered(stmts, input_indices.len())
 }
 
-impl OrderedStmt {
-    pub(crate) fn run(&self, ctx: &mut EvalContext) -> Vec<ResultRow> {
+pub(crate) trait DataRunner {
+    type DataResult;
+
+    fn run(&self, line: u32, ctx: &mut EvalContext) -> Vec<Self::DataResult>;
+}
+
+impl DataRunner for OrderedData {
+    type DataResult = ResultRow;
+
+    fn run(&self, line: u32, ctx: &mut EvalContext) -> Vec<Self::DataResult> {
+        let inputs = self
+            .inputs
+            .iter()
+            .flat_map(|entry| entry.run(ctx))
+            .collect::<Vec<_>>();
+        let outputs = self
+            .outputs
+            .iter()
+            .flat_map(|entry| entry.run(ctx))
+            .collect::<Vec<_>>();
+        vec![ResultRow {
+            inputs,
+            outputs,
+            line,
+        }]
+    }
+}
+
+impl DataRunner for RawData {
+    type DataResult = DataResult;
+
+    fn run(&self, _: u32, ctx: &mut EvalContext) -> Vec<Self::DataResult> {
+        self.0
+            .iter()
+            .flat_map(|entry| entry.run(ctx))
+            .collect::<Vec<_>>()
+    }
+}
+impl<T: DataRunner> Stmt<T> {
+    pub(crate) fn run(&self, ctx: &mut EvalContext) -> Vec<T::DataResult> {
         match self {
             Self::Let {
                 name,
@@ -300,24 +338,7 @@ impl OrderedStmt {
                 ctx.set(name, value);
                 vec![]
             }
-            Self::DataRow {
-                data: OrderedData { inputs, outputs },
-                line,
-            } => {
-                let inputs = inputs
-                    .iter()
-                    .flat_map(|entry| entry.run(ctx))
-                    .collect::<Vec<_>>();
-                let outputs = outputs
-                    .iter()
-                    .flat_map(|entry| entry.run(ctx))
-                    .collect::<Vec<_>>();
-                vec![ResultRow {
-                    inputs,
-                    outputs,
-                    line: *line,
-                }]
-            }
+            Self::DataRow { data, line } => data.run(*line, ctx),
             Self::Loop {
                 variable,
                 max,
