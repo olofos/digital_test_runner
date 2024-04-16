@@ -344,16 +344,18 @@ impl<T: DataRunner> Stmt<T> {
                 max,
                 stmts,
                 line: _,
-            } => ctx.new_frame(|ctx| {
+            } => {
+                let mut ctx = ctx.new_frame();
+
                 let mut result = vec![];
                 for i in 0..*max {
                     ctx.set(variable, i);
                     for stmt in stmts {
-                        result.extend(stmt.run(ctx));
+                        result.extend(stmt.run(&mut ctx));
                     }
                 }
                 result
-            }),
+            }
             Self::ResetRandom { line: _ } => {
                 ctx.reset_random_seed();
                 vec![]
