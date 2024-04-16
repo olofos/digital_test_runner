@@ -9,6 +9,31 @@ pub(crate) struct EvalContext {
     seed: u64,
 }
 
+#[derive(Debug)]
+pub(crate) struct EvalContextGuard<'a> {
+    ctx: &'a mut EvalContext,
+}
+
+impl<'a> std::ops::Deref for EvalContextGuard<'a> {
+    type Target = EvalContext;
+
+    fn deref(&self) -> &Self::Target {
+        self.ctx
+    }
+}
+
+impl<'a> std::ops::DerefMut for EvalContextGuard<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.ctx
+    }
+}
+
+impl<'a> Drop for EvalContextGuard<'a> {
+    fn drop(&mut self) {
+        self.ctx.pop_frame()
+    }
+}
+
 impl EvalContext {
     pub fn new() -> Self {
         let mut seed_bytes: [u8; 8] = Default::default();
@@ -36,11 +61,9 @@ impl EvalContext {
         self.values.truncate(len);
     }
 
-    pub fn new_frame<T>(&mut self, mut f: impl FnMut(&mut Self) -> T) -> T {
+    pub fn new_frame(&mut self) -> EvalContextGuard {
         self.push_frame();
-        let result = f(self);
-        self.pop_frame();
-        result
+        EvalContextGuard { ctx: self }
     }
 
     pub fn set(&mut self, name: &str, value: i64) {
@@ -89,14 +112,50 @@ mod tests {
         assert_eq!(ctx.get("a"), Some(4));
         assert_eq!(ctx.get("b"), Some(2));
         assert_eq!(ctx.get("c"), Some(3));
-        ctx.new_frame(|ctx| {
-            ctx.set("a", 5);
-            ctx.set("b", 6);
-            assert_eq!(ctx.get("a"), Some(5));
-            assert_eq!(ctx.get("b"), Some(6));
-            assert_eq!(ctx.get("c"), Some(3));
-        });
+
+        ctx.push_frame();
+        ctx.set("a", 5);
+        ctx.set("b", 6);
+        assert_eq!(ctx.get("a"), Some(5));
+        assert_eq!(ctx.get("b"), Some(6));
+        assert_eq!(ctx.get("c"), Some(3));
+
+        ctx.pop_frame();
         assert_eq!(ctx.get("a"), Some(4));
+        assert_eq!(ctx.get("b"), Some(2));
+        assert_eq!(ctx.get("c"), Some(3));
+    }
+
+    #[test]
+    fn eval_context_guard_works() {
+        let mut ctx = EvalContext::new();
+
+        ctx.set("a", 1);
+        ctx.set("b", 2);
+        ctx.set("c", 3);
+        assert_eq!(ctx.get("a"), Some(1));
+        assert_eq!(ctx.get("b"), Some(2));
+        assert_eq!(ctx.get("c"), Some(3));
+        {
+            let mut ctx = ctx.new_frame();
+            ctx.set("a", 4);
+            assert_eq!(ctx.get("a"), Some(4));
+            assert_eq!(ctx.get("b"), Some(2));
+            assert_eq!(ctx.get("c"), Some(3));
+
+            {
+                let mut ctx = ctx.new_frame();
+                ctx.set("c", 5);
+                assert_eq!(ctx.get("a"), Some(4));
+                assert_eq!(ctx.get("b"), Some(2));
+                assert_eq!(ctx.get("c"), Some(5));
+            }
+
+            assert_eq!(ctx.get("a"), Some(4));
+            assert_eq!(ctx.get("b"), Some(2));
+            assert_eq!(ctx.get("c"), Some(3));
+        }
+        assert_eq!(ctx.get("a"), Some(1));
         assert_eq!(ctx.get("b"), Some(2));
         assert_eq!(ctx.get("c"), Some(3));
     }
