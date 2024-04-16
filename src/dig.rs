@@ -51,9 +51,7 @@ fn attrib<'a, 'b>(node: roxmltree::Node<'a, 'b>, label: &str) -> Option<roxmltre
 }
 
 fn extract_signal_data<'a>(node: roxmltree::Node<'a, '_>) -> Option<(&'a str, u8)> {
-    let label_node = attrib(node, "Label")?;
-    let label = label_node.text()?;
-
+    let label = attrib(node, "Label")?.text()?;
     let bits = attrib(node, "Bits")
         .and_then(|node| node.text()?.parse().ok())
         .unwrap_or(1);
@@ -62,22 +60,17 @@ fn extract_signal_data<'a>(node: roxmltree::Node<'a, '_>) -> Option<(&'a str, u8
 }
 
 fn extract_input_data(node: roxmltree::Node) -> InputValue {
-    let (default_v, default_z) = if let Some(default_node) = attrib(node, "InDefault") {
-        (
-            default_node.attribute("v").and_then(|v| v.parse().ok()),
-            default_node.attribute("z") == Some("true"),
-        )
-    } else {
-        (None, false)
-    };
-
-    if default_z {
-        InputValue::Z
-    } else if let Some(v) = default_v {
-        InputValue::Value(v)
-    } else {
-        InputValue::Value(0)
-    }
+    attrib(node, "InDefault")
+        .and_then(|default_node| {
+            if default_node.attribute("z") == Some("true") {
+                Some(InputValue::Z)
+            } else {
+                default_node
+                    .attribute("v")
+                    .and_then(|v| v.parse().ok().map(InputValue::Value))
+            }
+        })
+        .unwrap_or(InputValue::Value(0))
 }
 
 pub fn parse(input: &str) -> anyhow::Result<DigFile> {
