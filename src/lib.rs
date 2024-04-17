@@ -4,6 +4,10 @@ mod expr;
 mod parse;
 mod stmt;
 
+// TODO: Make TestCase generic on signal type.
+// String after simply parsing the test
+// but needs a full Signal in order to run the test
+
 use std::{fmt::Display, str::FromStr};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -35,8 +39,21 @@ pub struct OutputSignal {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SignalDirection {
+    Input { default: InputValue },
+    Output,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Signal {
+    pub name: String,
+    pub bits: u8,
+    pub dir: SignalDirection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TestCase {
-    stmts: Vec<stmt::OrderedStmt>,
+    stmts: Vec<stmt::Stmt>,
     pub inputs: Vec<InputSignal>,
     pub outputs: Vec<OutputSignal>,
 }
@@ -111,135 +128,71 @@ impl<'a, I, O> TestCaseLoader<'a, I, O> {
     }
 }
 
-fn expand_names<T>(
-    items: impl IntoIterator<Item = T>,
-    expanded_signals: &[(&str, u8)],
-    extract_name: impl Fn(&T) -> &str,
-    new_value: impl Fn(String, u8, &T) -> T,
-) -> Vec<T> {
-    items
-        .into_iter()
-        .flat_map(|sig| {
-            if let Some((name, bits)) = expanded_signals
-                .iter()
-                .find(|(name, _)| *name == extract_name(&sig))
-            {
-                (0..*bits)
-                    .map(|i| new_value(format!("{}:{i}", name), i, &sig))
-                    .collect()
-            } else {
-                vec![sig]
-            }
-        })
-        .collect()
-}
-
-type IOSignalsAndIndices = (Vec<InputSignal>, Vec<usize>, Vec<OutputSignal>, Vec<usize>);
 impl<'a> TestCaseLoader<'a, Vec<InputSignal>, Vec<OutputSignal>> {
-    fn get_inputs_and_outputs(
-        &self,
-        signal_names: &[String],
-    ) -> anyhow::Result<IOSignalsAndIndices> {
-        let mut inputs: Vec<InputSignal> = vec![];
-        let mut outputs: Vec<OutputSignal> = vec![];
+    // pub fn try_build(mut self) -> anyhow::Result<TestCase> {
+    //     let parsed_test_case: ParsedTestCase = self.source.parse()?;
 
-        let mut input_indices: Vec<usize> = vec![];
-        let mut output_indices: Vec<usize> = vec![];
+    //     let mut extended_bits = vec![None; parsed_test_case.signal_names.len()];
+    //     for (extended_signal, bits) in &self.expanded_signals {
+    //         let index = parsed_test_case
+    //             .signal_names
+    //             .iter()
+    //             .position(|signal_name| signal_name == extended_signal)
+    //             .ok_or_else(|| {
+    //                 anyhow::anyhow!("Signal {extended_signal} not found in parsed test case")
+    //             })?;
+    //         extended_bits[index] = Some(*bits);
+    //     }
 
-        for (i, signal_name) in signal_names.iter().enumerate() {
-            if let Some(input) = self
-                .inputs
-                .iter()
-                .find(|signal| &signal.name == signal_name)
-            {
-                inputs.push(input.clone());
-                input_indices.push(i);
-            } else if let Some(output) = self
-                .outputs
-                .iter()
-                .find(|signal| &signal.name == signal_name)
-            {
-                outputs.push(output.clone());
-                output_indices.push(i);
-            } else {
-                anyhow::bail!("Unknown signal {signal_name}");
-            }
-        }
+    //     let (_, input_indices, _, output_indices) =
+    //         self.get_inputs_and_outputs(&parsed_test_case.signal_names)?;
 
-        Ok((inputs, input_indices, outputs, output_indices))
-    }
+    //     self.inputs = expand_names(
+    //         self.inputs,
+    //         &self.expanded_signals,
+    //         |sig| &sig.name,
+    //         |name, bit, sig| {
+    //             let default = match sig.default {
+    //                 InputValue::Z => InputValue::Z,
+    //                 InputValue::Value(n) => InputValue::Value(n & (1 << bit)),
+    //             };
+    //             InputSignal {
+    //                 name,
+    //                 bits: 1,
+    //                 default,
+    //             }
+    //         },
+    //     );
 
-    pub fn try_build(mut self) -> anyhow::Result<TestCase> {
-        let parsed_test_case: ParsedTestCase = self.source.parse()?;
+    //     self.outputs = expand_names(
+    //         self.outputs,
+    //         &self.expanded_signals,
+    //         |sig| &sig.name,
+    //         |name, _, _| OutputSignal { name, bits: 1 },
+    //     );
 
-        let mut extended_bits = vec![None; parsed_test_case.signal_names.len()];
-        for (extended_signal, bits) in &self.expanded_signals {
-            let index = parsed_test_case
-                .signal_names
-                .iter()
-                .position(|signal_name| signal_name == extended_signal)
-                .ok_or_else(|| {
-                    anyhow::anyhow!("Signal {extended_signal} not found in parsed test case")
-                })?;
-            extended_bits[index] = Some(*bits);
-        }
+    //     let signal_names: Vec<_> = expand_names(
+    //         parsed_test_case.signal_names,
+    //         &self.expanded_signals,
+    //         |name| name,
+    //         |name, _, _| name,
+    //     );
 
-        let (_, input_indices, _, output_indices) =
-            self.get_inputs_and_outputs(&parsed_test_case.signal_names)?;
+    //     let (inputs, input_indices, outputs, output_indices) =
+    //         self.get_inputs_and_outputs(&signal_names)?;
 
-        let stmts = stmt::expand(parsed_test_case.stmts, &input_indices, &output_indices);
-        let stmts = stmt::insert_bits(stmts, extended_bits);
-
-        self.inputs = expand_names(
-            self.inputs,
-            &self.expanded_signals,
-            |sig| &sig.name,
-            |name, bit, sig| {
-                let default = match sig.default {
-                    InputValue::Z => InputValue::Z,
-                    InputValue::Value(n) => InputValue::Value(n & (1 << bit)),
-                };
-                InputSignal {
-                    name,
-                    bits: 1,
-                    default,
-                }
-            },
-        );
-
-        self.outputs = expand_names(
-            self.outputs,
-            &self.expanded_signals,
-            |sig| &sig.name,
-            |name, _, _| OutputSignal { name, bits: 1 },
-        );
-
-        let signal_names: Vec<_> = expand_names(
-            parsed_test_case.signal_names,
-            &self.expanded_signals,
-            |name| name,
-            |name, _, _| name,
-        );
-
-        let (inputs, input_indices, outputs, output_indices) =
-            self.get_inputs_and_outputs(&signal_names)?;
-
-        let stmts = stmt::expand(stmts, &input_indices, &output_indices);
-
-        let stmts = stmt::reorder(stmts, &input_indices, &output_indices);
-
-        Ok(TestCase {
-            stmts,
-            inputs,
-            outputs,
-        })
-    }
+    //     Ok(TestCase {
+    //         stmts,
+    //         inputs,
+    //         outputs,
+    //     })
+    // }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedTestCase {
     pub(crate) signal_names: Vec<String>,
-    pub(crate) stmts: Vec<stmt::RawStmt>,
+    pub(crate) stmts: Vec<stmt::Stmt>,
 }
 
 impl FromStr for ParsedTestCase {
@@ -262,15 +215,15 @@ impl Display for ParsedTestCase {
     }
 }
 
-impl TestCase {
-    pub fn run(&self) -> Vec<stmt::ResultRow> {
-        let mut ctx = eval_context::EvalContext::new();
-        self.stmts
-            .iter()
-            .flat_map(|stmt| stmt.run(&mut ctx))
-            .collect::<Vec<_>>()
-    }
-}
+// impl TestCase {
+//     pub fn run(&self) -> Vec<stmt::ResultRow> {
+//         let mut ctx = eval_context::EvalContext::new();
+//         self.stmts
+//             .iter()
+//             .flat_map(|stmt| stmt.run(&mut ctx))
+//             .collect::<Vec<_>>()
+//     }
+// }
 
 pub use stmt::DataResult;
 
@@ -279,67 +232,52 @@ mod tests {
     use super::*;
     use rstest::rstest;
 
-    #[test]
-    fn run_works() {
-        let input = r"
-BUS-CLK S         A        B        N ALU-~RESET ALU-AUX   OUT           FLAG DLEN DSUM
+    //     #[test]
+    //     fn run_works() {
+    //         let input = r"
+    // BUS-CLK S         A        B        N ALU-~RESET ALU-AUX   OUT           FLAG DLEN DSUM
 
-let ADD = 0;
-let OR  = 1;
-let XOR = 2;
-let AND = 3;
+    // let ADD = 0;
+    // let OR  = 1;
+    // let XOR = 2;
+    // let AND = 3;
 
-0       0         0        0        0 0          0         X             X    X    X
-0       0         0        0        0 1          0         X             X    X    X
+    // 0       0         0        0        0 0          0         X             X    X    X
+    // 0       0         0        0        0 1          0         X             X    X    X
 
-loop (a,2)
-loop (b,2)
-0       (OR)      (a)      (b)      0 1          0         (a|b)         X    X    X
-0       (AND)     (a)      (b)      0 1          0         (a&b)         X    X    X
-0       (XOR)     (a)      (b)      0 1          0         (a^b)         X    X    X
-0       (ADD)     (a)      (b)      0 1          0         (a+b)         X    X    X
-end loop
-end loop
+    // loop (a,2)
+    // loop (b,2)
+    // 0       (OR)      (a)      (b)      0 1          0         (a|b)         X    X    X
+    // 0       (AND)     (a)      (b)      0 1          0         (a&b)         X    X    X
+    // 0       (XOR)     (a)      (b)      0 1          0         (a^b)         X    X    X
+    // 0       (ADD)     (a)      (b)      0 1          0         (a+b)         X    X    X
+    // end loop
+    // end loop
 
-";
-        let known_inputs = ["BUS-CLK", "S", "A", "B", "N", "ALU-~RESET", "ALU-AUX"]
-            .into_iter()
-            .map(|name| InputSignal {
-                name: String::from(name),
-                bits: 1,
-                default: InputValue::Value(0),
-            })
-            .collect::<Vec<_>>();
-        let known_outputs = ["OUT", "FLAG", "DLEN", "DSUM"]
-            .into_iter()
-            .map(|name| OutputSignal {
-                name: String::from(name),
-                bits: 1,
-            })
-            .collect::<Vec<_>>();
-        let testcase = TestCaseLoader::new(input)
-            .with_signals(known_inputs, known_outputs)
-            .expand("S", 3)
-            .try_build()
-            .unwrap();
-        let result = testcase.run();
-        for row in result {
-            println!("{row}");
-        }
-    }
-
-    #[rstest]
-    #[case(&[("a", 0)], &["b", "c"])]
-    #[case(&[("a", 1)], &["a:0", "b", "c"])]
-    #[case(&[("a", 2)], &["a:0", "a:1", "b", "c"])]
-    #[case(&[("b", 2)], &["a", "b:0", "b:1", "c"])]
-    #[case(&[("c", 2)], &["a", "b", "c:0", "c:1"])]
-    #[case(&[("d", 2)], &["a", "b", "c"])]
-    #[case(&[("a",2), ("b",3), ("c", 2)], &["a:0", "a:1", "b:0", "b:1", "b:2", "c:0", "c:1"])]
-    fn expand_names_works(#[case] pattern: &[(&str, u8)], #[case] expected: &[&str]) {
-        assert_eq!(
-            expand_names(["a", "b", "c"], pattern, |s| s, |s, _, _| s.leak()),
-            expected
-        )
-    }
+    // ";
+    //         let known_inputs = ["BUS-CLK", "S", "A", "B", "N", "ALU-~RESET", "ALU-AUX"]
+    //             .into_iter()
+    //             .map(|name| InputSignal {
+    //                 name: String::from(name),
+    //                 bits: 1,
+    //                 default: InputValue::Value(0),
+    //             })
+    //             .collect::<Vec<_>>();
+    //         let known_outputs = ["OUT", "FLAG", "DLEN", "DSUM"]
+    //             .into_iter()
+    //             .map(|name| OutputSignal {
+    //                 name: String::from(name),
+    //                 bits: 1,
+    //             })
+    //             .collect::<Vec<_>>();
+    //         let testcase = TestCaseLoader::new(input)
+    //             .with_signals(known_inputs, known_outputs)
+    //             .expand("S", 3)
+    //             .try_build()
+    //             .unwrap();
+    //         let result = testcase.run();
+    //         for row in result {
+    //             println!("{row}");
+    //         }
+    //     }
 }

@@ -48,18 +48,18 @@ fn main() -> anyhow::Result<()> {
 
     let test_num = 2;
 
-    let test_case = TestCaseLoader::try_from_dig(&dig_file, test_num)?
-        .expand("S", 3)
-        .try_build()?;
+    let test_case = TestCaseLoader::try_from_dig(&dig_file, test_num)?;
+    //     .expand("S", 3)
+    //     .try_build()?;
 
-    println!();
-    println!("Test case {test_num} after transformation:");
-    println!("{test_case}");
+    // println!();
+    // println!("Test case {test_num} after transformation:");
+    // println!("{test_case}");
 
-    let result = test_case.run();
-    for row in result {
-        println!("{row}");
-    }
+    // let result = test_case.run();
+    // for row in result {
+    //     println!("{row}");
+    // }
 
     Ok(())
 }
