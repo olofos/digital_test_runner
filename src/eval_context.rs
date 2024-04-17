@@ -52,11 +52,11 @@ impl EvalContext {
         }
     }
 
-    fn push_frame(&mut self) {
+    pub fn push_frame(&mut self) {
         self.frame_stack.push(self.values.len())
     }
 
-    fn pop_frame(&mut self) {
+    pub fn pop_frame(&mut self) {
         let len = self.frame_stack.pop().unwrap_or(0);
         self.values.truncate(len);
     }

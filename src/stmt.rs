@@ -1,4 +1,4 @@
-use crate::eval_context::EvalContext;
+use crate::eval_context::{self, EvalContext};
 use crate::expr::Expr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,6 +37,152 @@ pub enum DataResult {
     Number(i64),
     X,
     Z,
+}
+
+#[derive(Debug)]
+pub(crate) enum StmtInnerIterator<'a> {
+    Block {
+        stmt_iter: std::slice::Iter<'a, Stmt>,
+        inner_iter: Option<Box<StmtInnerIterator<'a>>>,
+    },
+    Simple {
+        stmt: &'a Stmt,
+    },
+    Loop {
+        variable: &'a str,
+        inner: &'a Stmt,
+        value: i64,
+        max: i64,
+        inner_iter: Option<Box<StmtInnerIterator<'a>>>,
+    },
+    Empty,
+}
+
+#[derive(Debug)]
+pub(crate) struct StmtIterator<'a> {
+    iter: StmtInnerIterator<'a>,
+    ctx: &'a mut EvalContext,
+}
+
+impl<'a> Iterator for StmtIterator<'a> {
+    type Item = Vec<DataEntry>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next_with_context(self.ctx)
+    }
+}
+
+impl Stmt {
+    pub(crate) fn iter<'a>(&'a self, ctx: &'a mut EvalContext) -> StmtIterator {
+        StmtIterator {
+            iter: self.inner_iter(),
+            ctx,
+        }
+    }
+
+    pub(crate) fn inner_iter<'a>(&'a self) -> StmtInnerIterator {
+        match self {
+            Stmt::DataRow { .. } | Stmt::Let { .. } | Stmt::ResetRandom => {
+                StmtInnerIterator::Simple { stmt: self }
+            }
+            Stmt::Block { stmts } => {
+                let stmt_iter = stmts.iter();
+                StmtInnerIterator::Block {
+                    stmt_iter,
+                    inner_iter: None,
+                }
+            }
+            Stmt::Loop {
+                variable,
+                max,
+                inner,
+            } => StmtInnerIterator::Loop {
+                value: 0,
+                max: *max,
+                inner_iter: None,
+                variable: &variable,
+                inner,
+            },
+        }
+    }
+}
+
+impl<'a> StmtInnerIterator<'a> {
+    fn next_with_context<'c>(&'c mut self, ctx: &mut EvalContext) -> Option<Vec<DataEntry>> {
+        match self {
+            StmtInnerIterator::Block {
+                stmt_iter,
+                inner_iter,
+            } => loop {
+                if let Some(it) = inner_iter {
+                    if let Some(val) = it.next_with_context(ctx) {
+                        return Some(val);
+                    } else {
+                        *inner_iter = None;
+                    }
+                } else {
+                    if let Some(stmt) = stmt_iter.next() {
+                        *inner_iter = Some(Box::new(stmt.inner_iter()));
+                    } else {
+                        return None;
+                    }
+                }
+            },
+            StmtInnerIterator::Simple { stmt } => {
+                let result = match stmt {
+                    Stmt::Loop { .. } | Stmt::Block { .. } => unreachable!(),
+                    Stmt::Let { name, expr } => {
+                        let value = expr.eval(ctx).unwrap();
+                        ctx.set(name, value);
+                        None
+                    }
+                    Stmt::DataRow { data, line: _ } => {
+                        let mut result = vec![];
+                        for entry in data {
+                            result.extend(entry.eval(ctx));
+                        }
+                        Some(result)
+                    }
+                    Stmt::ResetRandom => {
+                        ctx.reset_random_seed();
+                        None
+                    }
+                };
+                *self = StmtInnerIterator::Empty;
+                result
+            }
+            StmtInnerIterator::Empty => None,
+            StmtInnerIterator::Loop {
+                variable,
+                value,
+                max,
+                inner,
+                inner_iter,
+            } => {
+                if inner_iter.is_none() && *value == 0 {
+                    ctx.push_frame();
+                }
+                loop {
+                    if let Some(it) = inner_iter {
+                        if let Some(value) = it.next_with_context(ctx) {
+                            return Some(value);
+                        } else {
+                            *inner_iter = None;
+                            *value += 1;
+                        }
+                    } else {
+                        if value < max {
+                            *inner_iter = Some(Box::new(inner.inner_iter()));
+                            ctx.set(variable, *value)
+                        } else {
+                            ctx.pop_frame();
+                            return None;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl Stmt {
@@ -243,5 +389,79 @@ end loop
             })
             .unwrap();
         }
+    }
+
+    #[test]
+    fn can_iterate_simple_program() {
+        let input = r"
+A B
+0 0
+0 1
+1 0
+1 1
+";
+
+        let testcase: ParsedTestCase = input.parse().unwrap();
+        assert_eq!(testcase.signal_names.len(), 2);
+        assert_eq!(testcase.stmts.len(), 4);
+
+        let block = Stmt::Block {
+            stmts: testcase.stmts,
+        };
+        let mut iter = block.inner_iter();
+        let mut ctx = EvalContext::new();
+
+        assert_eq!(
+            iter.next_with_context(&mut ctx),
+            Some(vec![DataEntry::Number(0), DataEntry::Number(0),])
+        );
+        assert_eq!(
+            iter.next_with_context(&mut ctx),
+            Some(vec![DataEntry::Number(0), DataEntry::Number(1)])
+        );
+        assert_eq!(
+            iter.next_with_context(&mut ctx),
+            Some(vec![DataEntry::Number(1), DataEntry::Number(0)])
+        );
+        assert_eq!(
+            iter.next_with_context(&mut ctx),
+            Some(vec![DataEntry::Number(1), DataEntry::Number(1)])
+        );
+    }
+
+    #[test]
+    fn can_iterate_program_with_loop() {
+        let input = r"
+A B
+loop(n,4)
+bits(2,n)
+end loop
+";
+
+        let testcase: ParsedTestCase = input.parse().unwrap();
+        assert_eq!(testcase.signal_names.len(), 2);
+
+        let block = Stmt::Block {
+            stmts: testcase.stmts,
+        };
+        let mut ctx = EvalContext::new();
+        let mut iter = block.iter(&mut ctx);
+
+        assert_eq!(
+            iter.next(),
+            Some(vec![DataEntry::Number(0), DataEntry::Number(0),])
+        );
+        assert_eq!(
+            iter.next(),
+            Some(vec![DataEntry::Number(0), DataEntry::Number(1)])
+        );
+        assert_eq!(
+            iter.next(),
+            Some(vec![DataEntry::Number(1), DataEntry::Number(0)])
+        );
+        assert_eq!(
+            iter.next(),
+            Some(vec![DataEntry::Number(1), DataEntry::Number(1)])
+        );
     }
 }
