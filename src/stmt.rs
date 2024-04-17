@@ -1,8 +1,11 @@
 use crate::eval_context::EvalContext;
-use crate::expr::{BinOp, Expr};
+use crate::expr::Expr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Stmt {
+    Block {
+        stmts: Vec<Stmt>,
+    },
     Let {
         name: String,
         expr: Expr,
@@ -14,7 +17,7 @@ pub(crate) enum Stmt {
     Loop {
         variable: String,
         max: i64,
-        inner: Vec<Stmt>,
+        inner: Box<Stmt>,
     },
     ResetRandom,
 }
@@ -43,6 +46,11 @@ impl Stmt {
         emit_line: &mut impl FnMut(Vec<DataEntry>, u32) -> (),
     ) -> anyhow::Result<()> {
         match self {
+            Self::Block { stmts } => {
+                for stmt in stmts {
+                    stmt.emit_lines(ctx, emit_line)?;
+                }
+            }
             Self::Let { name, expr } => {
                 let value = expr.eval(ctx).unwrap();
                 ctx.set(name, value);
@@ -63,9 +71,7 @@ impl Stmt {
 
                 for i in 0..*max {
                     ctx.set(variable, i);
-                    for stmt in inner {
-                        stmt.emit_lines(&mut ctx, emit_line)?;
-                    }
+                    inner.emit_lines(&mut ctx, emit_line)?;
                 }
             }
             Self::ResetRandom => {
@@ -96,6 +102,15 @@ impl DataEntry {
 impl std::fmt::Display for Stmt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Block { stmts } => {
+                for stmt in stmts.iter().take(stmts.len() - 1) {
+                    writeln!(f, "{stmt}")?;
+                }
+                if let Some(stmt) = stmts.last() {
+                    write!(f, "{stmt}")?;
+                }
+                Ok(())
+            }
             Self::Let { name, expr } => {
                 write!(f, "let {name} = {expr};")
             }
@@ -105,9 +120,7 @@ impl std::fmt::Display for Stmt {
                 inner,
             } => {
                 writeln!(f, "loop({variable},{max})")?;
-                for stmt in inner {
-                    writeln!(f, "{stmt}")?;
-                }
+                writeln!(f, "{inner}")?;
                 write!(f, "end loop")
             }
             Self::ResetRandom => {
@@ -158,25 +171,6 @@ impl std::fmt::Display for ResultRow {
             .collect::<Vec<_>>()
             .join(" ");
         write!(f, "[ {s} ]")
-    }
-}
-
-impl DataEntry {
-    fn run(&self, ctx: &mut EvalContext) -> Vec<DataResult> {
-        match self {
-            Self::Number(n) => vec![DataResult::Number(*n)],
-            Self::Expr(expr) => vec![DataResult::Number(expr.eval(ctx).unwrap())],
-            Self::Bits { number, expr } => {
-                let value = expr.eval(ctx).unwrap();
-                (0..*number)
-                    .rev()
-                    .map(|n| DataResult::Number((value >> n) & 1))
-                    .collect::<Vec<_>>()
-            }
-            Self::X => vec![DataResult::X],
-            Self::Z => vec![DataResult::Z],
-            Self::C => unimplemented!(),
-        }
     }
 }
 

@@ -239,7 +239,7 @@ fn loop_stmt(i: Span) -> IResult<Span, Stmt> {
         separated_pair(identifier, ws(tag(",")), number),
         pair(ws(tag(")")), eol),
     )(i)?;
-    let (i, inner) = many0(stmt)(i)?;
+    let (i, inner) = map(many0(stmt), |stmts| Box::new(Stmt::Block { stmts }))(i)?;
     let (i, _) = pair(many0(one_of(" \t")), tag("end loop"))(i)?;
 
     Ok((
@@ -260,7 +260,7 @@ fn repeat(i: Span) -> IResult<Span, Stmt> {
         Stmt::Loop {
             variable: String::from("n"),
             max,
-            inner: vec![stmt],
+            inner: Box::new(stmt),
         },
     ))
 }
