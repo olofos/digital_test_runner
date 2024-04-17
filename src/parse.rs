@@ -229,11 +229,7 @@ fn let_stmt(i: Span) -> IResult<Span, RawStmt> {
             preceded(tag("let"), ws(identifier)),
             delimited(tag("="), expr, tag(";")),
         ),
-        |(name, expr)| RawStmt::Let {
-            name,
-            expr,
-            line: i.location_line(),
-        },
+        |(name, expr)| RawStmt::Let { name, expr },
     )(i)
 }
 
@@ -252,7 +248,6 @@ fn loop_stmt(i: Span) -> IResult<Span, RawStmt> {
             variable,
             max,
             stmts,
-            line: i.location_line(),
         },
     ))
 }
@@ -266,7 +261,6 @@ fn repeat(i: Span) -> IResult<Span, RawStmt> {
             variable: String::from("n"),
             max,
             stmts: vec![stmt],
-            line: i.location_line(),
         },
     ))
 }
@@ -298,12 +292,7 @@ fn while_stmt(i: Span) -> IResult<Span, RawStmt> {
 
 fn reset_random(i: Span) -> IResult<Span, RawStmt> {
     let (i, _) = pair(tag("resetRandom"), ws(tag(";")))(i)?;
-    Ok((
-        i,
-        RawStmt::ResetRandom {
-            line: i.location_line(),
-        },
-    ))
+    Ok((i, RawStmt::ResetRandom))
 }
 
 fn header(i: Span) -> IResult<Span, Vec<String>> {
@@ -509,7 +498,6 @@ mod tests {
             RawStmt::Let {
                 name: String::from("a"),
                 expr: Expr::Number(1),
-                line: 1,
             }
         )
     }

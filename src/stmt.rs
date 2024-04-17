@@ -6,7 +6,6 @@ pub(crate) enum Stmt<DataType> {
     Let {
         name: String,
         expr: Expr,
-        line: u32,
     },
     DataRow {
         data: DataType,
@@ -16,11 +15,8 @@ pub(crate) enum Stmt<DataType> {
         variable: String,
         max: i64,
         stmts: Vec<Stmt<DataType>>,
-        line: u32,
     },
-    ResetRandom {
-        line: u32,
-    },
+    ResetRandom,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,12 +47,10 @@ pub(crate) fn map_data_rows(
                     variable,
                     max,
                     stmts,
-                    line,
                 } => result.push(RawStmt::Loop {
                     variable,
                     max,
                     stmts: inner(stmts, f),
-                    line,
                 }),
                 RawStmt::DataRow {
                     data: orig_data,
@@ -105,7 +99,7 @@ fn expand_bits(stmts: Vec<RawStmt>) -> Vec<RawStmt> {
             }
         }
         for (name, expr) in vars {
-            result.push(RawStmt::Let { name, expr, line });
+            result.push(RawStmt::Let { name, expr });
         }
         result.push(RawStmt::DataRow {
             data: RawData(data),
@@ -231,18 +225,16 @@ fn to_ordered(stmts: Vec<RawStmt>, input_len: usize) -> Vec<OrderedStmt> {
 
     for stmt in stmts {
         result.push(match stmt {
-            Stmt::Let { name, expr, line } => OrderedStmt::Let { name, expr, line },
-            Stmt::ResetRandom { line } => OrderedStmt::ResetRandom { line },
+            Stmt::Let { name, expr } => OrderedStmt::Let { name, expr },
+            Stmt::ResetRandom => OrderedStmt::ResetRandom,
             Stmt::Loop {
                 variable,
                 max,
                 stmts,
-                line,
             } => OrderedStmt::Loop {
                 variable,
                 max,
                 stmts: to_ordered(stmts, input_len),
-                line,
             },
             Stmt::DataRow {
                 data: RawData(mut data),
@@ -329,11 +321,7 @@ impl DataRunner for RawData {
 impl<T: DataRunner> Stmt<T> {
     pub(crate) fn run(&self, ctx: &mut EvalContext) -> Vec<T::DataResult> {
         match self {
-            Self::Let {
-                name,
-                expr,
-                line: _,
-            } => {
+            Self::Let { name, expr } => {
                 let value = expr.eval(ctx).unwrap();
                 ctx.set(name, value);
                 vec![]
@@ -343,7 +331,6 @@ impl<T: DataRunner> Stmt<T> {
                 variable,
                 max,
                 stmts,
-                line: _,
             } => {
                 let mut ctx = ctx.new_frame();
 
@@ -356,7 +343,7 @@ impl<T: DataRunner> Stmt<T> {
                 }
                 result
             }
-            Self::ResetRandom { line: _ } => {
+            Self::ResetRandom => {
                 ctx.reset_random_seed();
                 vec![]
             }
@@ -367,18 +354,13 @@ impl<T: DataRunner> Stmt<T> {
 impl<T: std::fmt::Display> std::fmt::Display for Stmt<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Let {
-                name,
-                expr,
-                line: _,
-            } => {
+            Self::Let { name, expr } => {
                 write!(f, "let {name} = {expr};")
             }
             Self::Loop {
                 variable,
                 max,
                 stmts,
-                line: _,
             } => {
                 writeln!(f, "loop({variable},{max})")?;
                 for stmt in stmts {
@@ -386,7 +368,7 @@ impl<T: std::fmt::Display> std::fmt::Display for Stmt<T> {
                 }
                 write!(f, "end loop")
             }
-            Self::ResetRandom { line: _ } => {
+            Self::ResetRandom => {
                 write!(f, "resetRandom;")
             }
             Self::DataRow { data, line: _ } => {
