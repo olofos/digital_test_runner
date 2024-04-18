@@ -41,7 +41,7 @@ pub(crate) struct StmtInnerIteratorState<'a> {
     variable: &'a str,
     value: i64,
     max: i64,
-    inner_iter: Option<Box<StmtInnerIterator<'a>>>,
+    inner_iter: Box<StmtInnerIterator<'a>>,
     stmts: &'a [Stmt],
 }
 
@@ -88,32 +88,46 @@ impl<'a> StmtInnerIterator<'a> {
             panic!()
         };
 
-        if let Some(it) = inner_iter {
-            if let Some(value) = it.next_with_context(ctx) {
-                return Some(value);
-            }
-            *inner_iter = None;
-            *value += 1;
-        } else {
-            if *value == 0 {
-                ctx.push_frame();
-            }
-            if value < max {
-                let stmt_iter = stmts.iter();
-                *inner_iter = Some(Box::new(StmtInnerIterator {
-                    stmt_iter,
-                    inner_state: None,
-                }));
-                ctx.set(variable, *value)
-            } else {
-                ctx.pop_frame();
-                self.inner_state = None;
-            }
+        if let Some(result) = inner_iter.next_with_context(ctx) {
+            return Some(result);
         }
+
+        *value += 1;
+        if value < max {
+            ctx.set(variable, *value);
+            **inner_iter = StmtInnerIterator {
+                stmt_iter: stmts.iter(),
+                inner_state: None,
+            };
+        } else {
+            ctx.pop_frame();
+            self.inner_state = None;
+        }
+
         None
     }
 
-    fn next_with_context<'c>(&'c mut self, ctx: &mut EvalContext) -> Option<Vec<DataEntry>> {
+    fn enter_loop(
+        ctx: &mut EvalContext,
+        variable: &'a str,
+        max: i64,
+        inner: &'a [Stmt],
+    ) -> Option<StmtInnerIteratorState<'a>> {
+        ctx.push_frame();
+        ctx.set(variable, 0);
+        Some(StmtInnerIteratorState {
+            variable,
+            value: 0,
+            max,
+            inner_iter: Box::new(StmtInnerIterator {
+                stmt_iter: inner.iter(),
+                inner_state: None,
+            }),
+            stmts: inner,
+        })
+    }
+
+    fn next_with_context(&mut self, ctx: &mut EvalContext) -> Option<Vec<DataEntry>> {
         loop {
             if self.inner_state.is_some() {
                 if let Some(result) = self.handle_inner_state(ctx) {
@@ -131,13 +145,7 @@ impl<'a> StmtInnerIterator<'a> {
                         max,
                         inner,
                     } => {
-                        self.inner_state = Some(StmtInnerIteratorState {
-                            variable,
-                            value: 0,
-                            max: *max,
-                            inner_iter: None,
-                            stmts: inner,
-                        });
+                        self.inner_state = Self::enter_loop(ctx, variable, *max, inner);
                     }
                 }
             }
