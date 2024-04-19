@@ -1,4 +1,6 @@
-use crate::eval_context::{self, EvalContext};
+use std::mem;
+
+use crate::eval_context::EvalContext;
 use crate::expr::Expr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,18 +39,28 @@ pub enum DataResult {
 }
 
 #[derive(Debug)]
-pub(crate) struct StmtInnerIteratorState<'a> {
+struct LoopState<'a> {
     variable: &'a str,
-    value: i64,
     max: i64,
-    inner_iter: Box<StmtInnerIterator<'a>>,
     stmts: &'a [Stmt],
+}
+
+#[derive(Debug)]
+enum StmtInnerIteratorState<'a> {
+    Iterate,
+    StartLoop(LoopState<'a>),
+    StateIterateInner(LoopState<'a>),
+    IterateInner {
+        inner_iterator: Box<StmtInnerIterator<'a>>,
+        loop_state: LoopState<'a>,
+    },
+    EndIterateInner(LoopState<'a>),
 }
 
 #[derive(Debug)]
 pub(crate) struct StmtInnerIterator<'a> {
     stmt_iter: std::slice::Iter<'a, Stmt>,
-    inner_state: Option<StmtInnerIteratorState<'a>>,
+    inner_state: StmtInnerIteratorState<'a>,
 }
 
 #[derive(Debug)]
@@ -69,74 +81,31 @@ impl<'a> StmtIterator<'a> {
     fn new(stmts: &'a [Stmt], ctx: &'a mut EvalContext) -> Self {
         let iter = StmtInnerIterator {
             stmt_iter: stmts.iter(),
-            inner_state: None,
+            inner_state: StmtInnerIteratorState::Iterate,
         };
         Self { iter, ctx }
     }
 }
 
+impl<'a> LoopState<'a> {
+    fn take(&mut self) -> Self {
+        mem::replace(
+            self,
+            LoopState {
+                variable: "",
+                max: 0,
+                stmts: &[],
+            },
+        )
+    }
+}
+
 impl<'a> StmtInnerIterator<'a> {
-    fn handle_inner_state(&mut self, ctx: &mut EvalContext) -> Option<Vec<DataEntry>> {
-        let Some(StmtInnerIteratorState {
-            variable,
-            value,
-            max,
-            inner_iter,
-            stmts,
-        }) = &mut self.inner_state
-        else {
-            panic!()
-        };
-
-        if let Some(result) = inner_iter.next_with_context(ctx) {
-            return Some(result);
-        }
-
-        *value += 1;
-        if value < max {
-            ctx.set(variable, *value);
-            **inner_iter = StmtInnerIterator {
-                stmt_iter: stmts.iter(),
-                inner_state: None,
-            };
-        } else {
-            ctx.pop_frame();
-            self.inner_state = None;
-        }
-
-        None
-    }
-
-    fn enter_loop(
-        ctx: &mut EvalContext,
-        variable: &'a str,
-        max: i64,
-        inner: &'a [Stmt],
-    ) -> Option<StmtInnerIteratorState<'a>> {
-        ctx.push_frame();
-        ctx.set(variable, 0);
-        Some(StmtInnerIteratorState {
-            variable,
-            value: 0,
-            max,
-            inner_iter: Box::new(StmtInnerIterator {
-                stmt_iter: inner.iter(),
-                inner_state: None,
-            }),
-            stmts: inner,
-        })
-    }
-
     fn next_with_context(&mut self, ctx: &mut EvalContext) -> Option<Vec<DataEntry>> {
         loop {
-            if self.inner_state.is_some() {
-                if let Some(result) = self.handle_inner_state(ctx) {
-                    return Some(result);
-                }
-            } else {
-                match self.stmt_iter.next()? {
+            match &mut self.inner_state {
+                StmtInnerIteratorState::Iterate => match self.stmt_iter.next()? {
                     Stmt::Let { name, expr } => ctx.set(name, expr.eval(ctx).unwrap()),
-                    Stmt::ResetRandom => ctx.reset_random_seed(),
                     Stmt::DataRow { data, line: _ } => {
                         return Some(data.iter().flat_map(|entry| entry.eval(ctx)).collect())
                     }
@@ -145,7 +114,48 @@ impl<'a> StmtInnerIterator<'a> {
                         max,
                         inner,
                     } => {
-                        self.inner_state = Self::enter_loop(ctx, variable, *max, inner);
+                        self.inner_state = StmtInnerIteratorState::StartLoop(LoopState {
+                            variable,
+                            max: *max,
+                            stmts: inner,
+                        })
+                    }
+                    Stmt::ResetRandom => ctx.reset_random_seed(),
+                },
+                StmtInnerIteratorState::IterateInner {
+                    inner_iterator,
+                    loop_state,
+                } => {
+                    if let Some(result) = inner_iterator.next_with_context(ctx) {
+                        return Some(result);
+                    }
+                    self.inner_state = StmtInnerIteratorState::EndIterateInner(loop_state.take())
+                }
+                StmtInnerIteratorState::StartLoop(loop_state) => {
+                    ctx.push_frame();
+                    ctx.set(loop_state.variable, 0);
+                    self.inner_state = StmtInnerIteratorState::StateIterateInner(loop_state.take());
+                }
+                StmtInnerIteratorState::StateIterateInner(loop_state) => {
+                    let loop_state = loop_state.take();
+                    let inner_iterator = Box::new(StmtInnerIterator {
+                        stmt_iter: loop_state.stmts.iter(),
+                        inner_state: StmtInnerIteratorState::Iterate,
+                    });
+                    self.inner_state = StmtInnerIteratorState::IterateInner {
+                        inner_iterator,
+                        loop_state,
+                    };
+                }
+                StmtInnerIteratorState::EndIterateInner(loop_state) => {
+                    let value = ctx.get(loop_state.variable).unwrap() + 1;
+                    if value < loop_state.max {
+                        ctx.set(loop_state.variable, value);
+                        self.inner_state =
+                            StmtInnerIteratorState::StateIterateInner(loop_state.take());
+                    } else {
+                        ctx.pop_frame();
+                        self.inner_state = StmtInnerIteratorState::Iterate;
                     }
                 }
             }
@@ -367,7 +377,7 @@ A B
 
         let mut iter = StmtInnerIterator {
             stmt_iter: testcase.stmts.iter(),
-            inner_state: None,
+            inner_state: StmtInnerIteratorState::Iterate,
         };
         let mut ctx = EvalContext::new();
 
