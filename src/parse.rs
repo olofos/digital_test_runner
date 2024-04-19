@@ -8,7 +8,7 @@ use nom::{
     branch::alt,
     bytes::complete::{is_not, tag, tag_no_case},
     character::complete::{alpha1, alphanumeric1, digit0, hex_digit1, newline, oct_digit0, one_of},
-    combinator::{eof, map, map_res, opt, recognize, value},
+    combinator::{map, map_res, opt, recognize, value},
     error::ParseError,
     multi::{many0, many1, separated_list0, separated_list1},
     sequence::{delimited, pair, preceded, separated_pair, tuple},
@@ -174,6 +174,13 @@ fn eol(i: Span) -> IResult<Span, ()> {
     value(
         (),
         many1(tuple((many0(one_of(" \t")), opt(comment), newline))),
+    )(i)
+}
+
+fn eof(i: Span) -> IResult<Span, ()> {
+    value(
+        (),
+        tuple((many0(one_of(" \t")), opt(comment), nom::combinator::eof)),
     )(i)
 }
 
@@ -547,5 +554,16 @@ end loop
         let testcase: TestCase<String> = input.parse().unwrap();
         assert_eq!(testcase.signals.len(), 11);
         assert_eq!(testcase.stmts.len(), 7);
+    }
+
+    #[test]
+    fn can_parse_program_with_whitespace_after_last_line_break() {
+        let input = r"
+A B
+1 1
+   ";
+        let testcase: TestCase<String> = input.parse().unwrap();
+        assert_eq!(testcase.signals.len(), 2);
+        assert_eq!(testcase.stmts.len(), 1);
     }
 }
