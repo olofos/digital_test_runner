@@ -231,11 +231,8 @@ impl std::fmt::Display for Stmt {
                 inner,
             } => {
                 writeln!(f, "loop({variable},{max})")?;
-                for stmt in inner.iter().take(inner.len() - 1) {
+                for stmt in inner.iter() {
                     writeln!(f, "{stmt}")?;
-                }
-                if let Some(stmt) = inner.last() {
-                    write!(f, "{stmt}")?;
                 }
                 write!(f, "end loop")
             }
@@ -318,7 +315,7 @@ impl std::fmt::Display for DataEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ParsedTestCase;
+    use crate::TestCase;
 
     #[test]
     fn can_parse_simple_program() {
@@ -343,8 +340,8 @@ end loop
 end loop
 
 ";
-        let testcase: ParsedTestCase = input.parse().unwrap();
-        assert_eq!(testcase.signal_names.len(), 11);
+        let testcase: TestCase<String> = input.parse().unwrap();
+        assert_eq!(testcase.signals.len(), 11);
         assert_eq!(testcase.stmts.len(), 7);
 
         let mut ctx = EvalContext::new();
@@ -371,8 +368,8 @@ A B
 1 1
 ";
 
-        let testcase: ParsedTestCase = input.parse().unwrap();
-        assert_eq!(testcase.signal_names.len(), 2);
+        let testcase: TestCase<String> = input.parse().unwrap();
+        assert_eq!(testcase.signals.len(), 2);
         assert_eq!(testcase.stmts.len(), 4);
 
         let mut iter = StmtInnerIterator {
@@ -416,7 +413,7 @@ bits(2,n)
             .map(|v| v.into_iter().map(DataEntry::Number).collect::<Vec<_>>())
             .collect::<Vec<_>>();
 
-        let testcase: ParsedTestCase = input.parse().unwrap();
+        let testcase: TestCase<String> = input.parse().unwrap();
 
         let mut ctx = EvalContext::new();
         let result = Vec::from_iter(StmtIterator::new(&testcase.stmts, &mut ctx));

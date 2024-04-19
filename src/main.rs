@@ -1,4 +1,4 @@
-use digital_test_runner::{dig, InputValue, TestCaseLoader};
+use digital_test_runner::{dig, InputValue, TestCase};
 
 fn main() -> anyhow::Result<()> {
     let path = std::env::args().nth(1).unwrap_or(String::from("ALU.dig"));
@@ -48,13 +48,11 @@ fn main() -> anyhow::Result<()> {
 
     let test_num = 2;
 
-    let test_case = TestCaseLoader::try_from_dig(&dig_file, test_num)?;
-    //     .expand("S", 3)
-    //     .try_build()?;
+    let test_case = TestCase::try_from_dig(&dig_file, test_num)?;
 
-    // println!();
-    // println!("Test case {test_num} after transformation:");
-    // println!("{test_case}");
+    println!();
+    println!("Test case {test_num} after transformation:");
+    println!("{test_case}");
 
     // let result = test_case.run();
     // for row in result {

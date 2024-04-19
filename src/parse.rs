@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::expr::{BinOp, Expr, UnaryOp};
 use crate::stmt::{DataEntry, Stmt};
-use crate::ParsedTestCase;
+use crate::TestCase;
 
 use nom::{
     branch::alt,
@@ -309,21 +309,15 @@ fn header(i: Span) -> IResult<Span, Vec<String>> {
     Ok((i, signals))
 }
 
-fn testcase(i: Span) -> IResult<Span, ParsedTestCase> {
+fn testcase(i: Span) -> IResult<Span, TestCase<String>> {
     let (i, signals) = header(i)?;
     let (i, stmts) = many1(stmt)(i)?;
     let (i, _) = pair(many0(eol), eof)(i)?;
 
-    Ok((
-        i,
-        ParsedTestCase {
-            signal_names: signals,
-            stmts,
-        },
-    ))
+    Ok((i, TestCase { signals, stmts }))
 }
 
-pub fn parse(input: &str) -> Result<ParsedTestCase, anyhow::Error> {
+pub fn parse(input: &str) -> Result<TestCase<String>, anyhow::Error> {
     let (_, testcase) = nom::combinator::complete(testcase)(Span::new(input))
         .finish()
         .map_err(|e| nom::error::Error {
@@ -550,8 +544,8 @@ end loop
 end loop
 
 ";
-        let testcase: ParsedTestCase = input.parse().unwrap();
-        assert_eq!(testcase.signal_names.len(), 11);
+        let testcase: TestCase<String> = input.parse().unwrap();
+        assert_eq!(testcase.signals.len(), 11);
         assert_eq!(testcase.stmts.len(), 7);
     }
 }
