@@ -1,4 +1,4 @@
-use digital_test_runner::{dig, InputValue, TestCase};
+use digital_test_runner::{dig, InputValue, SignalDirection, TestCase};
 
 fn main() -> anyhow::Result<()> {
     let path = std::env::args().nth(1).unwrap_or(String::from("ALU.dig"));
@@ -6,36 +6,32 @@ fn main() -> anyhow::Result<()> {
     let input = std::fs::read_to_string(path).unwrap();
     let dig_file = dig::parse(&input).unwrap();
 
-    println!("Inputs");
+    println!("Signals");
     println!("=======");
-    for signal in &dig_file.inputs {
-        println!(
-            "{} {} {} ({})",
-            signal.name,
-            signal.bits,
-            if signal.bits == 1 { "bit" } else { "bits" },
-            match &signal.default {
-                InputValue::Value(n) =>
-                    if (0..10).contains(n) {
-                        format!("{n}")
-                    } else {
-                        format!("0x{n:x}")
-                    },
-                InputValue::Z => String::from("Z"),
-            },
-        );
-    }
-    println!();
-
-    println!("Outputs");
-    println!("=======");
-    for signal in &dig_file.outputs {
-        println!(
-            "{} {} {}",
+    for signal in &dig_file.signals {
+        print!(
+            "{} ({} {}",
             signal.name,
             signal.bits,
             if signal.bits == 1 { "bit" } else { "bits" }
         );
+        match &signal.dir {
+            SignalDirection::Input { default } => {
+                println!(
+                    ", {})",
+                    match default {
+                        InputValue::Value(n) =>
+                            if (0..10).contains(n) {
+                                format!("{n}")
+                            } else {
+                                format!("0x{n:x}")
+                            },
+                        InputValue::Z => String::from("Z"),
+                    },
+                );
+            }
+            SignalDirection::Output => println!(")"),
+        }
     }
     println!();
 

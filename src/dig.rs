@@ -1,4 +1,4 @@
-use crate::{InputSignal, InputValue, OutputSignal, Signal, SignalDirection};
+use crate::{InputValue, Signal, SignalDirection};
 
 #[derive(Debug, Clone)]
 pub struct TestCaseDescription {
@@ -8,8 +8,6 @@ pub struct TestCaseDescription {
 
 #[derive(Debug, Clone)]
 pub struct DigFile {
-    pub inputs: Vec<InputSignal>,
-    pub outputs: Vec<OutputSignal>,
     pub signals: Vec<Signal>,
     pub test_cases: Vec<TestCaseDescription>,
 }
@@ -77,32 +75,6 @@ fn extract_input_data(node: roxmltree::Node) -> InputValue {
 pub fn parse(input: &str) -> anyhow::Result<DigFile> {
     let doc = roxmltree::Document::parse(input)?;
 
-    let outputs = visual_elements(&doc, "Out")
-        .filter_map(|node| extract_signal_data(node))
-        .map(|(name, bits)| OutputSignal {
-            name: name.to_string(),
-            bits,
-        })
-        .collect();
-
-    let input_iter = visual_elements(&doc, "In").chain(visual_elements(&doc, "Clock"));
-
-    let inputs = input_iter
-        .filter_map(|node| {
-            if let Some((name, bits)) = extract_signal_data(node) {
-                let default = extract_input_data(node);
-                Some((name, bits, default))
-            } else {
-                None
-            }
-        })
-        .map(|(name, bits, default)| InputSignal {
-            name: name.to_string(),
-            bits,
-            default,
-        })
-        .collect();
-
     let output_signals = visual_elements(&doc, "Out")
         .filter_map(|node| extract_signal_data(node))
         .map(|(name, bits)| Signal {
@@ -151,8 +123,6 @@ pub fn parse(input: &str) -> anyhow::Result<DigFile> {
         .collect::<Vec<_>>();
 
     Ok(DigFile {
-        inputs,
-        outputs,
         signals,
         test_cases,
     })
