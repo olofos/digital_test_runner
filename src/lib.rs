@@ -21,16 +21,22 @@ pub enum OutputValue {
     // Expr(expr::Expr),
 }
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum Value {
+    InputValue(InputValue),
+    OutputValue(OutputValue),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InputSignal {
-    pub name: String,
+pub struct InputSignal<'a> {
+    pub name: &'a str,
     pub bits: u8,
     pub default: InputValue,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OutputSignal {
-    pub name: String,
+pub struct OutputSignal<'a> {
+    pub name: &'a str,
     pub bits: u8,
 }
 
@@ -57,14 +63,64 @@ pub struct TestCase<T> {
 pub struct TestCaseIterator<'a> {
     iter: crate::stmt::StmtIterator<'a>,
     ctx: EvalContext,
+    signals: &'a Vec<Signal>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DataRow<'a> {
+    pub entries: Vec<DataEntry<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DataEntry<'a> {
+    name: &'a str,
+    bits: u8,
+    value: Value,
+}
+
+impl<'a> Display for DataEntry<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.value {
+            Value::InputValue(value) => write!(f, "{value}"),
+            Value::OutputValue(value) => write!(f, "{value}"),
+        }
+    }
+}
+
+impl<'a> DataEntry<'a> {
+    fn new(entry: stmt::DataEntry, signal: &'a Signal) -> Self {
+        let value = match &signal.dir {
+            SignalDirection::Input { default: _ } => Value::InputValue(match entry {
+                stmt::DataEntry::Number(n) => InputValue::Value(n),
+                stmt::DataEntry::Z => InputValue::Z,
+                _ => unreachable!(),
+            }),
+            SignalDirection::Output => Value::OutputValue(match entry {
+                stmt::DataEntry::Number(n) => OutputValue::Value(n),
+                stmt::DataEntry::Z => OutputValue::Z,
+                stmt::DataEntry::X => OutputValue::X,
+                _ => unreachable!(),
+            }),
+        };
+        Self {
+            name: &signal.name,
+            bits: signal.bits,
+            value,
+        }
+    }
 }
 
 impl<'a> Iterator for TestCaseIterator<'a> {
-    type Item = Vec<DataEntry>;
+    type Item = DataRow<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let value = self.iter.next_with_context(&mut self.ctx)?;
-        Some(value)
+        let entries = self.iter.next_with_context(&mut self.ctx)?;
+        let entries = entries
+            .into_iter()
+            .zip(self.signals)
+            .map(|(entry, signal)| DataEntry::new(entry, signal))
+            .collect();
+        Some(DataRow { entries })
     }
 }
 
@@ -73,6 +129,16 @@ impl Display for InputValue {
         match self {
             InputValue::Value(n) => write!(f, "{n}"),
             InputValue::Z => write!(f, "Z"),
+        }
+    }
+}
+
+impl Display for OutputValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OutputValue::Value(n) => write!(f, "{n}"),
+            OutputValue::Z => write!(f, "Z"),
+            OutputValue::X => write!(f, "X"),
         }
     }
 }
@@ -145,20 +211,18 @@ impl TestCase<Signal> {
         TestCaseIterator {
             iter: crate::stmt::StmtIterator::new(&self.stmts),
             ctx: EvalContext::new(),
+            signals: &self.signals,
         }
     }
 }
 
 impl<'a> IntoIterator for &'a TestCase<Signal> {
-    type Item = Vec<DataEntry>;
+    type Item = DataRow<'a>;
 
     type IntoIter = TestCaseIterator<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
-        TestCaseIterator {
-            iter: crate::stmt::StmtIterator::new(&self.stmts),
-            ctx: EvalContext::new(),
-        }
+        self.iter()
     }
 }
 
@@ -170,18 +234,7 @@ impl FromStr for TestCase<String> {
     }
 }
 
-// impl TestCase {
-//     pub fn run(&self) -> Vec<stmt::ResultRow> {
-//         let mut ctx = eval_context::EvalContext::new();
-//         self.stmts
-//             .iter()
-//             .flat_map(|stmt| stmt.run(&mut ctx))
-//             .collect::<Vec<_>>()
-//     }
-// }
-
 use eval_context::EvalContext;
-use stmt::DataEntry;
 pub use stmt::DataResult;
 
 #[cfg(test)]
@@ -230,7 +283,7 @@ end loop
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let testcase = TestCase::try_from_test(input)?.with_signals(&known_signals)?;
         for row in &testcase {
-            for entry in row {
+            for entry in row.entries {
                 print!("{entry} ");
             }
             println!()

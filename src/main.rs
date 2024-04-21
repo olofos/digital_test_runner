@@ -52,7 +52,7 @@ fn main() -> anyhow::Result<()> {
 
     println!();
     for row in &test_case {
-        for entry in row {
+        for entry in row.entries {
             print!("{entry} ");
         }
         println!();
