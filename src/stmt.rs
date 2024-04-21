@@ -144,47 +144,6 @@ impl<'a> StmtIterator<'a> {
     }
 }
 
-impl Stmt {
-    pub(crate) fn emit_lines(
-        &self,
-        ctx: &mut EvalContext,
-        emit_line: &mut impl FnMut(Vec<DataEntry>, u32) -> (),
-    ) -> anyhow::Result<()> {
-        match self {
-            Self::Let { name, expr } => {
-                let value = expr.eval(ctx).unwrap();
-                ctx.set(name, value);
-            }
-            Self::DataRow { data, line } => {
-                let mut result = vec![];
-                for entry in data {
-                    result.extend(entry.eval(ctx));
-                }
-                emit_line(result, *line);
-            }
-            Self::Loop {
-                variable,
-                max,
-                inner,
-            } => {
-                let mut ctx = ctx.new_frame();
-
-                for i in 0..*max {
-                    ctx.set(variable, i);
-                    for stmt in inner {
-                        stmt.emit_lines(&mut ctx, emit_line)?;
-                    }
-                }
-            }
-            Self::ResetRandom => {
-                ctx.reset_random_seed();
-            }
-        }
-
-        Ok(())
-    }
-}
-
 impl DataEntry {
     fn eval(&self, ctx: &mut EvalContext) -> Vec<DataEntry> {
         match self {
@@ -324,19 +283,6 @@ end loop
         let testcase: TestCase<String> = input.parse().unwrap();
         assert_eq!(testcase.signals.len(), 11);
         assert_eq!(testcase.stmts.len(), 7);
-
-        let mut ctx = EvalContext::new();
-        for stmt in &testcase.stmts {
-            stmt.emit_lines(&mut ctx, &mut |result, line| {
-                let s = result
-                    .iter()
-                    .map(|r| format!("{r}"))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                println!("{line:2}: {s}");
-            })
-            .unwrap();
-        }
     }
 
     #[test]
