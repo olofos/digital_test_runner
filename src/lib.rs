@@ -181,8 +181,8 @@ impl FromStr for TestCase<String> {
 // }
 
 use eval_context::EvalContext;
+use stmt::DataEntry;
 pub use stmt::DataResult;
-use stmt::{DataEntry, StmtIterator};
 
 #[cfg(test)]
 mod tests {

@@ -2,7 +2,7 @@ use crate::eval_context::EvalContext;
 use std::{fmt::Display, str::FromStr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BinOp {
+pub enum BinOp {
     Equal,
     NotEqual,
     GreaterThan,
@@ -95,7 +95,7 @@ impl BinOp {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum UnaryOp {
+pub enum UnaryOp {
     Minus,
     LogicalNot,
     BitNot,

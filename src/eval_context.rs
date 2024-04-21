@@ -2,7 +2,7 @@ use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::cell::RefCell;
 
 #[derive(Debug)]
-pub(crate) struct EvalContext {
+pub struct EvalContext {
     values: Vec<(String, i64)>,
     frame_stack: Vec<usize>,
     rng: RefCell<StdRng>,
@@ -10,7 +10,7 @@ pub(crate) struct EvalContext {
 }
 
 #[derive(Debug)]
-pub(crate) struct EvalContextGuard<'a> {
+pub struct EvalContextGuard<'a> {
     ctx: &'a mut EvalContext,
 }
 
@@ -92,6 +92,12 @@ impl EvalContext {
 
     pub fn random<R: rand::distributions::uniform::SampleRange<i64>>(&self, range: R) -> i64 {
         self.rng.borrow_mut().gen_range(range)
+    }
+}
+
+impl Default for EvalContext {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
