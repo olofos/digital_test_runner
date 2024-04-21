@@ -1,4 +1,4 @@
-use crate::{InputSignal, InputValue, OutputSignal};
+use crate::{InputSignal, InputValue, OutputSignal, Signal, SignalDirection};
 
 #[derive(Debug, Clone)]
 pub struct TestCaseDescription {
@@ -10,6 +10,7 @@ pub struct TestCaseDescription {
 pub struct DigFile {
     pub inputs: Vec<InputSignal>,
     pub outputs: Vec<OutputSignal>,
+    pub signals: Vec<Signal>,
     pub test_cases: Vec<TestCaseDescription>,
 }
 
@@ -102,6 +103,32 @@ pub fn parse(input: &str) -> anyhow::Result<DigFile> {
         })
         .collect();
 
+    let output_signals = visual_elements(&doc, "Out")
+        .filter_map(|node| extract_signal_data(node))
+        .map(|(name, bits)| Signal {
+            name: name.to_string(),
+            bits,
+            dir: SignalDirection::Output,
+        });
+
+    let inputs_signals = visual_elements(&doc, "In")
+        .chain(visual_elements(&doc, "Clock"))
+        .filter_map(|node| {
+            if let Some((name, bits)) = extract_signal_data(node) {
+                let default = extract_input_data(node);
+                Some((name, bits, default))
+            } else {
+                None
+            }
+        })
+        .map(|(name, bits, default)| Signal {
+            name: name.to_string(),
+            bits,
+            dir: SignalDirection::Input { default },
+        });
+
+    let signals = Vec::from_iter(inputs_signals.chain(output_signals));
+
     let test_cases = visual_elements(&doc, "Testcase")
         .filter_map(|node| {
             let name: String = if let Some(label_node) = attrib(node, "Label") {
@@ -126,6 +153,7 @@ pub fn parse(input: &str) -> anyhow::Result<DigFile> {
     Ok(DigFile {
         inputs,
         outputs,
+        signals,
         test_cases,
     })
 }
