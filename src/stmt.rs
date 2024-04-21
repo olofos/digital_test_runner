@@ -22,7 +22,7 @@ pub(crate) enum Stmt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum DataEntry {
+pub enum DataEntry {
     Number(i64),
     Expr(Expr),
     Bits { number: u8, expr: Expr },
@@ -63,30 +63,6 @@ pub(crate) struct StmtInnerIterator<'a> {
     inner_state: StmtInnerIteratorState<'a>,
 }
 
-#[derive(Debug)]
-pub(crate) struct StmtIterator<'a> {
-    iter: StmtInnerIterator<'a>,
-    ctx: &'a mut EvalContext,
-}
-
-impl<'a> Iterator for StmtIterator<'a> {
-    type Item = Vec<DataEntry>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next_with_context(self.ctx)
-    }
-}
-
-impl<'a> StmtIterator<'a> {
-    fn new(stmts: &'a [Stmt], ctx: &'a mut EvalContext) -> Self {
-        let iter = StmtInnerIterator {
-            stmt_iter: stmts.iter(),
-            inner_state: StmtInnerIteratorState::Iterate,
-        };
-        Self { iter, ctx }
-    }
-}
-
 impl<'a> LoopState<'a> {
     fn take(&mut self) -> Self {
         mem::replace(
@@ -101,7 +77,13 @@ impl<'a> LoopState<'a> {
 }
 
 impl<'a> StmtInnerIterator<'a> {
-    fn next_with_context(&mut self, ctx: &mut EvalContext) -> Option<Vec<DataEntry>> {
+    pub(crate) fn new(stmts: &'a [Stmt]) -> Self {
+        Self {
+            stmt_iter: stmts.iter(),
+            inner_state: StmtInnerIteratorState::Iterate,
+        }
+    }
+    pub(crate) fn next_with_context(&mut self, ctx: &mut EvalContext) -> Option<Vec<DataEntry>> {
         loop {
             match &mut self.inner_state {
                 StmtInnerIteratorState::Iterate => match self.stmt_iter.next()? {
@@ -368,32 +350,20 @@ A B
 1 1
 ";
 
+        let expectation = vec![[0, 0], [0, 1], [1, 0], [1, 1]]
+            .into_iter()
+            .map(|v| v.into_iter().map(DataEntry::Number).collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+
         let testcase: TestCase<String> = input.parse().unwrap();
-        assert_eq!(testcase.signals.len(), 2);
-        assert_eq!(testcase.stmts.len(), 4);
 
-        let mut iter = StmtInnerIterator {
-            stmt_iter: testcase.stmts.iter(),
-            inner_state: StmtInnerIteratorState::Iterate,
-        };
         let mut ctx = EvalContext::new();
-
-        assert_eq!(
-            iter.next_with_context(&mut ctx),
-            Some(vec![DataEntry::Number(0), DataEntry::Number(0),])
-        );
-        assert_eq!(
-            iter.next_with_context(&mut ctx),
-            Some(vec![DataEntry::Number(0), DataEntry::Number(1)])
-        );
-        assert_eq!(
-            iter.next_with_context(&mut ctx),
-            Some(vec![DataEntry::Number(1), DataEntry::Number(0)])
-        );
-        assert_eq!(
-            iter.next_with_context(&mut ctx),
-            Some(vec![DataEntry::Number(1), DataEntry::Number(1)])
-        );
+        let mut result = vec![];
+        let mut iter = StmtInnerIterator::new(&testcase.stmts);
+        while let Some(row) = iter.next_with_context(&mut ctx) {
+            result.push(row);
+        }
+        assert_eq!(result, expectation)
     }
 
     #[test]
@@ -416,7 +386,11 @@ bits(2,n)
         let testcase: TestCase<String> = input.parse().unwrap();
 
         let mut ctx = EvalContext::new();
-        let result = Vec::from_iter(StmtIterator::new(&testcase.stmts, &mut ctx));
+        let mut result = vec![];
+        let mut iter = StmtInnerIterator::new(&testcase.stmts);
+        while let Some(row) = iter.next_with_context(&mut ctx) {
+            result.push(row);
+        }
         assert_eq!(result, expectation)
     }
 }

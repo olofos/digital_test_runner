@@ -53,6 +53,21 @@ pub struct TestCase<T> {
     pub signals: Vec<T>,
 }
 
+#[derive(Debug)]
+pub struct TestCaseIterator<'a> {
+    iter: crate::stmt::StmtInnerIterator<'a>,
+    ctx: EvalContext,
+}
+
+impl<'a> Iterator for TestCaseIterator<'a> {
+    type Item = Vec<DataEntry>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let value = self.iter.next_with_context(&mut self.ctx)?;
+        Some(value)
+    }
+}
+
 impl Display for InputValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -125,6 +140,26 @@ impl TestCase<Signal> {
         }
         TestCase::try_from_test(&dig.test_cases[n].test_data)?.with_signals(&dig.signals)
     }
+
+    pub fn iter(&self) -> TestCaseIterator {
+        TestCaseIterator {
+            iter: crate::stmt::StmtInnerIterator::new(&self.stmts),
+            ctx: EvalContext::new(),
+        }
+    }
+}
+
+impl<'a> IntoIterator for &'a TestCase<Signal> {
+    type Item = Vec<DataEntry>;
+
+    type IntoIter = TestCaseIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        TestCaseIterator {
+            iter: crate::stmt::StmtInnerIterator::new(&self.stmts),
+            ctx: EvalContext::new(),
+        }
+    }
 }
 
 impl FromStr for TestCase<String> {
@@ -145,12 +180,13 @@ impl FromStr for TestCase<String> {
 //     }
 // }
 
+use eval_context::EvalContext;
 pub use stmt::DataResult;
+use stmt::{DataEntry, StmtInnerIterator};
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rstest::rstest;
 
     #[test]
     fn run_works() -> anyhow::Result<()> {
@@ -192,11 +228,13 @@ end loop
                 dir: SignalDirection::Output,
             });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase = TestCase::try_from_test(input)?;
-        // let result = testcase.run();
-        // for row in result {
-        //     println!("{row}");
-        // }
+        let testcase = TestCase::try_from_test(input)?.with_signals(&known_signals)?;
+        for row in &testcase {
+            for entry in row {
+                print!("{entry} ");
+            }
+            println!()
+        }
 
         Ok(())
     }

@@ -54,10 +54,13 @@ fn main() -> anyhow::Result<()> {
     println!("Test case {test_num} after transformation:");
     println!("{test_case}");
 
-    // let result = test_case.run();
-    // for row in result {
-    //     println!("{row}");
-    // }
+    println!();
+    for row in &test_case {
+        for entry in row {
+            print!("{entry} ");
+        }
+        println!();
+    }
 
     Ok(())
 }
