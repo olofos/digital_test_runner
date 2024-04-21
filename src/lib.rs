@@ -55,7 +55,7 @@ pub struct TestCase<T> {
 
 #[derive(Debug)]
 pub struct TestCaseIterator<'a> {
-    iter: crate::stmt::StmtInnerIterator<'a>,
+    iter: crate::stmt::StmtIterator<'a>,
     ctx: EvalContext,
 }
 
@@ -143,7 +143,7 @@ impl TestCase<Signal> {
 
     pub fn iter(&self) -> TestCaseIterator {
         TestCaseIterator {
-            iter: crate::stmt::StmtInnerIterator::new(&self.stmts),
+            iter: crate::stmt::StmtIterator::new(&self.stmts),
             ctx: EvalContext::new(),
         }
     }
@@ -156,7 +156,7 @@ impl<'a> IntoIterator for &'a TestCase<Signal> {
 
     fn into_iter(self) -> Self::IntoIter {
         TestCaseIterator {
-            iter: crate::stmt::StmtInnerIterator::new(&self.stmts),
+            iter: crate::stmt::StmtIterator::new(&self.stmts),
             ctx: EvalContext::new(),
         }
     }
@@ -182,7 +182,7 @@ impl FromStr for TestCase<String> {
 
 use eval_context::EvalContext;
 pub use stmt::DataResult;
-use stmt::{DataEntry, StmtInnerIterator};
+use stmt::{DataEntry, StmtIterator};
 
 #[cfg(test)]
 mod tests {

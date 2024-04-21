@@ -46,21 +46,21 @@ struct LoopState<'a> {
 }
 
 #[derive(Debug)]
-enum StmtInnerIteratorState<'a> {
+enum StmtIteratorState<'a> {
     Iterate,
     StartLoop(LoopState<'a>),
     StateIterateInner(LoopState<'a>),
     IterateInner {
-        inner_iterator: Box<StmtInnerIterator<'a>>,
+        inner_iterator: Box<StmtIterator<'a>>,
         loop_state: LoopState<'a>,
     },
     EndIterateInner(LoopState<'a>),
 }
 
 #[derive(Debug)]
-pub(crate) struct StmtInnerIterator<'a> {
+pub(crate) struct StmtIterator<'a> {
     stmt_iter: std::slice::Iter<'a, Stmt>,
-    inner_state: StmtInnerIteratorState<'a>,
+    inner_state: StmtIteratorState<'a>,
 }
 
 impl<'a> LoopState<'a> {
@@ -76,17 +76,17 @@ impl<'a> LoopState<'a> {
     }
 }
 
-impl<'a> StmtInnerIterator<'a> {
+impl<'a> StmtIterator<'a> {
     pub(crate) fn new(stmts: &'a [Stmt]) -> Self {
         Self {
             stmt_iter: stmts.iter(),
-            inner_state: StmtInnerIteratorState::Iterate,
+            inner_state: StmtIteratorState::Iterate,
         }
     }
     pub(crate) fn next_with_context(&mut self, ctx: &mut EvalContext) -> Option<Vec<DataEntry>> {
         loop {
             match &mut self.inner_state {
-                StmtInnerIteratorState::Iterate => match self.stmt_iter.next()? {
+                StmtIteratorState::Iterate => match self.stmt_iter.next()? {
                     Stmt::Let { name, expr } => ctx.set(name, expr.eval(ctx).unwrap()),
                     Stmt::DataRow { data, line: _ } => {
                         return Some(data.iter().flat_map(|entry| entry.eval(ctx)).collect())
@@ -96,7 +96,7 @@ impl<'a> StmtInnerIterator<'a> {
                         max,
                         inner,
                     } => {
-                        self.inner_state = StmtInnerIteratorState::StartLoop(LoopState {
+                        self.inner_state = StmtIteratorState::StartLoop(LoopState {
                             variable,
                             max: *max,
                             stmts: inner,
@@ -104,40 +104,39 @@ impl<'a> StmtInnerIterator<'a> {
                     }
                     Stmt::ResetRandom => ctx.reset_random_seed(),
                 },
-                StmtInnerIteratorState::IterateInner {
+                StmtIteratorState::IterateInner {
                     inner_iterator,
                     loop_state,
                 } => {
                     if let Some(result) = inner_iterator.next_with_context(ctx) {
                         return Some(result);
                     }
-                    self.inner_state = StmtInnerIteratorState::EndIterateInner(loop_state.take())
+                    self.inner_state = StmtIteratorState::EndIterateInner(loop_state.take())
                 }
-                StmtInnerIteratorState::StartLoop(loop_state) => {
+                StmtIteratorState::StartLoop(loop_state) => {
                     ctx.push_frame();
                     ctx.set(loop_state.variable, 0);
-                    self.inner_state = StmtInnerIteratorState::StateIterateInner(loop_state.take());
+                    self.inner_state = StmtIteratorState::StateIterateInner(loop_state.take());
                 }
-                StmtInnerIteratorState::StateIterateInner(loop_state) => {
+                StmtIteratorState::StateIterateInner(loop_state) => {
                     let loop_state = loop_state.take();
-                    let inner_iterator = Box::new(StmtInnerIterator {
+                    let inner_iterator = Box::new(StmtIterator {
                         stmt_iter: loop_state.stmts.iter(),
-                        inner_state: StmtInnerIteratorState::Iterate,
+                        inner_state: StmtIteratorState::Iterate,
                     });
-                    self.inner_state = StmtInnerIteratorState::IterateInner {
+                    self.inner_state = StmtIteratorState::IterateInner {
                         inner_iterator,
                         loop_state,
                     };
                 }
-                StmtInnerIteratorState::EndIterateInner(loop_state) => {
+                StmtIteratorState::EndIterateInner(loop_state) => {
                     let value = ctx.get(loop_state.variable).unwrap() + 1;
                     if value < loop_state.max {
                         ctx.set(loop_state.variable, value);
-                        self.inner_state =
-                            StmtInnerIteratorState::StateIterateInner(loop_state.take());
+                        self.inner_state = StmtIteratorState::StateIterateInner(loop_state.take());
                     } else {
                         ctx.pop_frame();
-                        self.inner_state = StmtInnerIteratorState::Iterate;
+                        self.inner_state = StmtIteratorState::Iterate;
                     }
                 }
             }
@@ -359,7 +358,7 @@ A B
 
         let mut ctx = EvalContext::new();
         let mut result = vec![];
-        let mut iter = StmtInnerIterator::new(&testcase.stmts);
+        let mut iter = StmtIterator::new(&testcase.stmts);
         while let Some(row) = iter.next_with_context(&mut ctx) {
             result.push(row);
         }
@@ -387,7 +386,7 @@ bits(2,n)
 
         let mut ctx = EvalContext::new();
         let mut result = vec![];
-        let mut iter = StmtInnerIterator::new(&testcase.stmts);
+        let mut iter = StmtIterator::new(&testcase.stmts);
         while let Some(row) = iter.next_with_context(&mut ctx) {
             result.push(row);
         }
