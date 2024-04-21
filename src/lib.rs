@@ -64,6 +64,7 @@ pub struct TestCaseIterator<'a> {
     iter: crate::stmt::StmtIterator<'a>,
     ctx: EvalContext,
     signals: &'a Vec<Signal>,
+    prev: Option<Vec<stmt::DataEntry>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,9 +74,10 @@ pub struct DataRow<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataEntry<'a> {
-    name: &'a str,
-    bits: u8,
-    value: Value,
+    pub name: &'a str,
+    pub bits: u8,
+    pub value: Value,
+    pub changed: bool,
 }
 
 impl<'a> IntoIterator for DataRow<'a> {
@@ -102,6 +104,20 @@ impl<'a> DataRow<'a> {
     pub fn iter(&self) -> std::slice::Iter<'_, DataEntry<'_>> {
         self.entries.iter()
     }
+
+    pub fn inputs(&self) -> impl Iterator<Item = &DataEntry<'_>> {
+        self.entries.iter().filter(|entry| entry.is_input())
+    }
+
+    pub fn changed_inputs(&self) -> impl Iterator<Item = &DataEntry<'_>> {
+        self.entries
+            .iter()
+            .filter(|entry| entry.changed && entry.is_input())
+    }
+
+    pub fn outputs(&self) -> impl Iterator<Item = &DataEntry<'_>> {
+        self.entries.iter().filter(|entry| entry.is_output())
+    }
 }
 
 impl<'a> Display for DataEntry<'a> {
@@ -114,15 +130,15 @@ impl<'a> Display for DataEntry<'a> {
 }
 
 impl<'a> DataEntry<'a> {
-    fn new(entry: stmt::DataEntry, signal: &'a Signal) -> Self {
+    fn new(entry: stmt::DataEntry, signal: &'a Signal, changed: bool) -> Self {
         let value = match &signal.dir {
             SignalDirection::Input { default: _ } => Value::InputValue(match entry {
-                stmt::DataEntry::Number(n) => InputValue::Value(n),
+                stmt::DataEntry::Number(n) => InputValue::Value(n & ((1 << signal.bits) - 1)),
                 stmt::DataEntry::Z => InputValue::Z,
                 _ => unreachable!(),
             }),
             SignalDirection::Output => Value::OutputValue(match entry {
-                stmt::DataEntry::Number(n) => OutputValue::Value(n),
+                stmt::DataEntry::Number(n) => OutputValue::Value(n & ((1 << signal.bits) - 1)),
                 stmt::DataEntry::Z => OutputValue::Z,
                 stmt::DataEntry::X => OutputValue::X,
                 _ => unreachable!(),
@@ -132,7 +148,16 @@ impl<'a> DataEntry<'a> {
             name: &signal.name,
             bits: signal.bits,
             value,
+            changed,
         }
+    }
+
+    pub fn is_input(&self) -> bool {
+        matches!(self.value, Value::InputValue(_))
+    }
+
+    pub fn is_output(&self) -> bool {
+        matches!(self.value, Value::OutputValue(_))
     }
 }
 
@@ -140,11 +165,38 @@ impl<'a> Iterator for TestCaseIterator<'a> {
     type Item = DataRow<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let entries = self.iter.next_with_context(&mut self.ctx)?;
-        let entries = entries
+        if self.prev.is_none() {
+            let (default, entries) = self
+                .signals
+                .iter()
+                .map(|signal| {
+                    let entry = match &signal.dir {
+                        SignalDirection::Input { default } => match default {
+                            InputValue::Value(n) => stmt::DataEntry::Number(*n),
+                            InputValue::Z => stmt::DataEntry::Z,
+                        },
+
+                        &SignalDirection::Output => stmt::DataEntry::X,
+                    };
+                    (entry.clone(), DataEntry::new(entry, signal, true))
+                })
+                .unzip();
+            self.prev = Some(default);
+
+            return Some(DataRow { entries });
+        }
+        let stmt_entries = self.iter.next_with_context(&mut self.ctx)?;
+        let changed: Vec<_> = stmt_entries
+            .iter()
+            .zip(self.prev.as_ref().unwrap())
+            .map(|(new, old)| new != old)
+            .collect();
+        self.prev = Some(stmt_entries.clone());
+        let entries = stmt_entries
             .into_iter()
             .zip(self.signals)
-            .map(|(entry, signal)| DataEntry::new(entry, signal))
+            .zip(changed)
+            .map(|((entry, signal), changed)| DataEntry::new(entry, signal, changed))
             .collect();
         Some(DataRow { entries })
     }
@@ -165,6 +217,15 @@ impl Display for OutputValue {
             OutputValue::Value(n) => write!(f, "{n}"),
             OutputValue::Z => write!(f, "Z"),
             OutputValue::X => write!(f, "X"),
+        }
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::InputValue(v) => write!(f, "{v}"),
+            Value::OutputValue(v) => write!(f, "{v}"),
         }
     }
 }
@@ -238,6 +299,7 @@ impl TestCase<Signal> {
             iter: crate::stmt::StmtIterator::new(&self.stmts),
             ctx: EvalContext::new(),
             signals: &self.signals,
+            prev: None,
         }
     }
 }
