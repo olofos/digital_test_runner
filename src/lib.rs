@@ -78,6 +78,32 @@ pub struct DataEntry<'a> {
     value: Value,
 }
 
+impl<'a> IntoIterator for DataRow<'a> {
+    type Item = DataEntry<'a>;
+
+    type IntoIter = std::vec::IntoIter<DataEntry<'a>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.entries.into_iter()
+    }
+}
+
+impl<'a, 'b> IntoIterator for &'a DataRow<'b> {
+    type Item = &'a DataEntry<'b>;
+
+    type IntoIter = std::slice::Iter<'a, DataEntry<'b>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.entries.iter()
+    }
+}
+
+impl<'a> DataRow<'a> {
+    pub fn iter(&self) -> std::slice::Iter<'_, DataEntry<'_>> {
+        self.entries.iter()
+    }
+}
+
 impl<'a> Display for DataEntry<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.value {
@@ -283,7 +309,7 @@ end loop
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let testcase = TestCase::try_from_test(input)?.with_signals(&known_signals)?;
         for row in &testcase {
-            for entry in row.entries {
+            for entry in row {
                 print!("{entry} ");
             }
             println!()
