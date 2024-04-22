@@ -6,22 +6,20 @@ mod stmt;
 
 use std::{fmt::Display, str::FromStr};
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum InputValue {
     Value(i64),
     Z,
-    // Expr(expr::Expr),
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum OutputValue {
     Value(i64),
     Z,
     X,
-    // Expr(expr::Expr),
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum Value {
     InputValue(InputValue),
     OutputValue(OutputValue),
@@ -69,21 +67,21 @@ pub struct TestCaseIterator<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataRow<'a> {
-    pub entries: Vec<DataEntry<'a>>,
+    pub entries: Vec<DataEntry<'a, Value>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DataEntry<'a> {
+pub struct DataEntry<'a, T> {
     pub name: &'a str,
     pub bits: u8,
-    pub value: Value,
+    pub value: T,
     pub changed: bool,
 }
 
 impl<'a> IntoIterator for DataRow<'a> {
-    type Item = DataEntry<'a>;
+    type Item = DataEntry<'a, Value>;
 
-    type IntoIter = std::vec::IntoIter<DataEntry<'a>>;
+    type IntoIter = std::vec::IntoIter<DataEntry<'a, Value>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.entries.into_iter()
@@ -91,9 +89,9 @@ impl<'a> IntoIterator for DataRow<'a> {
 }
 
 impl<'a, 'b> IntoIterator for &'a DataRow<'b> {
-    type Item = &'a DataEntry<'b>;
+    type Item = &'a DataEntry<'b, Value>;
 
-    type IntoIter = std::slice::Iter<'a, DataEntry<'b>>;
+    type IntoIter = std::slice::Iter<'a, DataEntry<'b, Value>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.entries.iter()
@@ -101,26 +99,40 @@ impl<'a, 'b> IntoIterator for &'a DataRow<'b> {
 }
 
 impl<'a> DataRow<'a> {
-    pub fn iter(&self) -> std::slice::Iter<'_, DataEntry<'_>> {
+    pub fn iter(&self) -> std::slice::Iter<'_, DataEntry<'_, Value>> {
         self.entries.iter()
     }
 
-    pub fn inputs(&self) -> impl Iterator<Item = &DataEntry<'_>> {
-        self.entries.iter().filter(|entry| entry.is_input())
+    pub fn inputs(&self) -> impl Iterator<Item = DataEntry<'_, InputValue>> {
+        self.entries.iter().filter_map(|entry| match entry.value {
+            Value::InputValue(value) => Some(DataEntry {
+                name: entry.name,
+                bits: entry.bits,
+                changed: entry.changed,
+                value,
+            }),
+            Value::OutputValue(_) => None,
+        })
     }
 
-    pub fn changed_inputs(&self) -> impl Iterator<Item = &DataEntry<'_>> {
-        self.entries
-            .iter()
-            .filter(|entry| entry.changed && entry.is_input())
+    pub fn changed_inputs(&self) -> impl Iterator<Item = DataEntry<'_, InputValue>> {
+        self.inputs().filter(|entry| entry.changed)
     }
 
-    pub fn outputs(&self) -> impl Iterator<Item = &DataEntry<'_>> {
-        self.entries.iter().filter(|entry| entry.is_output())
+    pub fn outputs(&self) -> impl Iterator<Item = DataEntry<'_, OutputValue>> {
+        self.entries.iter().filter_map(|entry| match entry.value {
+            Value::OutputValue(value) => Some(DataEntry {
+                name: entry.name,
+                bits: entry.bits,
+                changed: entry.changed,
+                value,
+            }),
+            Value::InputValue(_) => None,
+        })
     }
 }
 
-impl<'a> Display for DataEntry<'a> {
+impl<'a> Display for DataEntry<'a, Value> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.value {
             Value::InputValue(value) => write!(f, "{value}"),
@@ -129,7 +141,20 @@ impl<'a> Display for DataEntry<'a> {
     }
 }
 
-impl<'a> DataEntry<'a> {
+impl OutputValue {
+    pub fn is_x(&self) -> bool {
+        matches!(self, OutputValue::X)
+    }
+
+    pub fn value(&self) -> Option<i64> {
+        match self {
+            OutputValue::Value(n) => Some(*n),
+            OutputValue::Z | OutputValue::X => None,
+        }
+    }
+}
+
+impl<'a> DataEntry<'a, Value> {
     fn new(entry: stmt::DataEntry, signal: &'a Signal, changed: bool) -> Self {
         let value = match &signal.dir {
             SignalDirection::Input { default: _ } => Value::InputValue(match entry {
