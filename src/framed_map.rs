@@ -1,4 +1,4 @@
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FramedMap<K, V> {
     values: Vec<(K, V)>,
     frame_stack: Vec<usize>,
