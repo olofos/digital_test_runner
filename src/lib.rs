@@ -1,6 +1,7 @@
 pub mod dig;
 mod eval_context;
 mod expr;
+mod framed_map;
 mod parse;
 mod stmt;
 mod value;
