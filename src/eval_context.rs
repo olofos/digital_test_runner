@@ -1,10 +1,10 @@
+use crate::framed_map::FramedMap;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::cell::RefCell;
 
 #[derive(Debug)]
 pub struct EvalContext {
-    values: Vec<(String, i64)>,
-    frame_stack: Vec<usize>,
+    vars: FramedMap<String, i64>,
     rng: RefCell<StdRng>,
     seed: u64,
 }
@@ -45,20 +45,18 @@ impl EvalContext {
 
     pub fn with_seed(seed: u64) -> Self {
         Self {
-            values: vec![],
-            frame_stack: vec![],
+            vars: FramedMap::new(),
             rng: RefCell::new(StdRng::seed_from_u64(seed)),
             seed,
         }
     }
 
     pub fn push_frame(&mut self) {
-        self.frame_stack.push(self.values.len())
+        self.vars.push_frame()
     }
 
     pub fn pop_frame(&mut self) {
-        let len = self.frame_stack.pop().unwrap_or(0);
-        self.values.truncate(len);
+        self.vars.pop_frame()
     }
 
     pub fn new_frame(&mut self) -> EvalContextGuard {
@@ -67,23 +65,11 @@ impl EvalContext {
     }
 
     pub fn set(&mut self, name: &str, value: i64) {
-        let frame_start = *self.frame_stack.last().unwrap_or(&0);
-        if let Some((_, entry_value)) = self.values[frame_start..]
-            .iter_mut()
-            .find(|entry| entry.0 == name)
-        {
-            *entry_value = value;
-        } else {
-            self.values.push((name.to_owned(), value));
-        }
+        self.vars.set(name, value)
     }
 
     pub fn get(&self, name: &str) -> Option<i64> {
-        self.values
-            .iter()
-            .rev()
-            .find(|entry| entry.0 == name)
-            .map(|entry| entry.1)
+        self.vars.get(name)
     }
 
     pub fn reset_random_seed(&mut self) {
