@@ -5,9 +5,10 @@ mod parse;
 mod stmt;
 mod value;
 
-use std::{fmt::Display, str::FromStr};
-
 pub use crate::value::{InputValue, OutputValue, Value};
+
+use eval_context::EvalContext;
+use std::{fmt::Display, str::FromStr};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputSignal<'a> {
@@ -289,9 +290,6 @@ impl FromStr for TestCase<String> {
         crate::parse::parse(input)
     }
 }
-
-use eval_context::EvalContext;
-pub use stmt::DataResult;
 
 #[cfg(test)]
 mod tests {

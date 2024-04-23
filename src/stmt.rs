@@ -31,13 +31,6 @@ pub enum DataEntry {
     C,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DataResult {
-    Number(i64),
-    X,
-    Z,
-}
-
 #[derive(Debug)]
 struct LoopState<'a> {
     variable: &'a str,
@@ -186,44 +179,6 @@ impl std::fmt::Display for Stmt {
                 Ok(())
             }
         }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResultRow {
-    pub inputs: Vec<DataResult>,
-    pub outputs: Vec<DataResult>,
-    pub line: u32,
-}
-
-impl std::fmt::Display for ResultRow {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: ", self.line)?;
-        let s = self
-            .inputs
-            .iter()
-            .map(|entry| match entry {
-                DataResult::Number(n) => format!("{n}"),
-                DataResult::X => String::from("X"),
-                DataResult::Z => String::from("Z"),
-            })
-            .collect::<Vec<_>>()
-            .join(" ");
-
-        write!(f, "[ {s} ]")?;
-        write!(f, " ")?;
-
-        let s = self
-            .outputs
-            .iter()
-            .map(|entry| match entry {
-                DataResult::Number(n) => format!("{n}"),
-                DataResult::X => String::from("X"),
-                DataResult::Z => String::from("Z"),
-            })
-            .collect::<Vec<_>>()
-            .join(" ");
-        write!(f, "[ {s} ]")
     }
 }
 
