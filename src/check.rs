@@ -5,19 +5,19 @@ use crate::framed_map::FramedSet;
 use crate::stmt::{DataEntry, Stmt};
 use crate::Signal;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct CheckContext<'a> {
     vars: FramedSet<String>,
     unknown_vars: HashSet<String>,
-    data_len: Option<usize>,
     signals: &'a [Signal],
 }
 
 impl<'a> CheckContext<'a> {
-    fn new(data_len: usize) -> Self {
+    fn new(signals: &'a [Signal]) -> Self {
         Self {
-            data_len: Some(data_len),
-            ..Default::default()
+            vars: Default::default(),
+            unknown_vars: Default::default(),
+            signals,
         }
     }
 
@@ -58,14 +58,11 @@ impl Stmt {
                         DataEntry::Bits { number, expr: _ } => *number as usize,
                     })
                     .sum();
-                if let Some(expected_len) = &ctx.data_len {
-                    if expected_len != &len {
-                        anyhow::bail!(
-                            "Error on line {line}: expected {expected_len} entries but found {len}"
-                        );
-                    }
-                } else {
-                    ctx.data_len = Some(len);
+                if len != ctx.signals.len() {
+                    anyhow::bail!(
+                        "Error on line {line}: expected {} entries but found {len}",
+                        ctx.signals.len()
+                    );
                 }
             }
             Stmt::Loop {
@@ -116,17 +113,21 @@ impl Expr {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::TestCase;
+    use crate::{InputValue, TestCase};
     use rstest::rstest;
 
     #[rstest]
     #[case("A B\n1 1 1\n")]
     #[case("A B\nbits(2,11) 1\n")]
-    #[case("A\n(1+f(1))\n")]
+    #[case("A B\n(1+f(1)) 1\n")]
     fn check_returns_error(#[case] input: &str) {
         let testcase: TestCase<String> = input.parse().unwrap();
+        let signals = vec![
+            Signal::input("A", 1, InputValue::Value(1)),
+            Signal::output("B", 1),
+        ];
 
-        let mut ctx = CheckContext::new(testcase.signals.len());
+        let mut ctx = CheckContext::new(&signals);
         let result = testcase.stmts[0].check(&mut ctx);
         assert!(result.is_err())
     }
@@ -145,7 +146,12 @@ end loop
 (n) 1
 "#;
         let testcase: TestCase<String> = input.parse().unwrap();
-        let mut ctx = CheckContext::new(testcase.signals.len());
+        let signals = vec![
+            Signal::input("A", 1, InputValue::Value(1)),
+            Signal::output("B", 1),
+        ];
+
+        let mut ctx = CheckContext::new(&signals);
         for stmt in testcase.stmts {
             stmt.check(&mut ctx).unwrap();
         }
