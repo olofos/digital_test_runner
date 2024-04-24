@@ -22,14 +22,13 @@ impl<'a> CheckContext<'a> {
     }
 
     fn check_var(&mut self, name: &String) -> anyhow::Result<()> {
-        if !self.vars.contains(name) {
-            if !self
+        if !self.vars.contains(name)
+            && !self
                 .signals
                 .iter()
                 .any(|sig| sig.is_output() && sig.name == *name)
-            {
-                anyhow::bail!("Unknown variable {name}");
-            }
+        {
+            anyhow::bail!("Unknown variable {name}");
         }
         Ok(())
     }

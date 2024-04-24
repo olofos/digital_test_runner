@@ -269,9 +269,7 @@ impl Signal {
         Self {
             name: name.into(),
             bits,
-            dir: SignalDirection::Input {
-                default: default.into(),
-            },
+            dir: SignalDirection::Input { default },
         }
     }
 
