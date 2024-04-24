@@ -119,15 +119,6 @@ impl<'a> DataRow<'a> {
     }
 }
 
-impl<'a> Display for DataEntry<'a, Value> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.value {
-            Value::InputValue(value) => write!(f, "{value}"),
-            Value::OutputValue(value) => write!(f, "{value}"),
-        }
-    }
-}
-
 impl<'a> DataEntry<'a, Value> {
     fn new(entry: stmt::DataEntry, signal: &'a Signal, changed: bool) -> Self {
         let value = match &signal.dir {
@@ -201,34 +192,6 @@ impl<'a> Iterator for TestCaseIterator<'a> {
     }
 }
 
-impl Display for Signal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.dir {
-            SignalDirection::Input { default } => {
-                write!(f, "{}({}:{})", self.name, self.bits, default)
-            }
-            SignalDirection::Output => write!(f, "{}({})", self.name, self.bits),
-        }
-    }
-}
-
-impl<T: Display> Display for TestCase<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let signal_names = self
-            .signals
-            .iter()
-            .map(|s| format!("{s}"))
-            .collect::<Vec<_>>()
-            .join(" ");
-
-        writeln!(f, "{signal_names}")?;
-        for stmt in &self.stmts {
-            writeln!(f, "{stmt}")?;
-        }
-        Ok(())
-    }
-}
-
 impl TestCase<String> {
     pub fn try_from_test(src: &str) -> anyhow::Result<TestCase<String>> {
         src.parse()
@@ -290,6 +253,43 @@ impl FromStr for TestCase<String> {
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         crate::parse::parse(input)
+    }
+}
+
+impl<'a> Display for DataEntry<'a, Value> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.value {
+            Value::InputValue(value) => write!(f, "{value}"),
+            Value::OutputValue(value) => write!(f, "{value}"),
+        }
+    }
+}
+
+impl Display for Signal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.dir {
+            SignalDirection::Input { default } => {
+                write!(f, "{}({}:{})", self.name, self.bits, default)
+            }
+            SignalDirection::Output => write!(f, "{}({})", self.name, self.bits),
+        }
+    }
+}
+
+impl<T: Display> Display for TestCase<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let signal_names = self
+            .signals
+            .iter()
+            .map(|s| format!("{s}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        writeln!(f, "{signal_names}")?;
+        for stmt in &self.stmts {
+            writeln!(f, "{stmt}")?;
+        }
+        Ok(())
     }
 }
 
