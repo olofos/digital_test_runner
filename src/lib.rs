@@ -1,3 +1,4 @@
+mod check;
 pub mod dig;
 mod eval_context;
 mod expr;
