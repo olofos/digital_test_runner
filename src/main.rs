@@ -44,7 +44,7 @@ fn main() -> anyhow::Result<()> {
 
     let test_num = 2;
 
-    let test_case = TestCase::try_from_dig(&dig_file, test_num)?;
+    let test_case = TestCase::try_from_dig(&dig_file, test_num)?.get_static()?;
 
     println!();
     println!("Test case {test_num} after transformation:");

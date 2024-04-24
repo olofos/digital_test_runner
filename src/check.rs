@@ -10,6 +10,20 @@ pub(crate) struct CheckContext<'a> {
     pub is_static: bool,
 }
 
+pub trait TestCheck<'a> {
+    fn check(&self, signals: &'a [Signal]) -> anyhow::Result<bool>;
+}
+
+impl<'a> TestCheck<'a> for Vec<Stmt> {
+    fn check(&self, signals: &'a [Signal]) -> anyhow::Result<bool> {
+        let mut ctx = CheckContext::new(signals);
+        for stmt in self {
+            stmt.check(&mut ctx)?;
+        }
+        Ok(ctx.is_static)
+    }
+}
+
 impl<'a> CheckContext<'a> {
     pub fn new(signals: &'a [Signal]) -> Self {
         Self {
@@ -153,7 +167,7 @@ mod tests {
     #[case("A B\n1 C\n")]
     #[case("A B\nlet x = random(1,2,3);\n")]
     fn check_returns_error(#[case] input: &str) {
-        let testcase: TestCase<String> = input.parse().unwrap();
+        let testcase: TestCase<_, _> = input.parse().unwrap();
         let signals = vec![
             Signal::input("A", 1, InputValue::Value(1)),
             Signal::output("B", 1),
@@ -182,7 +196,7 @@ end loop
 (C) (D)
 C 1
 "#;
-        let testcase: TestCase<String> = input.parse().unwrap();
+        let testcase: TestCase<_, _> = input.parse().unwrap();
         let signals = vec![
             Signal::input("A", 1, InputValue::Value(1)),
             Signal::output("B", 1),

@@ -9,9 +9,9 @@ mod value;
 
 pub use crate::value::{InputValue, OutputValue, Value};
 
-use check::CheckContext;
+use check::TestCheck;
 use eval_context::EvalContext;
-use std::{fmt::Display, str::FromStr};
+use std::{fmt::Display, marker::PhantomData, str::FromStr};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputSignal<'a> {
@@ -39,11 +39,20 @@ pub struct Signal {
     pub dir: SignalDirection,
 }
 
+pub trait TestType {}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TestCase<T> {
+pub struct StaticTest;
+pub struct DynamicTest;
+
+impl TestType for StaticTest {}
+impl TestType for DynamicTest {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TestCase<T, S: TestType> {
     stmts: Vec<stmt::Stmt>,
     pub signals: Vec<T>,
-    is_static: bool,
+    phantom: PhantomData<S>,
 }
 
 #[derive(Debug)]
@@ -194,12 +203,12 @@ impl<'a> Iterator for TestCaseIterator<'a> {
     }
 }
 
-impl TestCase<String> {
-    pub fn try_from_test(src: &str) -> anyhow::Result<TestCase<String>> {
+impl TestCase<String, DynamicTest> {
+    pub fn try_from_test(src: &str) -> anyhow::Result<TestCase<String, DynamicTest>> {
         src.parse()
     }
 
-    pub fn with_signals(self, signals: &[Signal]) -> anyhow::Result<TestCase<Signal>> {
+    pub fn with_signals(self, signals: &[Signal]) -> anyhow::Result<TestCase<Signal, DynamicTest>> {
         let signals = self
             .signals
             .into_iter()
@@ -212,22 +221,21 @@ impl TestCase<String> {
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
 
-        let mut ctx = CheckContext::new(&signals);
-        for stmt in &self.stmts {
-            stmt.check(&mut ctx)?;
-        }
-        let is_static = ctx.is_static;
+        self.stmts.check(&signals)?;
 
         Ok(TestCase {
             stmts: self.stmts,
             signals,
-            is_static,
+            phantom: PhantomData,
         })
     }
 }
 
-impl TestCase<Signal> {
-    pub fn try_from_dig(dig: &crate::dig::DigFile, n: usize) -> anyhow::Result<TestCase<Signal>> {
+impl TestCase<Signal, DynamicTest> {
+    pub fn try_from_dig(
+        dig: &crate::dig::DigFile,
+        n: usize,
+    ) -> anyhow::Result<TestCase<Signal, DynamicTest>> {
         if n >= dig.test_cases.len() {
             anyhow::bail!(
                 "Trying to load test case #{n}, but file only contains {} test cases",
@@ -237,6 +245,19 @@ impl TestCase<Signal> {
         TestCase::try_from_test(&dig.test_cases[n].test_data)?.with_signals(&dig.signals)
     }
 
+    pub fn get_static(self) -> anyhow::Result<TestCase<Signal, StaticTest>> {
+        if self.stmts.check(&self.signals)? {
+            return Ok(TestCase {
+                stmts: self.stmts,
+                signals: self.signals,
+                phantom: PhantomData,
+            });
+        }
+        anyhow::bail!("Test is not static")
+    }
+}
+
+impl TestCase<Signal, StaticTest> {
     pub fn iter(&self) -> TestCaseIterator {
         TestCaseIterator {
             iter: crate::stmt::StmtIterator::new(&self.stmts),
@@ -247,7 +268,7 @@ impl TestCase<Signal> {
     }
 }
 
-impl<'a> IntoIterator for &'a TestCase<Signal> {
+impl<'a> IntoIterator for &'a TestCase<Signal, StaticTest> {
     type Item = DataRow<'a>;
 
     type IntoIter = TestCaseIterator<'a>;
@@ -257,7 +278,7 @@ impl<'a> IntoIterator for &'a TestCase<Signal> {
     }
 }
 
-impl FromStr for TestCase<String> {
+impl FromStr for TestCase<String, DynamicTest> {
     type Err = anyhow::Error;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
@@ -311,7 +332,7 @@ impl Display for Signal {
     }
 }
 
-impl<T: Display> Display for TestCase<T> {
+impl<T: Display, S: TestType> Display for TestCase<T, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let signal_names = self
             .signals
@@ -372,7 +393,9 @@ end loop
                 dir: SignalDirection::Output,
             });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase = TestCase::try_from_test(input)?.with_signals(&known_signals)?;
+        let testcase = TestCase::try_from_test(input)?
+            .with_signals(&known_signals)?
+            .get_static()?;
         for row in &testcase {
             for entry in row {
                 print!("{entry} ");

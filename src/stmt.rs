@@ -210,7 +210,7 @@ impl std::fmt::Display for DataEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::TestCase;
+    use crate::{DynamicTest, TestCase};
 
     #[test]
     fn can_parse_simple_program() {
@@ -235,7 +235,7 @@ end loop
 end loop
 
 ";
-        let testcase: TestCase<String> = input.parse().unwrap();
+        let testcase: TestCase<String, DynamicTest> = input.parse().unwrap();
         assert_eq!(testcase.signals.len(), 11);
         assert_eq!(testcase.stmts.len(), 7);
     }
@@ -255,7 +255,7 @@ A B
             .map(|v| v.into_iter().map(DataEntry::Number).collect::<Vec<_>>())
             .collect::<Vec<_>>();
 
-        let testcase: TestCase<String> = input.parse().unwrap();
+        let testcase: TestCase<String, DynamicTest> = input.parse().unwrap();
 
         let mut ctx = EvalContext::new();
         let mut result = vec![];
@@ -283,7 +283,7 @@ bits(2,n)
             .map(|v| v.into_iter().map(DataEntry::Number).collect::<Vec<_>>())
             .collect::<Vec<_>>();
 
-        let testcase: TestCase<String> = input.parse().unwrap();
+        let testcase: TestCase<String, DynamicTest> = input.parse().unwrap();
 
         let mut ctx = EvalContext::new();
         let mut result = vec![];

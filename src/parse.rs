@@ -1,8 +1,9 @@
 use std::fmt::Display;
+use std::marker::PhantomData;
 
 use crate::expr::{BinOp, Expr, UnaryOp};
 use crate::stmt::{DataEntry, Stmt};
-use crate::TestCase;
+use crate::{DynamicTest, TestCase};
 
 use nom::{
     branch::alt,
@@ -316,7 +317,7 @@ fn header(i: Span) -> IResult<Span, Vec<String>> {
     Ok((i, signals))
 }
 
-fn testcase(i: Span) -> IResult<Span, TestCase<String>> {
+fn testcase(i: Span) -> IResult<Span, TestCase<String, DynamicTest>> {
     let (i, signals) = header(i)?;
     let (i, stmts) = many1(stmt)(i)?;
     let (i, _) = pair(many0(eol), eof)(i)?;
@@ -326,12 +327,12 @@ fn testcase(i: Span) -> IResult<Span, TestCase<String>> {
         TestCase {
             signals,
             stmts,
-            is_static: false,
+            phantom: PhantomData,
         },
     ))
 }
 
-pub fn parse(input: &str) -> Result<TestCase<String>, anyhow::Error> {
+pub fn parse(input: &str) -> Result<TestCase<String, DynamicTest>, anyhow::Error> {
     let (_, testcase) = nom::combinator::complete(testcase)(Span::new(input))
         .finish()
         .map_err(|e| nom::error::Error {
@@ -558,7 +559,7 @@ end loop
 end loop
 
 ";
-        let testcase: TestCase<String> = input.parse().unwrap();
+        let testcase: TestCase<String, DynamicTest> = input.parse().unwrap();
         assert_eq!(testcase.signals.len(), 11);
         assert_eq!(testcase.stmts.len(), 7);
     }
@@ -569,7 +570,7 @@ end loop
 A B
 1 1
    ";
-        let testcase: TestCase<String> = input.parse().unwrap();
+        let testcase: TestCase<String, DynamicTest> = input.parse().unwrap();
         assert_eq!(testcase.signals.len(), 2);
         assert_eq!(testcase.stmts.len(), 1);
     }
