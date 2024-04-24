@@ -256,6 +256,26 @@ impl FromStr for TestCase<String> {
     }
 }
 
+impl Signal {
+    pub fn output(name: impl Into<String>, bits: u8) -> Self {
+        Self {
+            name: name.into(),
+            bits,
+            dir: SignalDirection::Output,
+        }
+    }
+
+    pub fn input(name: impl Into<String>, bits: u8, default: InputValue) -> Self {
+        Self {
+            name: name.into(),
+            bits,
+            dir: SignalDirection::Input {
+                default: default.into(),
+            },
+        }
+    }
+}
+
 impl<'a> Display for DataEntry<'a, Value> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.value {
