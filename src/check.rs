@@ -207,4 +207,47 @@ C 1
             stmt.check(&mut ctx).unwrap();
         }
     }
+
+    #[test]
+    fn check_sets_is_static_to_true_for_static_test() {
+        let input = r"
+A B
+loop (B,1)
+(B) (B)
+end loop
+";
+        let testcase: TestCase<_, _> = input.parse().unwrap();
+        let signals = vec![
+            Signal::input("A", 1, InputValue::Value(1)),
+            Signal::output("B", 1),
+        ];
+
+        let mut ctx = CheckContext::new(&signals);
+        for stmt in testcase.stmts {
+            stmt.check(&mut ctx).unwrap();
+        }
+        assert!(ctx.is_static);
+    }
+
+    #[test]
+    fn check_sets_is_static_to_false_for_dynamic_test() {
+        let input = r"
+A B
+loop (B,1)
+(B) (B)
+end loop
+(B) (B)
+";
+        let testcase: TestCase<_, _> = input.parse().unwrap();
+        let signals = vec![
+            Signal::input("A", 1, InputValue::Value(1)),
+            Signal::output("B", 1),
+        ];
+
+        let mut ctx = CheckContext::new(&signals);
+        for stmt in testcase.stmts {
+            stmt.check(&mut ctx).unwrap();
+        }
+        assert!(!ctx.is_static);
+    }
 }
