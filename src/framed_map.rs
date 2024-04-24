@@ -4,6 +4,11 @@ pub struct FramedMap<K, V> {
     frame_stack: Vec<usize>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FramedSet<K> {
+    map: FramedMap<K, ()>,
+}
+
 impl<K, V> FramedMap<K, V> {
     pub fn new() -> Self {
         Self {
@@ -22,11 +27,7 @@ impl<K, V> FramedMap<K, V> {
     }
 }
 
-impl<K, V> FramedMap<K, V>
-where
-    K: Eq,
-    V: Copy,
-{
+impl<K: Eq, V: Copy> FramedMap<K, V> {
     pub fn set(&mut self, key: impl Into<K>, value: V) {
         let key = key.into();
         let frame_start = *self.frame_stack.last().unwrap_or(&0);
@@ -50,6 +51,36 @@ where
             .rev()
             .find(|entry| entry.0.borrow() == key)
             .map(|entry| entry.1)
+    }
+}
+
+impl<K> FramedSet<K> {
+    pub fn new() -> Self {
+        Self {
+            map: FramedMap::new(),
+        }
+    }
+}
+
+impl<K: Eq> FramedSet<K> {
+    pub fn push_frame(&mut self) {
+        self.map.push_frame()
+    }
+
+    pub fn pop_frame(&mut self) {
+        self.map.pop_frame()
+    }
+
+    pub fn insert(&mut self, key: impl Into<K>) {
+        self.map.set(key, ())
+    }
+
+    pub fn contains<Q>(&self, key: &Q) -> bool
+    where
+        K: std::borrow::Borrow<Q>,
+        Q: Eq + ?Sized,
+    {
+        self.map.get(key).is_some()
     }
 }
 
@@ -99,5 +130,27 @@ mod tests {
         assert_eq!(map.get("a"), Some(4));
         assert_eq!(map.get("b"), Some(2));
         assert_eq!(map.get("c"), Some(3));
+    }
+
+    #[test]
+    fn framed_set_works() {
+        let mut set = FramedSet::<&str>::new();
+
+        set.insert("a");
+        set.insert("b");
+        assert!(set.contains("a"));
+        assert!(set.contains("b"));
+        assert!(!set.contains("c"));
+
+        set.push_frame();
+        set.insert("c");
+        assert!(set.contains("a"));
+        assert!(set.contains("b"));
+        assert!(set.contains("c"));
+
+        set.pop_frame();
+        assert!(set.contains("a"));
+        assert!(set.contains("b"));
+        assert!(!set.contains("c"));
     }
 }
