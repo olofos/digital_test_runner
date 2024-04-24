@@ -274,6 +274,14 @@ impl Signal {
             },
         }
     }
+
+    pub fn is_output(&self) -> bool {
+        matches!(self.dir, SignalDirection::Output)
+    }
+
+    pub fn is_input(&self) -> bool {
+        matches!(self.dir, SignalDirection::Input { default: _ })
+    }
 }
 
 impl<'a> Display for DataEntry<'a, Value> {
