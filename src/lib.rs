@@ -134,6 +134,11 @@ impl<'a> DataRow<'a> {
             Value::InputValue(_) => None,
         })
     }
+
+    pub fn checked_outputs(&self) -> impl Iterator<Item = DataEntry<'_, OutputValue>> {
+        self.outputs()
+            .filter(|entry| !matches!(entry.value, OutputValue::X))
+    }
 }
 
 impl<'a> DataEntry<'a, Value> {
