@@ -20,6 +20,11 @@ impl<'a> CheckContext<'a> {
             ..Default::default()
         }
     }
+
+    fn define_var(&mut self, name: &String) {
+        self.vars.insert(name)
+    }
+
     fn access_var(&mut self, name: &String) {
         if !self.vars.contains(name) {
             self.unknown_vars.insert(name.clone());
@@ -32,7 +37,7 @@ impl Stmt {
         match self {
             Stmt::Let { name, expr } => {
                 expr.check(ctx)?;
-                ctx.vars.insert(name)
+                ctx.define_var(name)
             }
             Stmt::DataRow { data, line } => {
                 for entry in data {
@@ -69,7 +74,7 @@ impl Stmt {
                 inner,
             } => {
                 ctx.vars.push_frame();
-                ctx.vars.insert(variable);
+                ctx.define_var(variable);
                 for stmt in inner {
                     stmt.check(ctx)?;
                 }
@@ -86,9 +91,7 @@ impl Expr {
         match self {
             Expr::Number(_) => {}
             Expr::Variable(var) => {
-                if !ctx.vars.contains(var) {
-                    ctx.unknown_vars.insert(var.clone());
-                }
+                ctx.access_var(var);
             }
             Expr::BinOp { op: _, left, right } => {
                 left.check(ctx)?;
