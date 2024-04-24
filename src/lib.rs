@@ -39,12 +39,18 @@ pub struct Signal {
     pub dir: SignalDirection,
 }
 
-pub trait TestType {}
+mod private {
+    pub trait Sealed {}
+}
+
+pub trait TestType: private::Sealed {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StaticTest;
 pub struct DynamicTest;
 
+impl private::Sealed for StaticTest {}
+impl private::Sealed for DynamicTest {}
 impl TestType for StaticTest {}
 impl TestType for DynamicTest {}
 
