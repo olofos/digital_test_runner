@@ -264,6 +264,13 @@ impl TestCase<Signal, DynamicTest> {
 }
 
 impl TestCase<Signal, StaticTest> {
+    pub fn try_from_static_dig(
+        dig: &crate::dig::DigFile,
+        n: usize,
+    ) -> anyhow::Result<TestCase<Signal, StaticTest>> {
+        TestCase::try_from_dig(dig, n)?.get_static()
+    }
+
     pub fn iter(&self) -> TestCaseIterator {
         TestCaseIterator {
             iter: crate::stmt::StmtIterator::new(&self.stmts),
