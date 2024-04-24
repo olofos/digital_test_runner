@@ -9,6 +9,7 @@ mod value;
 
 pub use crate::value::{InputValue, OutputValue, Value};
 
+use check::CheckContext;
 use eval_context::EvalContext;
 use std::{fmt::Display, str::FromStr};
 
@@ -42,6 +43,7 @@ pub struct Signal {
 pub struct TestCase<T> {
     stmts: Vec<stmt::Stmt>,
     pub signals: Vec<T>,
+    is_static: bool,
 }
 
 #[derive(Debug)]
@@ -210,9 +212,16 @@ impl TestCase<String> {
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
 
+        let mut ctx = CheckContext::new(&signals);
+        for stmt in &self.stmts {
+            stmt.check(&mut ctx)?;
+        }
+        let is_static = ctx.is_static;
+
         Ok(TestCase {
             stmts: self.stmts,
             signals,
+            is_static,
         })
     }
 }

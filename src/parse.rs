@@ -321,7 +321,14 @@ fn testcase(i: Span) -> IResult<Span, TestCase<String>> {
     let (i, stmts) = many1(stmt)(i)?;
     let (i, _) = pair(many0(eol), eof)(i)?;
 
-    Ok((i, TestCase { signals, stmts }))
+    Ok((
+        i,
+        TestCase {
+            signals,
+            stmts,
+            is_static: false,
+        },
+    ))
 }
 
 pub fn parse(input: &str) -> Result<TestCase<String>, anyhow::Error> {

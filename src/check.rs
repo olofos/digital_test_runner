@@ -7,13 +7,15 @@ use crate::Signal;
 pub(crate) struct CheckContext<'a> {
     vars: FramedSet<String>,
     signals: &'a [Signal],
+    pub is_static: bool,
 }
 
 impl<'a> CheckContext<'a> {
-    fn new(signals: &'a [Signal]) -> Self {
+    pub fn new(signals: &'a [Signal]) -> Self {
         Self {
-            vars: Default::default(),
+            vars: FramedSet::new(),
             signals,
+            is_static: true,
         }
     }
 
@@ -22,13 +24,16 @@ impl<'a> CheckContext<'a> {
     }
 
     fn check_var(&mut self, name: &String) -> anyhow::Result<()> {
-        if !self.vars.contains(name)
-            && !self
+        if !self.vars.contains(name) {
+            if self
                 .signals
                 .iter()
                 .any(|sig| sig.is_output() && sig.name == *name)
-        {
-            anyhow::bail!("Unknown variable {name}");
+            {
+                self.is_static = false;
+            } else {
+                anyhow::bail!("Unknown variable {name}");
+            }
         }
         Ok(())
     }
