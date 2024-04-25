@@ -244,7 +244,7 @@ fn let_stmt(i: Span) -> IResult<Span, Stmt> {
 fn loop_stmt(i: Span) -> IResult<Span, Stmt> {
     let (i, (variable, max)) = delimited(
         pair(tag("loop"), ws(tag("("))),
-        separated_pair(identifier, ws(tag(",")), number),
+        separated_pair(identifier, ws(tag(",")), expr),
         pair(ws(tag(")")), eol),
     )(i)?;
     let (i, inner) = map(many0(stmt), |stmts| stmts)(i)?;
@@ -261,7 +261,7 @@ fn loop_stmt(i: Span) -> IResult<Span, Stmt> {
 }
 
 fn repeat(i: Span) -> IResult<Span, Stmt> {
-    let (i, max) = delimited(pair(tag("repeat"), ws(tag("("))), number, ws(tag(")")))(i)?;
+    let (i, max) = delimited(pair(tag("repeat"), ws(tag("("))), expr, ws(tag(")")))(i)?;
     let (i, stmt) = data_row(i)?;
     Ok((
         i,
@@ -573,5 +573,29 @@ A B
         let testcase: TestCase<String, DynamicTest> = input.parse().unwrap();
         assert_eq!(testcase.signals.len(), 2);
         assert_eq!(testcase.stmts.len(), 1);
+    }
+
+    #[test]
+    fn can_parse_loop_with_expression() {
+        let input = "loop (i,1+1)\nend loop\n";
+        let (_, stmt) = loop_stmt(Span::from(input)).unwrap();
+        let Stmt::Loop {
+            variable,
+            max,
+            inner: _,
+        } = stmt
+        else {
+            panic!()
+        };
+        assert_eq!(variable, "i");
+        let Expr::BinOp {
+            op,
+            left: _,
+            right: _,
+        } = max
+        else {
+            panic!()
+        };
+        assert_eq!(op, BinOp::Plus);
     }
 }
