@@ -453,7 +453,7 @@ mod tests {
     #[case("-3", -3)]
     #[case("~3", !3)]
     #[case("!3", 0)]
-    fn eval_works_for_unart_op(#[case] input: &str, #[case] value: i64) {
+    fn eval_works_for_unary_op(#[case] input: &str, #[case] value: i64) {
         let input = Span::new(input);
         let (i, expr) = expr(input).unwrap();
         assert_eq!(i.into_fragment(), "");
