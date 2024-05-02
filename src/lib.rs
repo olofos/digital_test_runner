@@ -3,6 +3,7 @@ pub mod dig;
 mod eval_context;
 mod expr;
 mod framed_map;
+mod lexer;
 mod parse;
 mod stmt;
 mod value;
