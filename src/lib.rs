@@ -98,17 +98,17 @@ impl<'a, 'b> IntoIterator for &'a DataRow<'b> {
     type IntoIter = std::slice::Iter<'a, DataEntry<'b, Value>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.entries.iter()
+        self.iter()
     }
 }
 
 impl<'a> DataRow<'a> {
-    pub fn iter(&self) -> std::slice::Iter<'_, DataEntry<'_, Value>> {
+    pub fn iter(&self) -> std::slice::Iter<'_, DataEntry<'a, Value>> {
         self.entries.iter()
     }
 
     pub fn inputs(&self) -> impl Iterator<Item = DataEntry<'_, InputValue>> {
-        self.entries.iter().filter_map(|entry| match entry.value {
+        self.iter().filter_map(|entry| match entry.value {
             Value::InputValue(value) => Some(DataEntry {
                 name: entry.name,
                 bits: entry.bits,
@@ -124,7 +124,7 @@ impl<'a> DataRow<'a> {
     }
 
     pub fn outputs(&self) -> impl Iterator<Item = DataEntry<'_, OutputValue>> {
-        self.entries.iter().filter_map(|entry| match entry.value {
+        self.iter().filter_map(|entry| match entry.value {
             Value::OutputValue(value) => Some(DataEntry {
                 name: entry.name,
                 bits: entry.bits,
