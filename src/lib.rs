@@ -177,32 +177,16 @@ impl<'a> Iterator for TestCaseIterator<'a> {
     type Item = DataRow<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.prev.is_none() {
-            let (default, entries) = self
-                .signals
-                .iter()
-                .map(|signal| {
-                    let entry = match &signal.dir {
-                        SignalDirection::Input { default } => match default {
-                            InputValue::Value(n) => stmt::DataEntry::Number(*n),
-                            InputValue::Z => stmt::DataEntry::Z,
-                        },
-
-                        &SignalDirection::Output => stmt::DataEntry::X,
-                    };
-                    (entry.clone(), DataEntry::new(entry, signal, true))
-                })
-                .unzip();
-            self.prev = Some(default);
-
-            return Some(DataRow { entries });
-        }
         let stmt_entries = self.iter.next_with_context(&mut self.ctx)?;
-        let changed: Vec<_> = stmt_entries
-            .iter()
-            .zip(self.prev.as_ref().unwrap())
-            .map(|(new, old)| new != old)
-            .collect();
+        let changed = if self.prev.is_some() {
+            stmt_entries
+                .iter()
+                .zip(self.prev.as_ref().unwrap())
+                .map(|(new, old)| new != old)
+                .collect()
+        } else {
+            vec![true; stmt_entries.len()]
+        };
         self.prev = Some(stmt_entries.clone());
         let entries = stmt_entries
             .into_iter()
@@ -283,6 +267,26 @@ impl TestCase<Signal, StaticTest> {
             signals: &self.signals,
             prev: None,
         }
+    }
+
+    pub fn default_row(&self) -> DataRow {
+        let entries = self
+            .signals
+            .iter()
+            .map(|signal| {
+                let entry = match &signal.dir {
+                    SignalDirection::Input { default } => match default {
+                        InputValue::Value(n) => stmt::DataEntry::Number(*n),
+                        InputValue::Z => stmt::DataEntry::Z,
+                    },
+
+                    &SignalDirection::Output => stmt::DataEntry::X,
+                };
+                DataEntry::new(entry, signal, true)
+            })
+            .collect();
+
+        DataRow { entries }
     }
 }
 
