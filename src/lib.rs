@@ -67,6 +67,7 @@ pub struct TestCaseIterator<'a> {
     ctx: EvalContext,
     signals: &'a Vec<Signal>,
     prev: Option<Vec<stmt::DataEntry>>,
+    cache: Vec<Vec<stmt::DataEntry>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,7 +178,48 @@ impl<'a> Iterator for TestCaseIterator<'a> {
     type Item = DataRow<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let stmt_entries = self.iter.next_with_context(&mut self.ctx)?;
+        if self.cache.is_empty() {
+            let stmt_entries = self.iter.next_with_context(&mut self.ctx)?;
+            self.cache.push(stmt_entries);
+        }
+
+        let mut stmt_entries = self.cache.pop()?;
+
+        let has_c = stmt_entries
+            .iter()
+            .enumerate()
+            .any(|(i, entry)| self.signals[i].is_input() && matches!(entry, stmt::DataEntry::C));
+
+        if has_c {
+            let mut entries = stmt_entries.clone();
+
+            for entry in entries.iter_mut() {
+                if *entry == stmt::DataEntry::C {
+                    *entry = stmt::DataEntry::Number(0);
+                }
+            }
+            self.cache.push(entries);
+
+            let mut entries = stmt_entries.clone();
+
+            for (i, entry) in entries.iter_mut().enumerate() {
+                if self.signals[i].is_output() {
+                    *entry = stmt::DataEntry::X;
+                } else if *entry == stmt::DataEntry::C {
+                    *entry = stmt::DataEntry::Number(1);
+                }
+            }
+            self.cache.push(entries);
+
+            for (i, entry) in stmt_entries.iter_mut().enumerate() {
+                if self.signals[i].is_output() {
+                    *entry = stmt::DataEntry::X;
+                } else if *entry == stmt::DataEntry::C {
+                    *entry = stmt::DataEntry::Number(0);
+                }
+            }
+        }
+
         let changed = if self.prev.is_some() {
             stmt_entries
                 .iter()
@@ -266,6 +308,7 @@ impl TestCase<Signal, StaticTest> {
             ctx: EvalContext::new(),
             signals: &self.signals,
             prev: None,
+            cache: vec![],
         }
     }
 
@@ -424,6 +467,74 @@ end loop
             }
             println!()
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn iter_with_c_works() -> anyhow::Result<()> {
+        let input = r"
+CLK IN OUT
+C 0 0
+";
+        let known_inputs = ["CLK", "IN"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Input {
+                default: InputValue::Value(0),
+            },
+        });
+        let known_outputs = ["OUT"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Output,
+        });
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+        let testcase = TestCase::try_from_test(input)?
+            .with_signals(&known_signals)?
+            .get_static()?;
+
+        let rows: Vec<DataRow> = testcase.into_iter().collect();
+        assert_eq!(rows.len(), 3);
+
+        assert_eq!(
+            rows[0]
+                .entries
+                .iter()
+                .map(|entry| entry.value)
+                .collect::<Vec<_>>(),
+            vec![
+                Value::InputValue(InputValue::Value(0)),
+                Value::InputValue(InputValue::Value(0)),
+                Value::OutputValue(OutputValue::X)
+            ]
+        );
+
+        assert_eq!(
+            rows[1]
+                .entries
+                .iter()
+                .map(|entry| entry.value)
+                .collect::<Vec<_>>(),
+            vec![
+                Value::InputValue(InputValue::Value(1)),
+                Value::InputValue(InputValue::Value(0)),
+                Value::OutputValue(OutputValue::X)
+            ]
+        );
+
+        assert_eq!(
+            rows[2]
+                .entries
+                .iter()
+                .map(|entry| entry.value)
+                .collect::<Vec<_>>(),
+            vec![
+                Value::InputValue(InputValue::Value(0)),
+                Value::InputValue(InputValue::Value(0)),
+                Value::OutputValue(OutputValue::Value(0))
+            ]
+        );
 
         Ok(())
     }
