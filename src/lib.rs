@@ -180,7 +180,31 @@ impl<'a> Iterator for TestCaseIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if self.cache.is_empty() {
             let stmt_entries = self.iter.next_with_context(&mut self.ctx)?;
-            self.cache.push(stmt_entries);
+
+            let x_positions: Vec<usize> = stmt_entries
+                .iter()
+                .enumerate()
+                .filter_map(|(i, entry)| {
+                    if self.signals[i].is_input() && entry == &stmt::DataEntry::X {
+                        Some(i)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            let len = x_positions.len();
+            if len > 0 {
+                for n in (0..(1 << len)).rev() {
+                    let mut entries = stmt_entries.clone();
+                    for (bit_index, entry_index) in x_positions.iter().enumerate() {
+                        entries[*entry_index] = stmt::DataEntry::Number((n >> bit_index) & 1);
+                    }
+                    self.cache.push(entries);
+                }
+            } else {
+                self.cache.push(stmt_entries);
+            }
         }
 
         let mut stmt_entries = self.cache.pop()?;
@@ -188,7 +212,7 @@ impl<'a> Iterator for TestCaseIterator<'a> {
         let has_c = stmt_entries
             .iter()
             .enumerate()
-            .any(|(i, entry)| self.signals[i].is_input() && matches!(entry, stmt::DataEntry::C));
+            .any(|(i, entry)| self.signals[i].is_input() && entry == &stmt::DataEntry::C);
 
         if has_c {
             let mut entries = stmt_entries.clone();
@@ -485,6 +509,94 @@ CLK IN OUT
 0 0 0
 ";
         let known_inputs = ["CLK", "IN"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Input {
+                default: InputValue::Value(0),
+            },
+        });
+        let known_outputs = ["OUT"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Output,
+        });
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+        let testcase = TestCase::try_from_test(input)?
+            .with_signals(&known_signals)?
+            .get_static()?;
+
+        let expanded_testcase = TestCase::try_from_test(expanded_input)?
+            .with_signals(&known_signals)?
+            .get_static()?;
+
+        let rows: Vec<_> = testcase.into_iter().collect();
+        let expanded_rows: Vec<_> = expanded_testcase.into_iter().collect();
+
+        assert_eq!(rows, expanded_rows);
+
+        Ok(())
+    }
+
+    #[test]
+    fn iter_with_x_works() -> anyhow::Result<()> {
+        let input = r"
+A B OUT
+X X 0
+";
+
+        let expanded_input = r"
+A B OUT
+0 0 0
+1 0 0
+0 1 0
+1 1 0
+";
+        let known_inputs = ["A", "B"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Input {
+                default: InputValue::Value(0),
+            },
+        });
+        let known_outputs = ["OUT"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Output,
+        });
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+        let testcase = TestCase::try_from_test(input)?
+            .with_signals(&known_signals)?
+            .get_static()?;
+
+        let expanded_testcase = TestCase::try_from_test(expanded_input)?
+            .with_signals(&known_signals)?
+            .get_static()?;
+
+        let rows: Vec<_> = testcase.into_iter().collect();
+        let expanded_rows: Vec<_> = expanded_testcase.into_iter().collect();
+
+        assert_eq!(rows, expanded_rows);
+
+        Ok(())
+    }
+
+    #[test]
+    fn iter_with_x_and_c_works() -> anyhow::Result<()> {
+        let input = r"
+CLK A OUT
+C X 0
+";
+
+        let expanded_input = r"
+CLK A OUT
+0 0 X
+1 0 X
+0 0 0
+0 1 X
+1 1 X
+0 1 0
+";
+        let known_inputs = ["CLK", "A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
             dir: SignalDirection::Input {
