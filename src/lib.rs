@@ -477,6 +477,13 @@ end loop
 CLK IN OUT
 C 0 0
 ";
+
+        let expanded_input = r"
+CLK IN OUT
+0 0 X
+1 0 X
+0 0 0
+";
         let known_inputs = ["CLK", "IN"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
@@ -494,47 +501,14 @@ C 0 0
             .with_signals(&known_signals)?
             .get_static()?;
 
-        let rows: Vec<DataRow> = testcase.into_iter().collect();
-        assert_eq!(rows.len(), 3);
+        let expanded_testcase = TestCase::try_from_test(expanded_input)?
+            .with_signals(&known_signals)?
+            .get_static()?;
 
-        assert_eq!(
-            rows[0]
-                .entries
-                .iter()
-                .map(|entry| entry.value)
-                .collect::<Vec<_>>(),
-            vec![
-                Value::InputValue(InputValue::Value(0)),
-                Value::InputValue(InputValue::Value(0)),
-                Value::OutputValue(OutputValue::X)
-            ]
-        );
+        let rows: Vec<_> = testcase.into_iter().collect();
+        let expanded_rows: Vec<_> = expanded_testcase.into_iter().collect();
 
-        assert_eq!(
-            rows[1]
-                .entries
-                .iter()
-                .map(|entry| entry.value)
-                .collect::<Vec<_>>(),
-            vec![
-                Value::InputValue(InputValue::Value(1)),
-                Value::InputValue(InputValue::Value(0)),
-                Value::OutputValue(OutputValue::X)
-            ]
-        );
-
-        assert_eq!(
-            rows[2]
-                .entries
-                .iter()
-                .map(|entry| entry.value)
-                .collect::<Vec<_>>(),
-            vec![
-                Value::InputValue(InputValue::Value(0)),
-                Value::InputValue(InputValue::Value(0)),
-                Value::OutputValue(OutputValue::Value(0))
-            ]
-        );
+        assert_eq!(rows, expanded_rows);
 
         Ok(())
     }
