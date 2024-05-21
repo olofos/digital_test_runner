@@ -144,6 +144,7 @@ impl DataEntry {
             Self::Bits { number, expr } => {
                 let value = expr.eval(ctx).unwrap();
                 (0..*number)
+                    .rev()
                     .map(|n| Self::Number((value >> n) & 1))
                     .collect::<Vec<_>>()
             }
@@ -267,6 +268,40 @@ A B
     }
 
     #[test]
+    fn bits_works() {
+        let input = r"
+Q2 Q1 Q0 
+loop (n,8)
+bits(3,n)
+end loop
+";
+
+        let expectation = vec![
+            [0, 0, 0],
+            [0, 0, 1],
+            [0, 1, 0],
+            [0, 1, 1],
+            [1, 0, 0],
+            [1, 0, 1],
+            [1, 1, 0],
+            [1, 1, 1],
+        ]
+        .into_iter()
+        .map(|v| v.into_iter().map(DataEntry::Number).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+
+        let testcase: TestCase<String, DynamicTest> = input.parse().unwrap();
+
+        let mut ctx = EvalContext::new();
+        let mut result = vec![];
+        let mut iter = StmtIterator::new(&testcase.stmts);
+        while let Some(row) = iter.next_with_context(&mut ctx) {
+            result.push(row);
+        }
+        assert_eq!(result, expectation)
+    }
+
+    #[test]
     fn can_iterate_program_with_loop() {
         let input = r"
 A B
@@ -278,7 +313,7 @@ end loop
 bits(2,n)
 ";
 
-        let expectation = vec![[0, 1], [0, 0], [1, 0], [0, 1], [1, 1], [0, 1]]
+        let expectation = vec![[1, 0], [0, 0], [0, 1], [1, 0], [1, 1], [1, 0]]
             .into_iter()
             .map(|v| v.into_iter().map(DataEntry::Number).collect::<Vec<_>>())
             .collect::<Vec<_>>();
