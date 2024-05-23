@@ -12,7 +12,7 @@ use nom::{
     combinator::{map, map_res, opt, recognize, value},
     error::ParseError,
     multi::{many0, many1, separated_list0, separated_list1},
-    sequence::{delimited, pair, preceded, separated_pair, tuple},
+    sequence::{delimited, pair, preceded, separated_pair, terminated, tuple},
     Finish, IResult, Parser,
 };
 
@@ -186,7 +186,7 @@ fn eof(i: Span) -> IResult<Span, ()> {
 }
 
 fn stmt(i: Span) -> IResult<Span, Stmt> {
-    delimited(
+    preceded(
         many0(one_of(" \t")),
         alt((
             let_stmt,
@@ -197,8 +197,15 @@ fn stmt(i: Span) -> IResult<Span, Stmt> {
             while_stmt,
             reset_random,
         )),
-        eol,
     )(i)
+}
+
+fn stmts0(i: Span) -> IResult<Span, Vec<Stmt>> {
+    terminated(separated_list0(eol, stmt), opt(eol))(i)
+}
+
+fn stmts1(i: Span) -> IResult<Span, Vec<Stmt>> {
+    terminated(separated_list1(eol, stmt), opt(eol))(i)
 }
 
 fn data_entry(i: Span) -> IResult<Span, DataEntry> {
@@ -247,7 +254,7 @@ fn loop_stmt(i: Span) -> IResult<Span, Stmt> {
         separated_pair(identifier, ws(tag(",")), expr),
         pair(ws(tag(")")), eol),
     )(i)?;
-    let (i, inner) = map(many0(stmt), |stmts| stmts)(i)?;
+    let (i, inner) = map(stmts0, |stmts| stmts)(i)?;
     let (i, _) = pair(many0(one_of(" \t")), tag("end loop"))(i)?;
 
     Ok((
@@ -290,7 +297,7 @@ fn while_stmt(i: Span) -> IResult<Span, Stmt> {
         expr,
         pair(ws(tag(")")), eol),
     )(i)?;
-    let (i, stmts) = many0(stmt)(i)?;
+    let (i, stmts) = stmts0(i)?;
     let (i, _) = pair(many0(one_of(" \t")), tag("end while"))(i)?;
 
     let (_i, _expr, _stmts) = (i, expr, stmts);
@@ -319,7 +326,7 @@ fn header(i: Span) -> IResult<Span, Vec<String>> {
 
 fn testcase(i: Span) -> IResult<Span, TestCase<String, DynamicTest>> {
     let (i, signals) = header(i)?;
-    let (i, stmts) = many1(stmt)(i)?;
+    let (i, stmts) = stmts1(i)?;
     let (i, _) = pair(many0(eol), eof)(i)?;
 
     Ok((
@@ -570,6 +577,16 @@ end loop
 A B
 1 1
    ";
+        let testcase: TestCase<String, DynamicTest> = input.parse().unwrap();
+        assert_eq!(testcase.signals.len(), 2);
+        assert_eq!(testcase.stmts.len(), 1);
+    }
+
+    #[test]
+    fn can_parse_program_with_no_final_line_break() {
+        let input = r"
+A B
+1 1";
         let testcase: TestCase<String, DynamicTest> = input.parse().unwrap();
         assert_eq!(testcase.signals.len(), 2);
         assert_eq!(testcase.stmts.len(), 1);
