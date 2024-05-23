@@ -82,7 +82,7 @@ pub(crate) enum Token {
     OctInt,
     #[regex(r"[ \t\r\f]+", logos::skip)]
     WS,
-    #[regex(r"#[^\n]*\n", logos::skip)]
+    #[regex(r"#[^\n]*", logos::skip)]
     Comment,
     #[token("\n", newline_callback)]
     Eol,
@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn test() {
-        let input = "let a = 1;\n";
+        let input = "let a = 1;###\n";
         let mut lex = Token::lexer(input);
 
         let expected = vec![
