@@ -1,6 +1,7 @@
 use logos::Logos;
 
 #[derive(Logos, Debug, PartialEq, Eq)]
+#[logos(extras = (usize,usize))]
 pub(crate) enum Token {
     #[token(",")]
     Comma,
@@ -73,18 +74,24 @@ pub(crate) enum Token {
     Ident,
     #[regex("[1-9][0-9]*")]
     DecInt,
-    #[regex("0x[0-9a-fA-F]+")]
+    #[regex("0[xX][0-9a-fA-F]+")]
     HexInt,
-    #[regex("0b[01]+")]
+    #[regex("0[bB][01]+")]
     BinInt,
     #[regex("0[0-7]*")]
     OctInt,
-    #[regex(r"[ \t\r\f]+")]
+    #[regex(r"[ \t\r\f]+", logos::skip)]
     WS,
-    #[regex(r"#[^\n]*\n")]
+    #[regex(r"#[^\n]*\n", logos::skip)]
     Comment,
-    #[token("\n")]
+    #[token("\n", newline_callback)]
     Eol,
+}
+
+/// Update the line count and the char index.
+fn newline_callback(lex: &mut logos::Lexer<Token>) {
+    lex.extras.0 += 1;
+    lex.extras.1 = lex.span().end;
 }
 
 #[cfg(test)]
@@ -93,23 +100,24 @@ mod tests {
 
     #[test]
     fn test() {
-        let input = "let a = 1;";
+        let input = "let a = 1;\n";
         let mut lex = Token::lexer(input);
 
         let expected = vec![
             (Token::Let, "let"),
-            (Token::WS, " "),
             (Token::Ident, "a"),
-            (Token::WS, " "),
             (Token::Eq, "="),
-            (Token::WS, " "),
             (Token::DecInt, "1"),
             (Token::Semi, ";"),
+            (Token::Eol, "\n"),
         ];
 
-        let mut it = expected.into_iter();
+        let mut result = vec![];
+
         while let Some(Ok(token)) = lex.next() {
-            assert_eq!((token, &input[lex.span()]), it.next().unwrap());
+            result.push((token, lex.slice()));
         }
+
+        assert_eq!(result, expected);
     }
 }
