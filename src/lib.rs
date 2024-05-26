@@ -14,19 +14,6 @@ use eval_context::EvalContext;
 use std::{fmt::Display, marker::PhantomData, str::FromStr};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InputSignal<'a> {
-    pub name: &'a str,
-    pub bits: u8,
-    pub default: InputValue,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OutputSignal<'a> {
-    pub name: &'a str,
-    pub bits: u8,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SignalDirection {
     Input { default: InputValue },
     Output,
