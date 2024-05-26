@@ -261,11 +261,23 @@ impl TestCase<String, DynamicTest> {
             .signals
             .into_iter()
             .map(|sig_name| {
-                signals
-                    .iter()
-                    .find(|sig| sig.name == sig_name)
-                    .cloned()
-                    .ok_or(anyhow::anyhow!("Could not find signal {sig_name}"))
+                if let Some(input_sig_name) = sig_name.strip_suffix("_out") {
+                    let Some(mut signal) = signals
+                        .iter()
+                        .find(|sig| sig.name == input_sig_name && sig.is_input())
+                        .cloned()
+                    else {
+                        anyhow::bail!("Could not find signal {input_sig_name} correspoding to output {sig_name}");
+                    };
+                    signal.dir = SignalDirection::Output;
+                    Ok(signal)
+                } else {
+                    signals
+                        .iter()
+                        .find(|sig| sig.name == sig_name)
+                        .cloned()
+                        .ok_or(anyhow::anyhow!("Could not find signal {sig_name}"))
+                }
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
 
@@ -478,6 +490,51 @@ end loop
             }
             println!()
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn can_parse_directional_signal() -> anyhow::Result<()> {
+        let input = r"
+A A_out
+1 X
+Z 1";
+        let known_inputs = ["A"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Input {
+                default: InputValue::Value(0),
+            },
+        });
+
+        let known_signals = Vec::from_iter(known_inputs);
+        let testcase = TestCase::try_from_test(input)?
+            .with_signals(&known_signals)?
+            .get_static()?;
+
+        let result: Vec<DataRow> = testcase.into_iter().collect();
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].entries[0].name, "A");
+        assert_eq!(result[0].entries[1].name, "A");
+        assert_eq!(result[1].entries[0].name, "A");
+        assert_eq!(result[1].entries[1].name, "A");
+
+        assert_eq!(
+            result[0].entries[0].value,
+            Value::InputValue(InputValue::Value(1))
+        );
+        assert_eq!(
+            result[0].entries[1].value,
+            Value::OutputValue(OutputValue::X)
+        );
+
+        assert_eq!(result[1].entries[0].value, Value::InputValue(InputValue::Z));
+        assert_eq!(
+            result[1].entries[1].value,
+            Value::OutputValue(OutputValue::Value(1))
+        );
 
         Ok(())
     }
