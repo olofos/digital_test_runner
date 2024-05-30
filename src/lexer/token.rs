@@ -1,8 +1,17 @@
 use logos::Logos;
 
-#[derive(Logos, Debug, PartialEq, Eq)]
-#[logos(extras = (usize,usize))]
-pub(crate) enum Token {
+#[derive(Logos, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum HeaderTokenKind {
+    #[regex(r"[^ \t\r\f\n]+")]
+    SignalName,
+    #[regex(r"[ \t\r\f]+", logos::skip)]
+    WS,
+    #[token("\n")]
+    Eol,
+}
+
+#[derive(Logos, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum TokenKind {
     #[token(",")]
     Comma,
     #[token(";")]
@@ -84,14 +93,13 @@ pub(crate) enum Token {
     WS,
     #[regex(r"#[^\n]*", logos::skip)]
     Comment,
-    #[token("\n", newline_callback)]
+    #[token("\n")]
     Eol,
 }
 
-/// Update the line count and the char index.
-fn newline_callback(lex: &mut logos::Lexer<Token>) {
-    lex.extras.0 += 1;
-    lex.extras.1 = lex.span().end;
+pub(crate) struct Token {
+    pub kind: TokenKind,
+    pub span: logos::Span,
 }
 
 #[cfg(test)]
@@ -101,15 +109,15 @@ mod tests {
     #[test]
     fn test() {
         let input = "let a = 1;###\n";
-        let mut lex = Token::lexer(input);
+        let mut lex = TokenKind::lexer(input);
 
         let expected = vec![
-            (Token::Let, "let"),
-            (Token::Ident, "a"),
-            (Token::Eq, "="),
-            (Token::DecInt, "1"),
-            (Token::Semi, ";"),
-            (Token::Eol, "\n"),
+            (TokenKind::Let, "let"),
+            (TokenKind::Ident, "a"),
+            (TokenKind::Eq, "="),
+            (TokenKind::DecInt, "1"),
+            (TokenKind::Semi, ";"),
+            (TokenKind::Eol, "\n"),
         ];
 
         let mut result = vec![];
