@@ -71,29 +71,6 @@ impl Display for BinOp {
     }
 }
 
-impl BinOp {
-    pub fn precedence(&self) -> u8 {
-        match self {
-            Self::Equal => 8,
-            Self::NotEqual => 8,
-            Self::GreaterThan => 7,
-            Self::LessThan => 7,
-            Self::GreaterThanOrEqual => 7,
-            Self::LessThanOrEqual => 7,
-            Self::Or => 6,
-            Self::Xor => 5,
-            Self::And => 4,
-            Self::ShiftLeft => 3,
-            Self::ShiftRight => 3,
-            Self::Plus => 2,
-            Self::Minus => 2,
-            Self::Times => 1,
-            Self::Divide => 1,
-            Self::Reminder => 1,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnaryOp {
     Minus,
