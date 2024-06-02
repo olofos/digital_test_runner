@@ -10,7 +10,7 @@ pub(crate) enum HeaderTokenKind {
     Eol,
 }
 
-#[derive(Logos, Clone, Debug, PartialEq, Eq)]
+#[derive(Logos, Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TokenKind {
     #[token(",")]
     Comma,
@@ -95,6 +95,8 @@ pub(crate) enum TokenKind {
     Comment,
     #[token("\n")]
     Eol,
+    Eof,
+    Error,
 }
 
 pub(crate) struct Token {
