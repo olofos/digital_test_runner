@@ -2,13 +2,6 @@ use crate::{expr::Expr, lexer::Lexer, lexer::TokenKind};
 use anyhow::Result;
 
 fn parse_expression(lex: &mut Lexer) -> Result<Expr> {
-    // let Some(peeked) = lex.peek() else {
-    //     match lex.next() {
-    //         Some(Ok(_)) => unreachable!(),
-    //         Some(Err(err)) => anyhow::bail!("Tokenizer error: {err:?}"),
-    //         None => anyhow::bail!("Unexpected EOF"),
-    //     }
-    // };
     match lex.peek() {
         TokenKind::DecInt | TokenKind::HexInt | TokenKind::OctInt | TokenKind::BinInt => {
             let tok = lex.get()?;
