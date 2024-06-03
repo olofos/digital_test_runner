@@ -104,7 +104,7 @@ pub enum Expr {
     },
     Func {
         name: String,
-        params: Vec<Expr>,
+        args: Vec<Expr>,
     },
 }
 
@@ -115,13 +115,13 @@ impl Display for Expr {
             Self::Variable(s) => write!(f, "{s}"),
             Self::BinOp { op, left, right } => write!(f, "({left} {op} {right})"),
             Self::UnaryOp { op, expr } => write!(f, "{op}{expr}"),
-            Self::Func { name, params } => {
-                let params = params
+            Self::Func { name, args } => {
+                let args = args
                     .iter()
                     .map(|p| format!("{p}"))
                     .collect::<Vec<_>>()
                     .join(",");
-                write!(f, "{name}({params})")
+                write!(f, "{name}({args})")
             }
         }
     }
@@ -164,25 +164,25 @@ impl Expr {
                     BinOp::Reminder => Ok(left % right),
                 }
             }
-            Self::Func { name, params } => match name.as_str() {
+            Self::Func { name, args } => match name.as_str() {
                 "random" => {
-                    if params.len() == 1 {
-                        let max = params[0].eval(ctx)?;
+                    if args.len() == 1 {
+                        let max = args[0].eval(ctx)?;
                         Ok(ctx.random(1..max))
                     } else {
-                        anyhow::bail!("The function 'random' takes one parameter")
+                        anyhow::bail!("The function 'random' takes one argument")
                     }
                 }
                 "ite" => {
-                    if params.len() == 3 {
-                        let test = params[0].eval(ctx)?;
+                    if args.len() == 3 {
+                        let test = args[0].eval(ctx)?;
                         if test == 0 {
-                            Ok(params[2].eval(ctx)?)
+                            Ok(args[2].eval(ctx)?)
                         } else {
-                            Ok(params[1].eval(ctx)?)
+                            Ok(args[1].eval(ctx)?)
                         }
                     } else {
-                        anyhow::bail!("The function 'lte' takes three parameters")
+                        anyhow::bail!("The function 'lte' takes three arguments")
                     }
                 }
                 "signExt" => anyhow::bail!("The function '{name}' is currently not implemented"),

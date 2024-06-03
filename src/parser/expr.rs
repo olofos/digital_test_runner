@@ -41,17 +41,17 @@ fn parse_factor(lex: &mut Lexer) -> Result<Expr> {
             };
             if lex.at(TokenKind::LParen) {
                 lex.skip();
-                let mut params = vec![];
+                let mut args = vec![];
                 while !lex.at(TokenKind::RParen) {
                     let expr = parse_expr(lex)?;
-                    params.push(expr);
+                    args.push(expr);
                     if lex.at(TokenKind::Comma) {
                         lex.skip();
                     } else if !lex.at(TokenKind::RParen) {
                         anyhow::bail!("Expected ',' or ')' but found '{:?}'", lex.peek());
                     }
                 }
-                Ok(Expr::Func { name, params })
+                Ok(Expr::Func { name, args })
             } else {
                 Ok(Expr::Variable(name))
             }
@@ -105,9 +105,9 @@ mod tests {
 
     #[rstest]
     #[case("abc", Expr::Variable("abc".into()))]
-    #[case("f()", Expr::Func { name: "f".into(), params: vec![] })]
-    #[case("f(1,2)", Expr::Func { name: "f".into(), params: vec![Expr::Number(1),Expr::Number(2)] })]
-    #[case("f(1,2,)", Expr::Func { name: "f".into(), params: vec![Expr::Number(1),Expr::Number(2)] })]
+    #[case("f()", Expr::Func { name: "f".into(), args: vec![] })]
+    #[case("f(1,2)", Expr::Func { name: "f".into(), args: vec![Expr::Number(1),Expr::Number(2)] })]
+    #[case("f(1,2,)", Expr::Func { name: "f".into(), args: vec![Expr::Number(1),Expr::Number(2)] })]
     fn identifier_works(#[case] input: &str, #[case] expected: Expr) {
         let mut lex = Lexer::new(input);
         let expr = parse_factor(&mut lex).unwrap();

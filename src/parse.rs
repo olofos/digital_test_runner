@@ -134,7 +134,7 @@ fn factor(i: Span) -> IResult<Span, Expr> {
                 identifier,
                 delimited(tag("("), separated_list0(tag(","), expr), tag(")")),
             ),
-            |(name, params)| Expr::Func { name, params },
+            |(name, args)| Expr::Func { name, args },
         ),
         map(identifier, Expr::Variable),
         delimited(tag("("), expr, tag(")")),

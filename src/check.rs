@@ -128,8 +128,8 @@ impl Expr {
             Expr::UnaryOp { op: _, expr } => {
                 expr.check(ctx)?;
             }
-            Expr::Func { name, params } => {
-                let Some(expected_param_len) =
+            Expr::Func { name, args } => {
+                let Some(expected_args_len) =
                     FUNC_TABLE.iter().find_map(
                         |(func_name, len)| if *func_name == name { Some(*len) } else { None },
                     )
@@ -137,14 +137,14 @@ impl Expr {
                     anyhow::bail!("Unknown function {name}");
                 };
 
-                if params.len() != expected_param_len {
+                if args.len() != expected_args_len {
                     anyhow::bail!(
-                        "Function {name} has {expected_param_len} parameters but got {}",
-                        params.len()
+                        "Function {name} has {expected_args_len} arguments but got {}",
+                        args.len()
                     );
                 }
 
-                for expr in params {
+                for expr in args {
                     expr.check(ctx)?;
                 }
             }
@@ -158,7 +158,7 @@ impl Expr {
             Expr::Variable(_) => false,
             Expr::BinOp { op: _, left, right } => left.is_const() && right.is_const(),
             Expr::UnaryOp { op: _, expr } => expr.is_const(),
-            Expr::Func { name: _, params: _ } => false,
+            Expr::Func { name: _, args: _ } => false,
         }
     }
 }
