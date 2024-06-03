@@ -25,7 +25,9 @@ pub(crate) enum TokenKind {
     #[token("/")]
     Slash,
     #[token("!")]
-    Negate,
+    LogicalNot,
+    #[token("~")]
+    BinaryNot,
     #[token("^")]
     Xor,
     #[token("&")]
