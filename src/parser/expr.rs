@@ -62,6 +62,12 @@ fn parse_factor(lex: &mut Lexer) -> Result<Expr> {
                 expr: Box::new(factor),
             })
         }
+        TokenKind::LParen => {
+            lex.skip();
+            let expr = parse_expr(lex)?;
+            lex.consume(TokenKind::RParen)?;
+            Ok(expr)
+        }
         _ => todo!(),
     }
 }
