@@ -103,6 +103,7 @@ pub(crate) enum TokenKind {
     Error,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Token {
     pub kind: TokenKind,
     pub span: logos::Span,

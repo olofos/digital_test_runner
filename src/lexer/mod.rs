@@ -26,7 +26,7 @@ impl<'a> Iterator for TokenIter<'a> {
                 self.eof = true;
                 Some(Token {
                     kind: TokenKind::Eof,
-                    span: 0..0,
+                    span: self.iter.span(),
                 })
             }
             None => None,
@@ -55,15 +55,11 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn get(&mut self) -> anyhow::Result<Token> {
-        let Some(mut tok) = self.lex.next() else {
+        let Some(tok) = self.lex.next() else {
             anyhow::bail!("Unexpected EOF on line {}", self.line);
         };
-        match tok.kind {
-            TokenKind::Eol => {
-                self.line += 1;
-            }
-            TokenKind::Error => tok.span = self.input.len()..self.input.len(),
-            _ => {}
+        if tok.kind == TokenKind::Eol {
+            self.line += 1;
         }
         Ok(tok)
     }
@@ -95,5 +91,33 @@ impl<'a> Lexer<'a> {
 
     pub fn text(&self, token: &Token) -> &'a str {
         &self.input[token.span.clone()]
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn token_iter_gives_correct_eof_span() {
+        let input = "a";
+        let iter = TokenKind::lexer(input).spanned();
+        let mut iter = TokenIter { iter, eof: false };
+
+        assert_eq!(
+            iter.next(),
+            Some(Token {
+                kind: TokenKind::Ident,
+                span: 0..1
+            })
+        );
+        assert_eq!(
+            iter.next(),
+            Some(Token {
+                kind: TokenKind::Eof,
+                span: 1..1
+            })
+        );
+        assert_eq!(iter.next(), None);
     }
 }
