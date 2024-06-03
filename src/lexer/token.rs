@@ -23,7 +23,9 @@ pub(crate) enum TokenKind {
     #[token("*")]
     Times,
     #[token("/")]
-    Slash,
+    Divide,
+    #[token("%")]
+    Reminder,
     #[token("!")]
     LogicalNot,
     #[token("~")]
@@ -35,21 +37,21 @@ pub(crate) enum TokenKind {
     #[token("|")]
     Or,
     #[token("<<")]
-    ShiftL,
+    ShiftLeft,
     #[token(">>")]
-    ShiftR,
+    ShiftRight,
     #[token("=")]
-    Eq,
+    Equal,
     #[token("!=")]
-    Neq,
+    NotEqual,
     #[token("<=")]
-    Leq,
+    LessThanOrEqual,
     #[token(">=")]
-    Geq,
+    GreaterThanOrEqual,
     #[token("<")]
-    Less,
+    LessThan,
     #[token(">")]
-    Greate,
+    GreaterThan,
     #[token("(")]
     LParen,
     #[token(")")]
@@ -118,7 +120,7 @@ mod tests {
         let expected = vec![
             (TokenKind::Let, "let"),
             (TokenKind::Ident, "a"),
-            (TokenKind::Eq, "="),
+            (TokenKind::Equal, "="),
             (TokenKind::DecInt, "1"),
             (TokenKind::Semi, ";"),
             (TokenKind::Eol, "\n"),

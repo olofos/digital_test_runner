@@ -26,7 +26,7 @@ impl BinOp {
 /// Used to parse strings of binary operators.
 /// We construct a separate tree of only the binary operators on the same level, so that we don't recurse into expressions in brackets
 #[derive(Debug, Clone)]
-enum BinOpTree {
+pub(crate) enum BinOpTree {
     Atom(Expr),
     BinOp {
         op: BinOp,
@@ -46,8 +46,28 @@ impl std::fmt::Display for BinOpTree {
     }
 }
 
+impl From<BinOpTree> for Expr {
+    fn from(value: BinOpTree) -> Self {
+        match value {
+            BinOpTree::Atom(expr) => expr,
+            BinOpTree::BinOp { op, left, right } => Expr::BinOp {
+                op,
+                left: Box::new(left.into()),
+                right: Box::new(right.into()),
+            },
+            BinOpTree::Dummy => unreachable!(),
+        }
+    }
+}
+
+impl From<Box<BinOpTree>> for Expr {
+    fn from(value: Box<BinOpTree>) -> Self {
+        (*value).into()
+    }
+}
+
 impl BinOpTree {
-    fn add(&mut self, new_op: BinOp, new_expr: Expr) {
+    pub fn add(&mut self, new_op: BinOp, new_expr: Expr) {
         if let Self::BinOp { op, left: _, right } = self {
             if new_op.precedence() < op.precedence() {
                 right.add(new_op, new_expr);
@@ -59,18 +79,6 @@ impl BinOpTree {
             op: new_op,
             left: Box::new(left),
             right: Box::new(Self::Atom(new_expr)),
-        }
-    }
-
-    fn into_expr(self) -> Expr {
-        match self {
-            Self::Atom(expr) => expr,
-            Self::BinOp { op, left, right } => Expr::BinOp {
-                op,
-                left: Box::new(left.into_expr()),
-                right: Box::new(right.into_expr()),
-            },
-            Self::Dummy => unreachable!(),
         }
     }
 }
