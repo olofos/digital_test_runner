@@ -75,7 +75,7 @@ impl Display for BinOp {
 pub enum UnaryOp {
     Minus,
     LogicalNot,
-    BitNot,
+    BinaryNot,
 }
 
 impl Display for UnaryOp {
@@ -83,7 +83,7 @@ impl Display for UnaryOp {
         let s = match self {
             Self::Minus => "-",
             Self::LogicalNot => "!",
-            Self::BitNot => "~",
+            Self::BinaryNot => "~",
         };
         write!(f, "{s}")
     }
@@ -137,7 +137,7 @@ impl Expr {
             Self::UnaryOp { op, expr } => {
                 let val = expr.eval(ctx)?;
                 match op {
-                    UnaryOp::BitNot => Ok(!val),
+                    UnaryOp::BinaryNot => Ok(!val),
                     UnaryOp::LogicalNot => Ok(if val == 0 { 1 } else { 0 }),
                     UnaryOp::Minus => Ok(-val),
                 }

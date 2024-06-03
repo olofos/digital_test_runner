@@ -125,7 +125,7 @@ fn factor(i: Span) -> IResult<Span, Expr> {
             expr: Box::new(expr),
         }),
         map(preceded(tag("~"), factor), |expr| Expr::UnaryOp {
-            op: UnaryOp::BitNot,
+            op: UnaryOp::BinaryNot,
             expr: Box::new(expr),
         }),
         map(number, Expr::Number),
