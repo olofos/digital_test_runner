@@ -108,11 +108,15 @@ mod tests {
 
     #[rstest]
     #[case("abc", Expr::Variable("abc".into()))]
+    #[case("A1", Expr::Variable("A1".into()))]
+    #[case("_", Expr::Variable("_".into()))]
+    #[case("_1_a_A", Expr::Variable("_1_a_A".into()))]
     #[case("f(1)", Expr::Func { name: "f".into(), args: vec![Expr::Number(1)] })]
     #[case("f(1,a)", Expr::Func { name: "f".into(), args: vec![Expr::Number(1),Expr::Variable("a".into())] })]
     fn identifier_works(#[case] input: &str, #[case] expected: Expr) {
         let mut lex = Lexer::new(input);
         let expr = parse_factor(&mut lex).unwrap();
         assert_eq!(expr, expected);
+        assert_eq!(lex.peek(), TokenKind::Eof);
     }
 }

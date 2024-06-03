@@ -81,7 +81,7 @@ pub(crate) enum TokenKind {
     Def,
     #[token("call")]
     Call,
-    #[regex(r"[A-Za-z]([A-Za-z]|_|\d)*")]
+    #[regex(r"[A-Za-z_]([A-Za-z]|_|\d)*")]
     Ident,
     #[regex("[1-9][0-9]*")]
     DecInt,
