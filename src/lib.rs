@@ -372,7 +372,7 @@ impl FromStr for TestCase<String, DynamicTest> {
     type Err = anyhow::Error;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
-        crate::parse::parse(input)
+        crate::parser::parse_testcase(input)
     }
 }
 
