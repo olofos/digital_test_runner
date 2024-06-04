@@ -16,7 +16,7 @@ pub(crate) fn parse_testcase(input: &str) -> anyhow::Result<TestCase<String, Dyn
         match kind {
             Ok(HeaderTokenKind::SignalName) => signals.push(lex.slice().into()),
             Ok(HeaderTokenKind::Eol) => {
-                if signals.len() > 0 {
+                if !signals.is_empty() {
                     break;
                 }
             }

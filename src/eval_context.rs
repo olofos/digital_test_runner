@@ -59,6 +59,7 @@ impl EvalContext {
         self.vars.pop_frame()
     }
 
+    #[allow(dead_code)]
     pub fn new_frame(&mut self) -> EvalContextGuard {
         self.push_frame();
         EvalContextGuard { ctx: self }

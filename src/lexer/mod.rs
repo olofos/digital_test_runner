@@ -47,10 +47,7 @@ impl<'a> From<logos::Lexer<'a, HeaderTokenKind>> for Lexer<'a> {
         let end = lex.span().end;
         let iter: logos::Lexer<TokenKind> = lex.morph();
         let iter = iter.spanned();
-        let lex = TokenIter {
-            iter: iter,
-            eof: false,
-        };
+        let lex = TokenIter { iter, eof: false };
         let lex = lex.peekable();
 
         let line = 1 + input[0..end].chars().filter(|c| c == &'\n').count();
