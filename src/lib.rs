@@ -4,7 +4,6 @@ mod eval_context;
 mod expr;
 mod framed_map;
 mod lexer;
-mod parse;
 mod parser;
 mod stmt;
 mod value;
