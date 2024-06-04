@@ -66,7 +66,7 @@ impl From<TokenKind> for BinOp {
     }
 }
 
-fn parse_expr(lex: &mut Lexer) -> Result<Expr> {
+pub(crate) fn parse_expr(lex: &mut Lexer) -> Result<Expr> {
     let first = parse_factor(lex)?;
     let mut tree = BinOpTree::Atom(first);
 
