@@ -79,19 +79,24 @@ pub(crate) fn parse_expr(lex: &mut Lexer) -> Result<Expr> {
     Ok(tree.into())
 }
 
+pub(crate) fn parse_number(lex: &mut Lexer) -> Result<i64> {
+    let tok = lex.get()?;
+    let literal = lex.text(&tok);
+    let (literal, radix) = match &tok.kind {
+        TokenKind::DecInt => (literal, 10),
+        TokenKind::HexInt => (&literal[2..], 16),
+        TokenKind::OctInt => (literal, 8),
+        TokenKind::BinInt => (&literal[2..], 2),
+        kind => anyhow::bail!("Expected a number but found {kind:?}"),
+    };
+    let n = i64::from_str_radix(literal, radix).unwrap();
+    Ok(n)
+}
+
 fn parse_factor(lex: &mut Lexer) -> Result<Expr> {
     match lex.peek() {
         TokenKind::DecInt | TokenKind::HexInt | TokenKind::OctInt | TokenKind::BinInt => {
-            let tok = lex.get()?;
-            let literal = lex.text(&tok);
-            let (literal, radix) = match &tok.kind {
-                TokenKind::DecInt => (literal, 10),
-                TokenKind::HexInt => (&literal[2..], 16),
-                TokenKind::OctInt => (literal, 8),
-                TokenKind::BinInt => (&literal[2..], 2),
-                _ => unreachable!(),
-            };
-            let n = i64::from_str_radix(literal, radix).unwrap();
+            let n = parse_number(lex)?;
             Ok(Expr::Number(n))
         }
         TokenKind::Ident => {
