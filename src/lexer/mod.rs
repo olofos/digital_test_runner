@@ -80,13 +80,13 @@ impl<'a> Lexer<'a> {
             .expect("skip should not be called after EOF is found");
     }
 
-    pub fn consume(&mut self, kind: TokenKind) -> anyhow::Result<()> {
+    pub fn expect(&mut self, kind: TokenKind) -> anyhow::Result<Token> {
         let tok = self.get()?;
         if tok.kind != kind {
             anyhow::bail!("Expected a {kind:?} token but found {:?}", tok.kind);
         }
 
-        Ok(())
+        Ok(tok)
     }
 
     pub fn text(&self, token: &Token) -> &'a str {

@@ -108,7 +108,7 @@ fn parse_factor(lex: &mut Lexer) -> Result<Expr> {
                         break;
                     }
                 }
-                lex.consume(TokenKind::RParen)?;
+                lex.expect(TokenKind::RParen)?;
                 Ok(Expr::Func { name, args })
             } else {
                 Ok(Expr::Variable(name))
@@ -125,7 +125,7 @@ fn parse_factor(lex: &mut Lexer) -> Result<Expr> {
         TokenKind::LParen => {
             lex.skip();
             let expr = parse_expr(lex)?;
-            lex.consume(TokenKind::RParen)?;
+            lex.expect(TokenKind::RParen)?;
             Ok(expr)
         }
         kind => Err(anyhow::anyhow!(
