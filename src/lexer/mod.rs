@@ -41,7 +41,26 @@ pub(crate) struct Lexer<'a> {
     pub line: usize,
 }
 
+impl<'a> From<logos::Lexer<'a, HeaderTokenKind>> for Lexer<'a> {
+    fn from(lex: logos::Lexer<'a, HeaderTokenKind>) -> Self {
+        let input = lex.source();
+        let end = lex.span().end;
+        let iter: logos::Lexer<TokenKind> = lex.morph();
+        let iter = iter.spanned();
+        let lex = TokenIter {
+            iter: iter,
+            eof: false,
+        };
+        let lex = lex.peekable();
+
+        let line = 1 + input[0..end].chars().filter(|c| c == &'\n').count();
+
+        Self { lex, input, line }
+    }
+}
+
 impl<'a> Lexer<'a> {
+    #[allow(dead_code)]
     pub fn new(input: &'a str) -> Self {
         let iter = TokenIter {
             iter: TokenKind::lexer(input).spanned(),
@@ -50,7 +69,7 @@ impl<'a> Lexer<'a> {
         Self {
             lex: iter.peekable(),
             input,
-            line: 0,
+            line: 1,
         }
     }
 

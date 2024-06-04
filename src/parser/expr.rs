@@ -141,6 +141,8 @@ fn parse_factor(lex: &mut Lexer) -> Result<Expr> {
 
 #[cfg(test)]
 mod tests {
+    use crate::eval_context::EvalContext;
+
     use super::*;
     use rstest::rstest;
 
@@ -219,5 +221,79 @@ mod tests {
         let mut lex = Lexer::new(input);
         let expr = parse_expr(&mut lex).unwrap();
         assert_eq!(format!("{expr}"), result);
+    }
+
+    #[rstest]
+    #[case("1+2", 3)]
+    #[case("1+2+3", 6)]
+    #[case("2*3", 6)]
+    #[case("1+2+3=2*3", 1)]
+    #[case("1+2+3=b*c", 1)]
+    fn eval_works(#[case] input: &str, #[case] value: i64) {
+        let mut lex = Lexer::new(input);
+        let expr = parse_expr(&mut lex).unwrap();
+        let mut ctx = EvalContext::new();
+        ctx.set("a", 1);
+        ctx.set("b", 2);
+        ctx.set("c", 3);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), value);
+    }
+
+    #[rstest]
+    #[case("7=3", 0)]
+    #[case("7!=3", 1)]
+    #[case("7<3", 0)]
+    #[case("7>3", 1)]
+    #[case("7<=3", 0)]
+    #[case("7>=3", 1)]
+    #[case("7<<3", 56)]
+    #[case("7>>3", 0)]
+    #[case("7+3", 10)]
+    #[case("7-3", 4)]
+    #[case("7*3", 21)]
+    #[case("7/3", 2)]
+    #[case("7%3", 1)]
+    fn eval_works_for_binop(#[case] input: &str, #[case] value: i64) {
+        let mut lex = Lexer::new(input);
+        let expr = parse_expr(&mut lex).unwrap();
+        let mut ctx = EvalContext::new();
+        ctx.set("a", 1);
+        ctx.set("b", 2);
+        ctx.set("c", 3);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), value);
+    }
+
+    #[rstest]
+    #[case("-3", -3)]
+    #[case("~3", !3)]
+    #[case("!3", 0)]
+    fn eval_works_for_unary_op(#[case] input: &str, #[case] value: i64) {
+        let mut lex = Lexer::new(input);
+        let expr = parse_expr(&mut lex).unwrap();
+        let mut ctx = EvalContext::new();
+        ctx.set("a", 1);
+        ctx.set("b", 2);
+        ctx.set("c", 3);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), value);
+    }
+
+    #[test]
+    fn eval_random_works() {
+        let mut lex = Lexer::new("random(10)");
+        let expr = parse_expr(&mut lex).unwrap();
+        let mut ctx = EvalContext::with_seed(0);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), 1);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), 6);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), 3);
+    }
+
+    #[rstest]
+    #[case("ite(0,2,3)", 3)]
+    #[case("ite(1,2,3)", 2)]
+    fn eval_ite_works(#[case] input: &str, #[case] value: i64) {
+        let mut lex = Lexer::new(input);
+        let expr = parse_expr(&mut lex).unwrap();
+        let mut ctx = EvalContext::new();
+        assert_eq!(expr.eval(&mut ctx).unwrap(), value);
     }
 }

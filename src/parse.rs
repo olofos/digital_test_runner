@@ -233,7 +233,7 @@ fn data_row(i: Span) -> IResult<Span, Stmt> {
     map(separated_list1(many1(one_of(" \t")), data_entry), |data| {
         Stmt::DataRow {
             data,
-            line: i.location_line(),
+            line: i.location_line() as usize,
         }
     })(i)
 }

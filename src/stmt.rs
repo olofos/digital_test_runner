@@ -11,7 +11,7 @@ pub(crate) enum Stmt {
     },
     DataRow {
         data: Vec<DataEntry>,
-        line: u32,
+        line: usize,
     },
     Loop {
         variable: String,
