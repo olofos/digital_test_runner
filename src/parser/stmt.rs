@@ -248,7 +248,7 @@ loop (b,2)
 0       (OR)      (a)      (b)      0 1          0         (a|b)         X    X    X
 0       (AND)     (a)      (b)      0 1          0         (a&b)         X    X    X
 0       (XOR)     (a)      (b)      0 1          0         (a^b)         X    X    X
-0       (ADD)     (a)      (b)      0 1          0         (a+b)         X    X    X
+repeat(3) 0 (ADD) (a)      (b)      0 1          0         (a+b)         X    X    X
 end loop
 end loop
 "#;
