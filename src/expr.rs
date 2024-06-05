@@ -127,6 +127,60 @@ impl Display for Expr {
     }
 }
 
+pub struct FuncTableEntry {
+    pub name: &'static str,
+    pub number_of_args: usize,
+    f: fn(&EvalContext, &[Expr]) -> anyhow::Result<i64>,
+}
+
+pub struct FuncTable {
+    entries: &'static [FuncTableEntry],
+}
+
+impl FuncTable {
+    pub fn get(&self, name: &str) -> Option<&FuncTableEntry> {
+        self.entries.iter().find(|entry| entry.name == name)
+    }
+}
+
+pub const FUNC_TABLE: FuncTable = FuncTable {
+    entries: &[
+        FuncTableEntry {
+            name: "random",
+            number_of_args: 1,
+            f: func_random,
+        },
+        FuncTableEntry {
+            name: "ite",
+            number_of_args: 3,
+            f: func_ite,
+        },
+        FuncTableEntry {
+            name: "signExt",
+            number_of_args: 2,
+            f: func_sign_ext,
+        },
+    ],
+};
+
+fn func_random(ctx: &EvalContext, args: &[Expr]) -> anyhow::Result<i64> {
+    let max = args[0].eval(ctx)?;
+    Ok(ctx.random(1..max))
+}
+
+fn func_ite(ctx: &EvalContext, args: &[Expr]) -> anyhow::Result<i64> {
+    let test = args[0].eval(ctx)?;
+    if test == 0 {
+        Ok(args[2].eval(ctx)?)
+    } else {
+        Ok(args[1].eval(ctx)?)
+    }
+}
+
+fn func_sign_ext(_ctx: &EvalContext, _args: &[Expr]) -> anyhow::Result<i64> {
+    todo!("signExt")
+}
+
 impl Expr {
     pub fn eval(&self, ctx: &EvalContext) -> anyhow::Result<i64> {
         match self {
@@ -164,30 +218,19 @@ impl Expr {
                     BinOp::Reminder => Ok(left % right),
                 }
             }
-            Self::Func { name, args } => match name.as_str() {
-                "random" => {
-                    if args.len() == 1 {
-                        let max = args[0].eval(ctx)?;
-                        Ok(ctx.random(1..max))
-                    } else {
-                        anyhow::bail!("The function 'random' takes one argument")
-                    }
+            Self::Func { name, args } => {
+                let Some(entry) = FUNC_TABLE.get(name) else {
+                    anyhow::bail!("Function '{name}' not found");
+                };
+                if entry.number_of_args != args.len() {
+                    anyhow::bail!(
+                        "The function '{name}' takes {} arguments, but {} were found",
+                        entry.number_of_args,
+                        args.len()
+                    );
                 }
-                "ite" => {
-                    if args.len() == 3 {
-                        let test = args[0].eval(ctx)?;
-                        if test == 0 {
-                            Ok(args[2].eval(ctx)?)
-                        } else {
-                            Ok(args[1].eval(ctx)?)
-                        }
-                    } else {
-                        anyhow::bail!("The function 'lte' takes three arguments")
-                    }
-                }
-                "signExt" => anyhow::bail!("The function '{name}' is currently not implemented"),
-                _ => anyhow::bail!("Unknown function '{name}'"),
-            },
+                (entry.f)(ctx, args)
+            }
         }
     }
 }
