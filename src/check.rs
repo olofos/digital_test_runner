@@ -1,4 +1,4 @@
-use crate::expr::Expr;
+use crate::expr::{Expr, FUNC_TABLE};
 use crate::framed_map::FramedSet;
 use crate::stmt::{DataEntry, Stmt};
 use crate::Signal;
@@ -112,8 +112,6 @@ impl Stmt {
     }
 }
 
-const FUNC_TABLE: &[(&str, usize)] = &[("ite", 3), ("random", 1), ("signExt", 1)];
-
 impl Expr {
     pub(crate) fn check(&self, ctx: &mut CheckContext) -> anyhow::Result<()> {
         match self {
@@ -130,9 +128,7 @@ impl Expr {
             }
             Expr::Func { name, args } => {
                 let Some(expected_args_len) =
-                    FUNC_TABLE.iter().find_map(
-                        |(func_name, len)| if *func_name == name { Some(*len) } else { None },
-                    )
+                    FUNC_TABLE.get(name).map(|entry| entry.number_of_args)
                 else {
                     anyhow::bail!("Unknown function {name}");
                 };
