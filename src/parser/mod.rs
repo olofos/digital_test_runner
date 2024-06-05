@@ -3,30 +3,119 @@ mod expr;
 mod stmt;
 
 use crate::{
-    lexer::{HeaderTokenKind, Lexer},
+    lexer::{HeaderTokenKind, Token, TokenIter, TokenKind},
     DynamicTest, TestCase,
 };
-use logos::Logos;
-use stmt::parse_stmt_block;
+use logos::{Lexer, Logos};
+use std::iter::Peekable;
 
-pub(crate) fn parse_testcase(input: &str) -> anyhow::Result<TestCase<String, DynamicTest>> {
-    let mut lex: logos::Lexer<HeaderTokenKind> = HeaderTokenKind::lexer(input);
-    let mut signals: Vec<String> = vec![];
-    while let Some(kind) = lex.next() {
-        match kind {
-            Ok(HeaderTokenKind::SignalName) => signals.push(lex.slice().into()),
-            Ok(HeaderTokenKind::Eol) => {
-                if !signals.is_empty() {
-                    break;
+struct HeaderParser<'a> {
+    input: &'a str,
+    iter: Lexer<'a, HeaderTokenKind>,
+    line: usize,
+}
+
+struct Parser<'a> {
+    input: &'a str,
+    iter: Peekable<TokenIter<'a>>,
+    line: usize,
+}
+
+impl<'a> From<HeaderParser<'a>> for Parser<'a> {
+    fn from(HeaderParser { input, iter, line }: HeaderParser<'a>) -> Self {
+        let iter = TokenIter::from(iter).peekable();
+        Parser { input, iter, line }
+    }
+}
+
+impl<'a> HeaderParser<'a> {
+    fn new(input: &'a str) -> Self {
+        let iter: Lexer<HeaderTokenKind> = HeaderTokenKind::lexer(input);
+        let line = 1;
+        Self { input, iter, line }
+    }
+
+    fn parse(&mut self) -> anyhow::Result<Vec<String>> {
+        let mut signals: Vec<String> = vec![];
+        loop {
+            match self.iter.next() {
+                Some(Ok(HeaderTokenKind::SignalName)) => signals.push(self.iter.slice().into()),
+                Some(Ok(HeaderTokenKind::Eol)) => {
+                    self.line += 1;
+                    if !signals.is_empty() {
+                        return Ok(signals);
+                    }
                 }
+                Some(Ok(HeaderTokenKind::WS)) => unreachable!(),
+                Some(Err(_)) => {
+                    anyhow::bail!(
+                        "Expected signal name, found {}",
+                        &self.input[self.iter.span()]
+                    )
+                }
+                None => anyhow::bail!("Unexpected EOF while parsing header"),
             }
-            Ok(HeaderTokenKind::WS) => unreachable!(),
-            Err(_) => unimplemented!(),
+        }
+    }
+}
+
+impl<'a> Parser<'a> {
+    #[allow(dead_code)]
+    pub fn new(input: &'a str) -> Self {
+        let iter = TokenIter::new(input);
+        Self {
+            iter: iter.peekable(),
+            input,
+            line: 1,
         }
     }
 
-    let mut lex: Lexer = lex.into();
-    let stmts = parse_stmt_block(&mut lex, None)?;
+    pub fn get(&mut self) -> anyhow::Result<Token> {
+        let Some(tok) = self.iter.next() else {
+            anyhow::bail!("Unexpected EOF on line {}", self.line);
+        };
+        if tok.kind == TokenKind::Eol {
+            self.line += 1;
+        }
+        Ok(tok)
+    }
+
+    pub fn peek(&mut self) -> TokenKind {
+        self.iter
+            .peek()
+            .expect("peek should not be called after EOF is found")
+            .kind
+    }
+
+    pub fn at(&mut self, kind: TokenKind) -> bool {
+        self.peek() == kind
+    }
+
+    pub fn skip(&mut self) {
+        self.get()
+            .expect("skip should not be called after EOF is found");
+    }
+
+    pub fn expect(&mut self, kind: TokenKind) -> anyhow::Result<Token> {
+        let tok = self.get()?;
+        if tok.kind != kind {
+            anyhow::bail!("Expected a {kind:?} token but found {:?}", tok.kind);
+        }
+
+        Ok(tok)
+    }
+
+    pub fn text(&self, token: &Token) -> &'a str {
+        &self.input[token.span.clone()]
+    }
+}
+
+pub(crate) fn parse_testcase(input: &str) -> anyhow::Result<TestCase<String, DynamicTest>> {
+    let mut parser = HeaderParser::new(input);
+    let signals = parser.parse()?;
+
+    let mut parser = Parser::from(parser);
+    let stmts = parser.parse_stmt_block(None)?;
 
     let test_case = TestCase {
         stmts,
@@ -63,7 +152,6 @@ end loop
 end loop
 
 ";
-        // let testcase: TestCase<String, DynamicTest> = input.parse().unwrap();
         let testcase: TestCase<String, DynamicTest> = parse_testcase(input).unwrap();
         assert_eq!(testcase.signals.len(), 11);
         assert_eq!(testcase.stmts.len(), 7);

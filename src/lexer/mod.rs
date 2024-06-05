@@ -1,14 +1,11 @@
 mod token;
 
-pub(crate) use token::{HeaderTokenKind, TokenKind};
+pub(crate) use token::{HeaderTokenKind, Token, TokenKind};
 
-use std::iter::Peekable;
+use logos::{Lexer, Logos, SpannedIter};
 
-use logos::Logos;
-use token::Token;
-
-struct TokenIter<'a> {
-    iter: logos::SpannedIter<'a, TokenKind>,
+pub(crate) struct TokenIter<'a> {
+    iter: SpannedIter<'a, TokenKind>,
     eof: bool,
 }
 
@@ -34,79 +31,24 @@ impl<'a> Iterator for TokenIter<'a> {
     }
 }
 
-#[derive()]
-pub(crate) struct Lexer<'a> {
-    lex: Peekable<TokenIter<'a>>,
-    input: &'a str,
-    pub line: usize,
-}
-
-impl<'a> From<logos::Lexer<'a, HeaderTokenKind>> for Lexer<'a> {
-    fn from(lex: logos::Lexer<'a, HeaderTokenKind>) -> Self {
-        let input = lex.source();
-        let end = lex.span().end;
-        let iter: logos::Lexer<TokenKind> = lex.morph();
-        let iter = iter.spanned();
-        let lex = TokenIter { iter, eof: false };
-        let lex = lex.peekable();
-
-        let line = 1 + input[0..end].chars().filter(|c| c == &'\n').count();
-
-        Self { lex, input, line }
-    }
-}
-
-impl<'a> Lexer<'a> {
-    #[allow(dead_code)]
-    pub fn new(input: &'a str) -> Self {
-        let iter = TokenIter {
+impl<'a> TokenIter<'a> {
+    pub(crate) fn new(input: &'a str) -> Self {
+        Self {
             iter: TokenKind::lexer(input).spanned(),
             eof: false,
-        };
-        Self {
-            lex: iter.peekable(),
-            input,
-            line: 1,
         }
     }
+}
 
-    pub fn get(&mut self) -> anyhow::Result<Token> {
-        let Some(tok) = self.lex.next() else {
-            anyhow::bail!("Unexpected EOF on line {}", self.line);
-        };
-        if tok.kind == TokenKind::Eol {
-            self.line += 1;
-        }
-        Ok(tok)
-    }
-
-    pub fn peek(&mut self) -> TokenKind {
-        self.lex
-            .peek()
-            .expect("peek should not be called after EOF is found")
-            .kind
-    }
-
-    pub fn at(&mut self, kind: TokenKind) -> bool {
-        self.peek() == kind
-    }
-
-    pub fn skip(&mut self) {
-        self.get()
-            .expect("skip should not be called after EOF is found");
-    }
-
-    pub fn expect(&mut self, kind: TokenKind) -> anyhow::Result<Token> {
-        let tok = self.get()?;
-        if tok.kind != kind {
-            anyhow::bail!("Expected a {kind:?} token but found {:?}", tok.kind);
-        }
-
-        Ok(tok)
-    }
-
-    pub fn text(&self, token: &Token) -> &'a str {
-        &self.input[token.span.clone()]
+impl<'a, T> From<Lexer<'a, T>> for TokenIter<'a>
+where
+    T: Logos<'a, Source = str>,
+    T::Extras: Into<()>,
+{
+    fn from(iter: Lexer<'a, T>) -> Self {
+        let iter = iter.morph();
+        let iter = iter.spanned();
+        Self { iter, eof: false }
     }
 }
 

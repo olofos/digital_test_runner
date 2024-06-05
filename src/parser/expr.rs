@@ -1,7 +1,8 @@
 use crate::{
     expr::{BinOp, Expr, UnaryOp},
-    lexer::{Lexer, TokenKind},
+    lexer::TokenKind,
     parser::binoptree::BinOpTree,
+    parser::Parser,
 };
 use anyhow::Result;
 
@@ -66,76 +67,78 @@ impl From<TokenKind> for BinOp {
     }
 }
 
-pub(crate) fn parse_expr(lex: &mut Lexer) -> Result<Expr> {
-    let first = parse_factor(lex)?;
-    let mut tree = BinOpTree::Atom(first);
+impl<'a> Parser<'a> {
+    pub(crate) fn parse_expr(&mut self) -> Result<Expr> {
+        let first = self.parse_factor()?;
+        let mut tree = BinOpTree::Atom(first);
 
-    while lex.peek().is_binary_op() {
-        let new_op = lex.get()?.kind.into();
-        let new_expr = parse_factor(lex)?;
-        tree.add(new_op, new_expr)
+        while self.peek().is_binary_op() {
+            let new_op = self.get()?.kind.into();
+            let new_expr = self.parse_factor()?;
+            tree.add(new_op, new_expr)
+        }
+
+        Ok(tree.into())
     }
 
-    Ok(tree.into())
-}
+    pub(crate) fn parse_number(&mut self) -> Result<i64> {
+        let tok = self.get()?;
+        let literal = self.text(&tok);
+        let (literal, radix) = match &tok.kind {
+            TokenKind::DecInt => (literal, 10),
+            TokenKind::HexInt => (&literal[2..], 16),
+            TokenKind::OctInt => (literal, 8),
+            TokenKind::BinInt => (&literal[2..], 2),
+            kind => anyhow::bail!("Expected a number but found {kind:?}"),
+        };
+        let n = i64::from_str_radix(literal, radix).unwrap();
+        Ok(n)
+    }
 
-pub(crate) fn parse_number(lex: &mut Lexer) -> Result<i64> {
-    let tok = lex.get()?;
-    let literal = lex.text(&tok);
-    let (literal, radix) = match &tok.kind {
-        TokenKind::DecInt => (literal, 10),
-        TokenKind::HexInt => (&literal[2..], 16),
-        TokenKind::OctInt => (literal, 8),
-        TokenKind::BinInt => (&literal[2..], 2),
-        kind => anyhow::bail!("Expected a number but found {kind:?}"),
-    };
-    let n = i64::from_str_radix(literal, radix).unwrap();
-    Ok(n)
-}
-
-fn parse_factor(lex: &mut Lexer) -> Result<Expr> {
-    match lex.peek() {
-        TokenKind::DecInt | TokenKind::HexInt | TokenKind::OctInt | TokenKind::BinInt => {
-            let n = parse_number(lex)?;
-            Ok(Expr::Number(n))
-        }
-        TokenKind::Ident => {
-            let name = {
-                let tok = lex.get()?;
-                lex.text(&tok).to_string()
-            };
-            if lex.at(TokenKind::LParen) {
-                let mut args = vec![];
-                loop {
-                    lex.skip();
-                    args.push(parse_expr(lex)?);
-                    if !lex.at(TokenKind::Comma) {
-                        break;
-                    }
-                }
-                lex.expect(TokenKind::RParen)?;
-                Ok(Expr::Func { name, args })
-            } else {
-                Ok(Expr::Variable(name))
+    fn parse_factor(&mut self) -> Result<Expr> {
+        match self.peek() {
+            TokenKind::DecInt | TokenKind::HexInt | TokenKind::OctInt | TokenKind::BinInt => {
+                let n = self.parse_number()?;
+                Ok(Expr::Number(n))
             }
+            TokenKind::Ident => {
+                let name = {
+                    let tok = self.get()?;
+                    self.text(&tok).to_string()
+                };
+                if self.at(TokenKind::LParen) {
+                    let mut args = vec![];
+                    loop {
+                        self.skip();
+                        args.push(self.parse_expr()?);
+                        if !self.at(TokenKind::Comma) {
+                            break;
+                        }
+                    }
+                    self.expect(TokenKind::RParen)?;
+                    Ok(Expr::Func { name, args })
+                } else {
+                    Ok(Expr::Variable(name))
+                }
+            }
+            kind @ (TokenKind::Minus | TokenKind::LogicalNot | TokenKind::BinaryNot) => {
+                self.skip();
+                let factor = self.parse_factor()?;
+                Ok(Expr::UnaryOp {
+                    op: UnaryOp::from(kind),
+                    expr: Box::new(factor),
+                })
+            }
+            TokenKind::LParen => {
+                self.skip();
+                let expr = self.parse_expr()?;
+                self.expect(TokenKind::RParen)?;
+                Ok(expr)
+            }
+            kind => Err(anyhow::anyhow!(
+                "Unexpected token {kind:?} when parsing factor"
+            )),
         }
-        kind @ (TokenKind::Minus | TokenKind::LogicalNot | TokenKind::BinaryNot) => {
-            lex.skip();
-            let factor = parse_factor(lex)?;
-            Ok(Expr::UnaryOp {
-                op: UnaryOp::from(kind),
-                expr: Box::new(factor),
-            })
-        }
-        TokenKind::LParen => {
-            lex.skip();
-            let expr = parse_expr(lex)?;
-            lex.expect(TokenKind::RParen)?;
-            Ok(expr)
-        }
-        kind => Err(anyhow::anyhow!(
-            "Unexpected token {kind:?} when parsing factor"
-        )),
     }
 }
 
@@ -156,17 +159,17 @@ mod tests {
     #[case("0b1010", 10)]
     #[case("0B1010", 10)]
     fn number_works(#[case] input: &str, #[case] num: i64) {
-        let mut lex = Lexer::new(input);
-        let expr = parse_factor(&mut lex).unwrap();
+        let mut parser = Parser::new(input);
+        let expr = parser.parse_factor().unwrap();
         assert_eq!(expr, Expr::Number(num));
-        assert_eq!(lex.peek(), TokenKind::Eof);
+        assert_eq!(parser.peek(), TokenKind::Eof);
     }
 
     #[test]
     fn unary_minus_works() {
         let input = "-2";
-        let mut lex = Lexer::new(input);
-        let expr = parse_factor(&mut lex).unwrap();
+        let mut parser = Parser::new(input);
+        let expr = parser.parse_factor().unwrap();
         assert_eq!(
             expr,
             Expr::UnaryOp {
@@ -174,7 +177,7 @@ mod tests {
                 expr: Box::new(Expr::Number(2))
             }
         );
-        assert_eq!(lex.peek(), TokenKind::Eof);
+        assert_eq!(parser.peek(), TokenKind::Eof);
     }
 
     #[rstest]
@@ -185,10 +188,10 @@ mod tests {
     #[case("f(1)", Expr::Func { name: "f".into(), args: vec![Expr::Number(1)] })]
     #[case("f(1,a)", Expr::Func { name: "f".into(), args: vec![Expr::Number(1),Expr::Variable("a".into())] })]
     fn identifier_works(#[case] input: &str, #[case] expected: Expr) {
-        let mut lex = Lexer::new(input);
-        let expr = parse_factor(&mut lex).unwrap();
+        let mut parser = Parser::new(input);
+        let expr = parser.parse_factor().unwrap();
         assert_eq!(expr, expected);
-        assert_eq!(lex.peek(), TokenKind::Eof);
+        assert_eq!(parser.peek(), TokenKind::Eof);
     }
 
     #[rstest]
@@ -218,8 +221,8 @@ mod tests {
     #[case("1/2", "(1 / 2)")]
     #[case("1%2", "(1 % 2)")]
     fn expr_works(#[case] input: &str, #[case] result: &str) {
-        let mut lex = Lexer::new(input);
-        let expr = parse_expr(&mut lex).unwrap();
+        let mut parser = Parser::new(input);
+        let expr = parser.parse_expr().unwrap();
         assert_eq!(format!("{expr}"), result);
     }
 
@@ -230,8 +233,8 @@ mod tests {
     #[case("1+2+3=2*3", 1)]
     #[case("1+2+3=b*c", 1)]
     fn eval_works(#[case] input: &str, #[case] value: i64) {
-        let mut lex = Lexer::new(input);
-        let expr = parse_expr(&mut lex).unwrap();
+        let mut parser = Parser::new(input);
+        let expr = parser.parse_expr().unwrap();
         let mut ctx = EvalContext::new();
         ctx.set("a", 1);
         ctx.set("b", 2);
@@ -254,8 +257,8 @@ mod tests {
     #[case("7/3", 2)]
     #[case("7%3", 1)]
     fn eval_works_for_binop(#[case] input: &str, #[case] value: i64) {
-        let mut lex = Lexer::new(input);
-        let expr = parse_expr(&mut lex).unwrap();
+        let mut parser = Parser::new(input);
+        let expr = parser.parse_expr().unwrap();
         let mut ctx = EvalContext::new();
         ctx.set("a", 1);
         ctx.set("b", 2);
@@ -268,8 +271,8 @@ mod tests {
     #[case("~3", !3)]
     #[case("!3", 0)]
     fn eval_works_for_unary_op(#[case] input: &str, #[case] value: i64) {
-        let mut lex = Lexer::new(input);
-        let expr = parse_expr(&mut lex).unwrap();
+        let mut parser = Parser::new(input);
+        let expr = parser.parse_expr().unwrap();
         let mut ctx = EvalContext::new();
         ctx.set("a", 1);
         ctx.set("b", 2);
@@ -279,8 +282,8 @@ mod tests {
 
     #[test]
     fn eval_random_works() {
-        let mut lex = Lexer::new("random(10)");
-        let expr = parse_expr(&mut lex).unwrap();
+        let mut parser = Parser::new("random(10)");
+        let expr = parser.parse_expr().unwrap();
         let mut ctx = EvalContext::with_seed(0);
         assert_eq!(expr.eval(&mut ctx).unwrap(), 1);
         assert_eq!(expr.eval(&mut ctx).unwrap(), 6);
@@ -291,8 +294,8 @@ mod tests {
     #[case("ite(0,2,3)", 3)]
     #[case("ite(1,2,3)", 2)]
     fn eval_ite_works(#[case] input: &str, #[case] value: i64) {
-        let mut lex = Lexer::new(input);
-        let expr = parse_expr(&mut lex).unwrap();
+        let mut parser = Parser::new(input);
+        let expr = parser.parse_expr().unwrap();
         let mut ctx = EvalContext::new();
         assert_eq!(expr.eval(&mut ctx).unwrap(), value);
     }
