@@ -15,37 +15,18 @@ use eval_context::EvalContext;
 use std::{fmt::Display, marker::PhantomData, str::FromStr};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SignalType {
+pub enum SignalDirection {
     Input { default: InputValue },
     Output,
-    Bidirectional { default: InputValue },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EntryDirection {
-    Input,
-    Output,
+    BidirectionalInput { default: InputValue },
+    BidirectionalOutput,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Signal {
     pub name: String,
     pub bits: u8,
-    pub typ: SignalType,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SignalEntry {
-    pub name: String,
-    pub bits: u8,
-    pub typ: SignalType,
-    pub dir: EntryDirection,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EntryDescription<'a> {
-    signal: &'a Signal,
-    dir: EntryDirection,
+    pub dir: SignalDirection,
 }
 
 mod private {
@@ -74,7 +55,7 @@ pub struct TestCase<T, S: TestType> {
 pub struct TestCaseIterator<'a> {
     iter: crate::stmt::StmtIterator<'a>,
     ctx: EvalContext,
-    signals: &'a Vec<SignalEntry>,
+    signals: &'a Vec<Signal>,
     prev: Option<Vec<stmt::DataEntry>>,
     cache: Vec<Vec<stmt::DataEntry>>,
 }
@@ -86,19 +67,19 @@ pub struct DataRow<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataEntry<'a, T> {
-    pub signal: &'a SignalEntry,
+    pub signal: &'a Signal,
     pub value: T,
     pub changed: bool,
 }
 
-impl SignalType {
-    pub(crate) fn try_into_bidirectional(self) -> anyhow::Result<Self> {
+impl SignalDirection {
+    pub(crate) fn into_bidirectional(self) -> Self {
         match self {
-            SignalType::Input { default } => Ok(SignalType::Bidirectional { default }),
-            SignalType::Output => Err(anyhow::anyhow!(
-                "An output signal cannot be converted to a bidirectional signal"
-            )),
-            SignalType::Bidirectional { .. } => Ok(self),
+            SignalDirection::Input { default } => SignalDirection::BidirectionalInput { default },
+            SignalDirection::Output => SignalDirection::BidirectionalOutput,
+            SignalDirection::BidirectionalInput { .. } | SignalDirection::BidirectionalOutput => {
+                self
+            }
         }
     }
 }
@@ -161,19 +142,20 @@ impl<'a> DataRow<'a> {
 }
 
 impl<'a> DataEntry<'a, Value> {
-    fn new(entry: stmt::DataEntry, signal: &'a SignalEntry, changed: bool) -> Self {
-        let value = match signal.dir {
-            EntryDirection::Input => Value::InputValue(match entry {
+    fn new(entry: stmt::DataEntry, signal: &'a Signal, changed: bool) -> Self {
+        let value = if signal.is_input() {
+            Value::InputValue(match entry {
                 stmt::DataEntry::Number(n) => InputValue::Value(n & ((1 << signal.bits) - 1)),
                 stmt::DataEntry::Z => InputValue::Z,
                 _ => unreachable!(),
-            }),
-            EntryDirection::Output => Value::OutputValue(match entry {
+            })
+        } else {
+            Value::OutputValue(match entry {
                 stmt::DataEntry::Number(n) => OutputValue::Value(n & ((1 << signal.bits) - 1)),
                 stmt::DataEntry::Z => OutputValue::Z,
                 stmt::DataEntry::X => OutputValue::X,
                 _ => unreachable!(),
-            }),
+            })
         };
         Self {
             signal,
@@ -278,35 +260,26 @@ impl TestCase<String, DynamicTest> {
         src.parse()
     }
 
-    pub fn with_signals(
-        self,
-        signals: &[Signal],
-    ) -> anyhow::Result<TestCase<SignalEntry, DynamicTest>> {
+    pub fn with_signals(self, signals: &[Signal]) -> anyhow::Result<TestCase<Signal, DynamicTest>> {
         let signals = self
             .signals
             .into_iter()
             .map(|sig_name| {
                 if let Some(input_sig_name) = sig_name.strip_suffix("_out") {
-                    let Some(signal) = signals
+                    let Some(mut signal) = signals
                         .iter()
                         .find(|sig| sig.name == input_sig_name && sig.is_bidirectional())
                         .cloned()
                     else {
                         anyhow::bail!("Could not find signal {input_sig_name} correspoding to output {sig_name}");
                     };
-                    Ok(SignalEntry { name: signal.name, bits: signal.bits, typ: signal.typ, dir: EntryDirection::Output })
+                    signal.dir = SignalDirection::BidirectionalOutput;
+                    Ok(signal)
                 } else {
                     signals
                         .iter()
                         .find(|sig| sig.name == sig_name)
                         .cloned()
-                        .map(|signal| {
-                            let dir = match signal.typ {
-                                SignalType::Output => EntryDirection::Output,
-                                SignalType::Input { .. } | SignalType::Bidirectional { .. } => EntryDirection::Input
-                            };
-                            SignalEntry { name: signal.name, bits: signal.bits, typ: signal.typ, dir }
-                        })
                         .ok_or(anyhow::anyhow!("Could not find signal {sig_name}"))
                 }
             })
@@ -322,11 +295,11 @@ impl TestCase<String, DynamicTest> {
     }
 }
 
-impl TestCase<SignalEntry, DynamicTest> {
+impl TestCase<Signal, DynamicTest> {
     pub fn try_from_dig(
         dig: &crate::dig::DigFile,
         n: usize,
-    ) -> anyhow::Result<TestCase<SignalEntry, DynamicTest>> {
+    ) -> anyhow::Result<TestCase<Signal, DynamicTest>> {
         if n >= dig.test_cases.len() {
             anyhow::bail!(
                 "Trying to load test case #{n}, but file only contains {} test cases",
@@ -336,7 +309,7 @@ impl TestCase<SignalEntry, DynamicTest> {
         TestCase::try_from_test(&dig.test_cases[n].test_data)?.with_signals(&dig.signals)
     }
 
-    pub fn get_static(self) -> anyhow::Result<TestCase<SignalEntry, StaticTest>> {
+    pub fn get_static(self) -> anyhow::Result<TestCase<Signal, StaticTest>> {
         if self.stmts.check(&self.signals)? {
             return Ok(TestCase {
                 stmts: self.stmts,
@@ -348,11 +321,11 @@ impl TestCase<SignalEntry, DynamicTest> {
     }
 }
 
-impl TestCase<SignalEntry, StaticTest> {
+impl TestCase<Signal, StaticTest> {
     pub fn try_from_static_dig(
         dig: &crate::dig::DigFile,
         n: usize,
-    ) -> anyhow::Result<TestCase<SignalEntry, StaticTest>> {
+    ) -> anyhow::Result<TestCase<Signal, StaticTest>> {
         TestCase::try_from_dig(dig, n)?.get_static()
     }
 
@@ -371,14 +344,16 @@ impl TestCase<SignalEntry, StaticTest> {
             .signals
             .iter()
             .map(|signal| {
-                let entry = match &signal.typ {
-                    SignalType::Input { default } => match default {
+                let entry = match &signal.dir {
+                    SignalDirection::Input { default }
+                    | SignalDirection::BidirectionalInput { default } => match default {
                         InputValue::Value(n) => stmt::DataEntry::Number(*n),
                         InputValue::Z => stmt::DataEntry::Z,
                     },
 
-                    SignalType::Output => stmt::DataEntry::X,
-                    SignalType::Bidirectional { default: _ } => todo!(),
+                    SignalDirection::Output | SignalDirection::BidirectionalOutput => {
+                        stmt::DataEntry::X
+                    }
                 };
                 DataEntry::new(entry, signal, true)
             })
@@ -388,7 +363,7 @@ impl TestCase<SignalEntry, StaticTest> {
     }
 }
 
-impl<'a> IntoIterator for &'a TestCase<SignalEntry, StaticTest> {
+impl<'a> IntoIterator for &'a TestCase<Signal, StaticTest> {
     type Item = DataRow<'a>;
 
     type IntoIter = TestCaseIterator<'a>;
@@ -411,7 +386,7 @@ impl Signal {
         Self {
             name: name.into(),
             bits,
-            typ: SignalType::Output,
+            dir: SignalDirection::Output,
         }
     }
 
@@ -419,22 +394,30 @@ impl Signal {
         Self {
             name: name.into(),
             bits,
-            typ: SignalType::Input { default },
+            dir: SignalDirection::Input { default },
         }
     }
 
     pub fn is_bidirectional(&self) -> bool {
-        matches!(self.typ, SignalType::Bidirectional { default: _ })
+        matches!(
+            self.dir,
+            SignalDirection::BidirectionalInput { default: _ }
+                | SignalDirection::BidirectionalOutput
+        )
     }
-}
 
-impl SignalEntry {
     pub fn is_output(&self) -> bool {
-        matches!(self.dir, EntryDirection::Output)
+        matches!(
+            self.dir,
+            SignalDirection::Output | SignalDirection::BidirectionalOutput
+        )
     }
 
     pub fn is_input(&self) -> bool {
-        matches!(self.dir, EntryDirection::Input)
+        matches!(
+            self.dir,
+            SignalDirection::Input { .. } | SignalDirection::BidirectionalInput { .. }
+        )
     }
 }
 
@@ -449,28 +432,15 @@ impl<'a> Display for DataEntry<'a, Value> {
 
 impl Display for Signal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.typ {
-            SignalType::Input { default } => {
+        match &self.dir {
+            SignalDirection::Input { default } => {
                 write!(f, "{}({}:{})", self.name, self.bits, default)
             }
-            SignalType::Output => write!(f, "{}({})", self.name, self.bits),
-            SignalType::Bidirectional { default } => {
+            SignalDirection::Output => write!(f, "{}({})", self.name, self.bits),
+            SignalDirection::BidirectionalInput { default } => {
                 write!(f, "{}[{}:{}]", self.name, self.bits, default)
             }
-        }
-    }
-}
-
-impl Display for SignalEntry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.typ {
-            SignalType::Input { default } => {
-                write!(f, "{}({}:{})", self.name, self.bits, default)
-            }
-            SignalType::Output => write!(f, "{}({})", self.name, self.bits),
-            SignalType::Bidirectional { default } => {
-                write!(f, "{}[{}:{}]", self.name, self.bits, default)
-            }
+            SignalDirection::BidirectionalOutput => write!(f, "{}[{}]", self.name, self.bits),
         }
     }
 }
@@ -524,7 +494,7 @@ end loop
             .map(|name| Signal {
                 name: String::from(name),
                 bits: 1,
-                typ: SignalType::Input {
+                dir: SignalDirection::Input {
                     default: InputValue::Value(0),
                 },
             });
@@ -533,7 +503,7 @@ end loop
             .map(|name| Signal {
                 name: String::from(name),
                 bits: 1,
-                typ: SignalType::Output,
+                dir: SignalDirection::Output,
             });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let testcase = TestCase::try_from_test(input)?
@@ -558,7 +528,7 @@ Z 1";
         let known_inputs = ["A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            typ: SignalType::Bidirectional {
+            dir: SignalDirection::BidirectionalInput {
                 default: InputValue::Value(0),
             },
         });
@@ -610,14 +580,14 @@ CLK IN OUT
         let known_inputs = ["CLK", "IN"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            typ: SignalType::Input {
+            dir: SignalDirection::Input {
                 default: InputValue::Value(0),
             },
         });
         let known_outputs = ["OUT"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            typ: SignalType::Output,
+            dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let testcase = TestCase::try_from_test(input)?
@@ -653,14 +623,14 @@ A B OUT
         let known_inputs = ["A", "B"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            typ: SignalType::Input {
+            dir: SignalDirection::Input {
                 default: InputValue::Value(0),
             },
         });
         let known_outputs = ["OUT"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            typ: SignalType::Output,
+            dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let testcase = TestCase::try_from_test(input)?
@@ -698,14 +668,14 @@ CLK A OUT
         let known_inputs = ["CLK", "A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            typ: SignalType::Input {
+            dir: SignalDirection::Input {
                 default: InputValue::Value(0),
             },
         });
         let known_outputs = ["OUT"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            typ: SignalType::Output,
+            dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let testcase = TestCase::try_from_test(input)?

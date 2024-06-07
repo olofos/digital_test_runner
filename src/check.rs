@@ -1,21 +1,21 @@
 use crate::expr::{Expr, FUNC_TABLE};
 use crate::framed_map::FramedSet;
 use crate::stmt::{DataEntry, Stmt};
-use crate::SignalEntry;
+use crate::Signal;
 
 #[derive(Debug)]
 pub(crate) struct CheckContext<'a> {
     vars: FramedSet<String>,
-    signals: &'a [SignalEntry],
+    signals: &'a [Signal],
     pub is_static: bool,
 }
 
 pub trait TestCheck<'a> {
-    fn check(&self, signals: &'a [SignalEntry]) -> anyhow::Result<bool>;
+    fn check(&self, signals: &'a [Signal]) -> anyhow::Result<bool>;
 }
 
 impl<'a> TestCheck<'a> for Vec<Stmt> {
-    fn check(&self, signals: &'a [SignalEntry]) -> anyhow::Result<bool> {
+    fn check(&self, signals: &'a [Signal]) -> anyhow::Result<bool> {
         let mut ctx = CheckContext::new(signals);
         for stmt in self {
             stmt.check(&mut ctx)?;
@@ -25,7 +25,7 @@ impl<'a> TestCheck<'a> for Vec<Stmt> {
 }
 
 impl<'a> CheckContext<'a> {
-    pub fn new(signals: &'a [SignalEntry]) -> Self {
+    pub fn new(signals: &'a [Signal]) -> Self {
         Self {
             vars: FramedSet::new(),
             signals,
@@ -165,21 +165,19 @@ mod tests {
     use crate::{InputValue, TestCase};
     use rstest::rstest;
 
-    fn output_signal(name: impl Into<String>, bits: u8) -> SignalEntry {
-        SignalEntry {
+    fn output_signal(name: impl Into<String>, bits: u8) -> Signal {
+        Signal {
             name: name.into(),
             bits,
-            typ: crate::SignalType::Output,
-            dir: crate::EntryDirection::Output,
+            dir: crate::SignalDirection::Output,
         }
     }
 
-    fn input_signal(name: impl Into<String>, bits: u8, default: InputValue) -> SignalEntry {
-        SignalEntry {
+    fn input_signal(name: impl Into<String>, bits: u8, default: InputValue) -> Signal {
+        Signal {
             name: name.into(),
             bits,
-            typ: crate::SignalType::Input { default },
-            dir: crate::EntryDirection::Input,
+            dir: crate::SignalDirection::Input { default },
         }
     }
 
