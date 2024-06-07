@@ -1,4 +1,4 @@
-use digital_test_runner::{dig, InputValue, SignalDirection, TestCase};
+use digital_test_runner::{dig, InputValue, SignalType, TestCase};
 
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args();
@@ -21,8 +21,8 @@ fn main() -> anyhow::Result<()> {
             signal.bits,
             if signal.bits == 1 { "bit" } else { "bits" }
         );
-        match &signal.dir {
-            SignalDirection::Input { default } | SignalDirection::Bidirectional { default } => {
+        match &signal.typ {
+            SignalType::Input { default } | SignalType::Bidirectional { default } => {
                 println!(
                     ", {})",
                     match default {
@@ -36,7 +36,7 @@ fn main() -> anyhow::Result<()> {
                     },
                 );
             }
-            SignalDirection::Output => println!(")"),
+            SignalType::Output => println!(")"),
         }
     }
     println!();

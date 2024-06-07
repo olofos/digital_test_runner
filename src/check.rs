@@ -1,21 +1,21 @@
 use crate::expr::{Expr, FUNC_TABLE};
 use crate::framed_map::FramedSet;
 use crate::stmt::{DataEntry, Stmt};
-use crate::Signal;
+use crate::SignalEntry;
 
 #[derive(Debug)]
 pub(crate) struct CheckContext<'a> {
     vars: FramedSet<String>,
-    signals: &'a [Signal],
+    signals: &'a [SignalEntry],
     pub is_static: bool,
 }
 
 pub trait TestCheck<'a> {
-    fn check(&self, signals: &'a [Signal]) -> anyhow::Result<bool>;
+    fn check(&self, signals: &'a [SignalEntry]) -> anyhow::Result<bool>;
 }
 
 impl<'a> TestCheck<'a> for Vec<Stmt> {
-    fn check(&self, signals: &'a [Signal]) -> anyhow::Result<bool> {
+    fn check(&self, signals: &'a [SignalEntry]) -> anyhow::Result<bool> {
         let mut ctx = CheckContext::new(signals);
         for stmt in self {
             stmt.check(&mut ctx)?;
@@ -25,7 +25,7 @@ impl<'a> TestCheck<'a> for Vec<Stmt> {
 }
 
 impl<'a> CheckContext<'a> {
-    pub fn new(signals: &'a [Signal]) -> Self {
+    pub fn new(signals: &'a [SignalEntry]) -> Self {
         Self {
             vars: FramedSet::new(),
             signals,
@@ -165,6 +165,24 @@ mod tests {
     use crate::{InputValue, TestCase};
     use rstest::rstest;
 
+    fn output_signal(name: impl Into<String>, bits: u8) -> SignalEntry {
+        SignalEntry {
+            name: name.into(),
+            bits,
+            typ: crate::SignalType::Output,
+            dir: crate::EntryDirection::Output,
+        }
+    }
+
+    fn input_signal(name: impl Into<String>, bits: u8, default: InputValue) -> SignalEntry {
+        SignalEntry {
+            name: name.into(),
+            bits,
+            typ: crate::SignalType::Input { default },
+            dir: crate::EntryDirection::Input,
+        }
+    }
+
     #[rstest]
     #[case("A B\n1 1 1\n")]
     #[case("A B\nbits(2,11) 1\n")]
@@ -179,8 +197,8 @@ mod tests {
     fn check_returns_error(#[case] input: &str) {
         let testcase: TestCase<_, _> = input.parse().unwrap();
         let signals = vec![
-            Signal::input("A", 1, InputValue::Value(1)),
-            Signal::output("B", 1),
+            input_signal("A", 1, InputValue::Value(1)),
+            output_signal("B", 1),
         ];
 
         let mut ctx = CheckContext::new(&signals);
@@ -208,8 +226,8 @@ C 1
 "#;
         let testcase: TestCase<_, _> = input.parse().unwrap();
         let signals = vec![
-            Signal::input("A", 1, InputValue::Value(1)),
-            Signal::output("B", 1),
+            input_signal("A", 1, InputValue::Value(1)),
+            output_signal("B", 1),
         ];
 
         let mut ctx = CheckContext::new(&signals);
@@ -228,8 +246,8 @@ end loop
 ";
         let testcase: TestCase<_, _> = input.parse().unwrap();
         let signals = vec![
-            Signal::input("A", 1, InputValue::Value(1)),
-            Signal::output("B", 1),
+            input_signal("A", 1, InputValue::Value(1)),
+            output_signal("B", 1),
         ];
 
         let mut ctx = CheckContext::new(&signals);
@@ -250,8 +268,8 @@ end loop
 ";
         let testcase: TestCase<_, _> = input.parse().unwrap();
         let signals = vec![
-            Signal::input("A", 1, InputValue::Value(1)),
-            Signal::output("B", 1),
+            input_signal("A", 1, InputValue::Value(1)),
+            output_signal("B", 1),
         ];
 
         let mut ctx = CheckContext::new(&signals);

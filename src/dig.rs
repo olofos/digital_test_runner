@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{parser::HeaderParser, InputValue, Signal, SignalDirection};
+use crate::{parser::HeaderParser, InputValue, Signal, SignalType};
 
 #[derive(Debug, Clone)]
 pub struct TestCaseDescription {
@@ -82,7 +82,7 @@ pub fn parse(input: &str) -> anyhow::Result<DigFile> {
         .map(|(name, bits)| Signal {
             name: name.to_string(),
             bits,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         });
 
     let inputs_signals = visual_elements(&doc, "In")
@@ -98,7 +98,7 @@ pub fn parse(input: &str) -> anyhow::Result<DigFile> {
         .map(|(name, bits, default)| Signal {
             name: name.to_string(),
             bits,
-            dir: SignalDirection::Input { default },
+            typ: SignalType::Input { default },
         });
 
     let signals = Vec::from_iter(inputs_signals.chain(output_signals));
@@ -155,11 +155,9 @@ pub fn parse(input: &str) -> anyhow::Result<DigFile> {
             .iter_mut()
             .find(|sig| sig.name == name)
             .expect("We already checked that all test signals appear in the circuit");
-        let dir = std::mem::replace(&mut sig.dir, SignalDirection::Output);
-        sig.dir = dir.to_bidirectional()?;
+        let dir = std::mem::replace(&mut sig.typ, SignalType::Output);
+        sig.typ = dir.try_into_bidirectional()?;
     }
-
-    // println!("{signal_names:?}");
 
     Ok(DigFile {
         signals,
