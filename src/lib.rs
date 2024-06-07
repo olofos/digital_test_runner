@@ -65,8 +65,7 @@ pub struct DataRow<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataEntry<'a, T> {
-    pub name: &'a str,
-    pub bits: u8,
+    pub signal: &'a Signal,
     pub value: T,
     pub changed: bool,
 }
@@ -99,8 +98,7 @@ impl<'a> DataRow<'a> {
     pub fn inputs(&self) -> impl Iterator<Item = DataEntry<'_, InputValue>> {
         self.iter().filter_map(|entry| match entry.value {
             Value::InputValue(value) => Some(DataEntry {
-                name: entry.name,
-                bits: entry.bits,
+                signal: entry.signal,
                 changed: entry.changed,
                 value,
             }),
@@ -115,8 +113,7 @@ impl<'a> DataRow<'a> {
     pub fn outputs(&self) -> impl Iterator<Item = DataEntry<'_, OutputValue>> {
         self.iter().filter_map(|entry| match entry.value {
             Value::OutputValue(value) => Some(DataEntry {
-                name: entry.name,
-                bits: entry.bits,
+                signal: entry.signal,
                 changed: entry.changed,
                 value,
             }),
@@ -146,8 +143,7 @@ impl<'a> DataEntry<'a, Value> {
             }),
         };
         Self {
-            name: &signal.name,
-            bits: signal.bits,
+            signal,
             value,
             changed,
         }
@@ -517,10 +513,10 @@ Z 1";
         let result: Vec<DataRow> = testcase.into_iter().collect();
 
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0].entries[0].name, "A");
-        assert_eq!(result[0].entries[1].name, "A");
-        assert_eq!(result[1].entries[0].name, "A");
-        assert_eq!(result[1].entries[1].name, "A");
+        assert_eq!(result[0].entries[0].signal, &known_signals[0]);
+        assert_eq!(result[0].entries[1].signal, &known_signals[0]);
+        assert_eq!(result[1].entries[0].signal, &known_signals[0]);
+        assert_eq!(result[1].entries[1].signal, &known_signals[0]);
 
         assert_eq!(
             result[0].entries[0].value,
