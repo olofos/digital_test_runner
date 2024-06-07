@@ -1,4 +1,6 @@
-use crate::{InputValue, Signal, SignalDirection};
+use std::collections::HashSet;
+
+use crate::{parser::HeaderParser, InputValue, Signal, SignalDirection};
 
 #[derive(Debug, Clone)]
 pub struct TestCaseDescription {
@@ -122,8 +124,59 @@ pub fn parse(input: &str) -> anyhow::Result<DigFile> {
         })
         .collect::<Vec<_>>();
 
+    let mut test_signal_names: HashSet<String> = HashSet::new();
+    let mut bidirectional: HashSet<String> = HashSet::new();
+    for test_case in &test_cases {
+        for name in HeaderParser::new(&test_case.test_data).parse()? {
+            if let Some(stripped_name) = name.strip_suffix("_out") {
+                let stripped_name = stripped_name.to_string();
+                bidirectional.insert(stripped_name.clone());
+                test_signal_names.insert(stripped_name);
+            } else {
+                test_signal_names.insert(name);
+            }
+        }
+    }
+
+    let signal_names: HashSet<String> = signals.iter().map(|s| s.name.clone()).collect();
+
+    if !test_signal_names.is_subset(&signal_names) {
+        let missing = test_signal_names
+            .difference(&signal_names)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ");
+        anyhow::bail!("Signals {missing} found in tests but not found in circuit");
+    }
+
+    let mut signals = signals;
+    for name in bidirectional {
+        let sig = signals
+            .iter_mut()
+            .find(|sig| sig.name == name)
+            .expect("We already checked that all test signals appear in the circuit");
+        let dir = std::mem::replace(&mut sig.dir, SignalDirection::Output);
+        sig.dir = dir.to_bidirectional()?;
+    }
+
+    // println!("{signal_names:?}");
+
     Ok(DigFile {
         signals,
         test_cases,
     })
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test() {
+        let input =
+            std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/74779.dig"))
+                .unwrap();
+        let dig: DigFile = parse(&input).unwrap();
+        dbg!(dig.signals);
+    }
 }

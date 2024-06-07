@@ -22,7 +22,7 @@ fn main() -> anyhow::Result<()> {
             if signal.bits == 1 { "bit" } else { "bits" }
         );
         match &signal.dir {
-            SignalDirection::Input { default } => {
+            SignalDirection::Input { default } | SignalDirection::Bidirectional { default } => {
                 println!(
                     ", {})",
                     match default {

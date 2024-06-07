@@ -9,7 +9,7 @@ use crate::{
 use logos::{Lexer, Logos};
 use std::iter::Peekable;
 
-struct HeaderParser<'a> {
+pub(crate) struct HeaderParser<'a> {
     input: &'a str,
     iter: Lexer<'a, HeaderTokenKind>,
     line: usize,
@@ -29,13 +29,13 @@ impl<'a> From<HeaderParser<'a>> for Parser<'a> {
 }
 
 impl<'a> HeaderParser<'a> {
-    fn new(input: &'a str) -> Self {
+    pub fn new(input: &'a str) -> Self {
         let iter: Lexer<HeaderTokenKind> = HeaderTokenKind::lexer(input);
         let line = 1;
         Self { input, iter, line }
     }
 
-    fn parse(&mut self) -> anyhow::Result<Vec<String>> {
+    pub fn parse(&mut self) -> anyhow::Result<Vec<String>> {
         let mut signals: Vec<String> = vec![];
         loop {
             match self.iter.next() {

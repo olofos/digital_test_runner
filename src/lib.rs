@@ -18,6 +18,7 @@ use std::{fmt::Display, marker::PhantomData, str::FromStr};
 pub enum SignalDirection {
     Input { default: InputValue },
     Output,
+    Bidirectional { default: InputValue },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,6 +26,18 @@ pub struct Signal {
     pub name: String,
     pub bits: u8,
     pub dir: SignalDirection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum EntryDirection {
+    Input,
+    Output,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryDescription<'a> {
+    signal: &'a Signal,
+    dir: EntryDirection,
 }
 
 mod private {
@@ -68,6 +81,18 @@ pub struct DataEntry<'a, T> {
     pub signal: &'a Signal,
     pub value: T,
     pub changed: bool,
+}
+
+impl SignalDirection {
+    pub(crate) fn to_bidirectional(self) -> anyhow::Result<Self> {
+        match self {
+            SignalDirection::Input { default } => Ok(SignalDirection::Bidirectional { default }),
+            SignalDirection::Output => Err(anyhow::anyhow!(
+                "An output signal cannot be converted to a bidirectional signal"
+            )),
+            SignalDirection::Bidirectional { default } => Ok(self),
+        }
+    }
 }
 
 impl<'a> IntoIterator for DataRow<'a> {
@@ -141,6 +166,7 @@ impl<'a> DataEntry<'a, Value> {
                 stmt::DataEntry::X => OutputValue::X,
                 _ => unreachable!(),
             }),
+            SignalDirection::Bidirectional { default: _ } => todo!(),
         };
         Self {
             signal,
@@ -343,7 +369,8 @@ impl TestCase<Signal, StaticTest> {
                         InputValue::Z => stmt::DataEntry::Z,
                     },
 
-                    &SignalDirection::Output => stmt::DataEntry::X,
+                    SignalDirection::Output => stmt::DataEntry::X,
+                    SignalDirection::Bidirectional { default: _ } => todo!(),
                 };
                 DataEntry::new(entry, signal, true)
             })
@@ -413,6 +440,9 @@ impl Display for Signal {
                 write!(f, "{}({}:{})", self.name, self.bits, default)
             }
             SignalDirection::Output => write!(f, "{}({})", self.name, self.bits),
+            SignalDirection::Bidirectional { default } => {
+                write!(f, "{}[{}:{}]", self.name, self.bits, default)
+            }
         }
     }
 }
