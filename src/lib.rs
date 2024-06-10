@@ -265,9 +265,9 @@ impl<'a> Iterator for TestCaseIterator<'a> {
             .into_iter()
             .zip(self.entry_indices)
             .zip(changed)
-            .map(|((entry, index), changed)| {
-                let signal = &self.signals[index.index];
-                DataEntry::new(entry, signal, index.dir, changed)
+            .map(|((entry, entry_index), changed)| {
+                let signal = &self.signals[entry_index.index];
+                DataEntry::new(entry, signal, entry_index.dir, changed)
             })
             .collect();
         Some(DataRow { entries })

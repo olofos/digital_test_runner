@@ -49,7 +49,7 @@ impl<'a> CheckContext<'a> {
             if self
                 .entry_indices
                 .iter()
-                .any(|index| index.is_output() && self.signals[index.index].name == *name)
+                .any(|entry| entry.is_output() && self.signals[entry.index].name == *name)
             {
                 self.is_static = false;
             } else {
