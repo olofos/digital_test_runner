@@ -16,7 +16,7 @@ pub struct DigFile {
 
 fn visual_elements<'a, 'b>(
     doc: &'a roxmltree::Document<'b>,
-    name: &'static str,
+    names: &'static [&'static str],
 ) -> impl Iterator<Item = roxmltree::Node<'a, 'b>> {
     doc.descendants().filter(|visual_element_node| {
         if visual_element_node.tag_name().name() != "visualElement" {
@@ -28,7 +28,10 @@ fn visual_elements<'a, 'b>(
         else {
             return false;
         };
-        name_node.text() == Some(name)
+        name_node
+            .text()
+            .map(|name| names.contains(&name))
+            .unwrap_or(false)
     })
 }
 
@@ -77,7 +80,7 @@ fn extract_input_data(node: roxmltree::Node) -> InputValue {
 pub fn parse(input: &str) -> anyhow::Result<DigFile> {
     let doc = roxmltree::Document::parse(input)?;
 
-    let output_signals = visual_elements(&doc, "Out")
+    let output_signals = visual_elements(&doc, &["Out"])
         .filter_map(|node| extract_signal_data(node))
         .map(|(name, bits)| Signal {
             name: name.to_string(),
@@ -85,8 +88,7 @@ pub fn parse(input: &str) -> anyhow::Result<DigFile> {
             dir: SignalDirection::Output,
         });
 
-    let inputs_signals = visual_elements(&doc, "In")
-        .chain(visual_elements(&doc, "Clock"))
+    let inputs_signals = visual_elements(&doc, &["In", "Clock"])
         .filter_map(|node| {
             if let Some((name, bits)) = extract_signal_data(node) {
                 let default = extract_input_data(node);
@@ -103,7 +105,7 @@ pub fn parse(input: &str) -> anyhow::Result<DigFile> {
 
     let signals = Vec::from_iter(inputs_signals.chain(output_signals));
 
-    let test_cases = visual_elements(&doc, "Testcase")
+    let test_cases = visual_elements(&doc, &["Testcase"])
         .filter_map(|node| {
             let name: String = if let Some(label_node) = attrib(node, "Label") {
                 label_node.text()?.to_string()
