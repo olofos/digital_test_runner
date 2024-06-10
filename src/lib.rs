@@ -288,12 +288,12 @@ impl ParsedTestCase {
 
                 let index = signals
                     .iter()
-                    .position(|sig| &sig.name == name)
+                    .position(|sig| sig.name == name)
                     .ok_or(anyhow::anyhow!("Could not find signal {sig_name}"))?;
 
-                let dir = if sig_name.ends_with("_out") {
-                    EntryDirection::Output
-                } else if matches!(&signals[index].dir, SignalDirection::Output) {
+                let dir = if sig_name.ends_with("_out")
+                    || matches!(&signals[index].dir, SignalDirection::Output)
+                {
                     EntryDirection::Output
                 } else {
                     EntryDirection::Input
