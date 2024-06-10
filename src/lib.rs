@@ -18,8 +18,19 @@ use std::{fmt::Display, marker::PhantomData, str::FromStr};
 pub enum SignalDirection {
     Input { default: InputValue },
     Output,
-    BidirectionalInput { default: InputValue },
-    BidirectionalOutput,
+    Bidirectional { default: InputValue },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntryDirection {
+    Input,
+    Output,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntryIndex {
+    pub index: usize,
+    pub dir: EntryDirection,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,9 +56,16 @@ impl TestType for StaticTest {}
 impl TestType for DynamicTest {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TestCase<T, S: TestType> {
+pub struct ParsedTestCase {
     stmts: Vec<stmt::Stmt>,
-    pub signals: Vec<T>,
+    pub signals: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TestCase<S: TestType> {
+    stmts: Vec<stmt::Stmt>,
+    pub signals: Vec<Signal>,
+    pub entry_indices: Vec<EntryIndex>,
     phantom: PhantomData<S>,
 }
 
@@ -55,7 +73,8 @@ pub struct TestCase<T, S: TestType> {
 pub struct TestCaseIterator<'a> {
     iter: crate::stmt::StmtIterator<'a>,
     ctx: EvalContext,
-    signals: &'a Vec<Signal>,
+    signals: &'a [Signal],
+    entry_indices: &'a [EntryIndex],
     prev: Option<Vec<stmt::DataEntry>>,
     cache: Vec<Vec<stmt::DataEntry>>,
 }
@@ -72,15 +91,13 @@ pub struct DataEntry<'a, T> {
     pub changed: bool,
 }
 
-impl SignalDirection {
-    pub(crate) fn into_bidirectional(self) -> Self {
-        match self {
-            SignalDirection::Input { default } => SignalDirection::BidirectionalInput { default },
-            SignalDirection::Output => SignalDirection::BidirectionalOutput,
-            SignalDirection::BidirectionalInput { .. } | SignalDirection::BidirectionalOutput => {
-                self
-            }
-        }
+impl EntryIndex {
+    fn is_input(&self) -> bool {
+        self.dir == EntryDirection::Input
+    }
+
+    fn is_output(&self) -> bool {
+        self.dir == EntryDirection::Output
     }
 }
 
@@ -142,20 +159,19 @@ impl<'a> DataRow<'a> {
 }
 
 impl<'a> DataEntry<'a, Value> {
-    fn new(entry: stmt::DataEntry, signal: &'a Signal, changed: bool) -> Self {
-        let value = if signal.is_input() {
-            Value::InputValue(match entry {
+    fn new(entry: stmt::DataEntry, signal: &'a Signal, dir: EntryDirection, changed: bool) -> Self {
+        let value = match dir {
+            EntryDirection::Input => Value::InputValue(match entry {
                 stmt::DataEntry::Number(n) => InputValue::Value(n & ((1 << signal.bits) - 1)),
                 stmt::DataEntry::Z => InputValue::Z,
                 _ => unreachable!(),
-            })
-        } else {
-            Value::OutputValue(match entry {
+            }),
+            EntryDirection::Output => Value::OutputValue(match entry {
                 stmt::DataEntry::Number(n) => OutputValue::Value(n & ((1 << signal.bits) - 1)),
                 stmt::DataEntry::Z => OutputValue::Z,
                 stmt::DataEntry::X => OutputValue::X,
                 _ => unreachable!(),
-            })
+            }),
         };
         Self {
             signal,
@@ -176,7 +192,7 @@ impl<'a> Iterator for TestCaseIterator<'a> {
                 .iter()
                 .enumerate()
                 .filter_map(|(i, entry)| {
-                    if self.signals[i].is_input() && entry == &stmt::DataEntry::X {
+                    if self.entry_indices[i].is_input() && entry == &stmt::DataEntry::X {
                         Some(i)
                     } else {
                         None
@@ -203,7 +219,7 @@ impl<'a> Iterator for TestCaseIterator<'a> {
         let has_c = stmt_entries
             .iter()
             .enumerate()
-            .any(|(i, entry)| self.signals[i].is_input() && entry == &stmt::DataEntry::C);
+            .any(|(i, entry)| self.entry_indices[i].is_input() && entry == &stmt::DataEntry::C);
 
         if has_c {
             let mut entries = stmt_entries.clone();
@@ -218,7 +234,7 @@ impl<'a> Iterator for TestCaseIterator<'a> {
             let mut entries = stmt_entries.clone();
 
             for (i, entry) in entries.iter_mut().enumerate() {
-                if self.signals[i].is_output() {
+                if self.entry_indices[i].is_output() {
                     *entry = stmt::DataEntry::X;
                 } else if *entry == stmt::DataEntry::C {
                     *entry = stmt::DataEntry::Number(1);
@@ -227,7 +243,7 @@ impl<'a> Iterator for TestCaseIterator<'a> {
             self.cache.push(entries);
 
             for (i, entry) in stmt_entries.iter_mut().enumerate() {
-                if self.signals[i].is_output() {
+                if self.entry_indices[i].is_output() {
                     *entry = stmt::DataEntry::X;
                 } else if *entry == stmt::DataEntry::C {
                     *entry = stmt::DataEntry::Number(0);
@@ -247,73 +263,78 @@ impl<'a> Iterator for TestCaseIterator<'a> {
         self.prev = Some(stmt_entries.clone());
         let entries = stmt_entries
             .into_iter()
-            .zip(self.signals)
+            .zip(self.entry_indices)
             .zip(changed)
-            .map(|((entry, signal), changed)| DataEntry::new(entry, signal, changed))
+            .map(|((entry, index), changed)| {
+                let signal = &self.signals[index.index];
+                DataEntry::new(entry, signal, index.dir, changed)
+            })
             .collect();
         Some(DataRow { entries })
     }
 }
 
-impl TestCase<String, DynamicTest> {
-    pub fn try_from_test(src: &str) -> anyhow::Result<TestCase<String, DynamicTest>> {
+impl ParsedTestCase {
+    pub fn try_from_test(src: &str) -> anyhow::Result<ParsedTestCase> {
         src.parse()
     }
 
-    pub fn with_signals(self, signals: &[Signal]) -> anyhow::Result<TestCase<Signal, DynamicTest>> {
-        let signals = self
+    pub fn with_signals(self, signals: Vec<Signal>) -> anyhow::Result<TestCase<DynamicTest>> {
+        let entry_indices = self
             .signals
             .into_iter()
             .map(|sig_name| {
-                if let Some(input_sig_name) = sig_name.strip_suffix("_out") {
-                    let Some(mut signal) = signals
-                        .iter()
-                        .find(|sig| sig.name == input_sig_name && sig.is_bidirectional())
-                        .cloned()
-                    else {
-                        anyhow::bail!("Could not find signal {input_sig_name} correspoding to output {sig_name}");
-                    };
-                    signal.dir = SignalDirection::BidirectionalOutput;
-                    Ok(signal)
-                } else {
-                    signals
-                        .iter()
-                        .find(|sig| sig.name == sig_name)
-                        .cloned()
-                        .ok_or(anyhow::anyhow!("Could not find signal {sig_name}"))
-                }
-            })
-        .collect::<anyhow::Result<Vec<_>>>()?;
+                let name = sig_name.strip_suffix("_out").unwrap_or(&sig_name);
 
-        self.stmts.check(&signals)?;
+                let index = signals
+                    .iter()
+                    .position(|sig| &sig.name == name)
+                    .ok_or(anyhow::anyhow!("Could not find signal {sig_name}"))?;
+
+                let dir = if sig_name.ends_with("_out") {
+                    EntryDirection::Output
+                } else if matches!(&signals[index].dir, SignalDirection::Output) {
+                    EntryDirection::Output
+                } else {
+                    EntryDirection::Input
+                };
+
+                Ok(EntryIndex { index, dir })
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        self.stmts.check(&signals, &entry_indices)?;
 
         Ok(TestCase {
             stmts: self.stmts,
             signals,
+            entry_indices,
             phantom: PhantomData,
         })
     }
 }
 
-impl TestCase<Signal, DynamicTest> {
+impl TestCase<DynamicTest> {
     pub fn try_from_dig(
         dig: &crate::dig::DigFile,
         n: usize,
-    ) -> anyhow::Result<TestCase<Signal, DynamicTest>> {
+    ) -> anyhow::Result<TestCase<DynamicTest>> {
         if n >= dig.test_cases.len() {
             anyhow::bail!(
                 "Trying to load test case #{n}, but file only contains {} test cases",
                 dig.test_cases.len()
             );
         }
-        TestCase::try_from_test(&dig.test_cases[n].test_data)?.with_signals(&dig.signals)
+        ParsedTestCase::try_from_test(&dig.test_cases[n].test_data)?
+            .with_signals(dig.signals.clone())
     }
 
-    pub fn get_static(self) -> anyhow::Result<TestCase<Signal, StaticTest>> {
-        if self.stmts.check(&self.signals)? {
+    pub fn get_static(self) -> anyhow::Result<TestCase<StaticTest>> {
+        if self.stmts.check(&self.signals, &self.entry_indices)? {
             return Ok(TestCase {
                 stmts: self.stmts,
                 signals: self.signals,
+                entry_indices: self.entry_indices,
                 phantom: PhantomData,
             });
         }
@@ -321,11 +342,11 @@ impl TestCase<Signal, DynamicTest> {
     }
 }
 
-impl TestCase<Signal, StaticTest> {
+impl TestCase<StaticTest> {
     pub fn try_from_static_dig(
         dig: &crate::dig::DigFile,
         n: usize,
-    ) -> anyhow::Result<TestCase<Signal, StaticTest>> {
+    ) -> anyhow::Result<TestCase<StaticTest>> {
         TestCase::try_from_dig(dig, n)?.get_static()
     }
 
@@ -334,6 +355,7 @@ impl TestCase<Signal, StaticTest> {
             iter: crate::stmt::StmtIterator::new(&self.stmts),
             ctx: EvalContext::new(),
             signals: &self.signals,
+            entry_indices: &self.entry_indices,
             prev: None,
             cache: vec![],
         }
@@ -341,21 +363,22 @@ impl TestCase<Signal, StaticTest> {
 
     pub fn default_row(&self) -> DataRow {
         let entries = self
-            .signals
+            .entry_indices
             .iter()
-            .map(|signal| {
-                let entry = match &signal.dir {
+            .map(|EntryIndex { index, .. }| {
+                let signal = &self.signals[*index];
+                let (entry, dir) = match &signal.dir {
                     SignalDirection::Input { default }
-                    | SignalDirection::BidirectionalInput { default } => match default {
-                        InputValue::Value(n) => stmt::DataEntry::Number(*n),
-                        InputValue::Z => stmt::DataEntry::Z,
+                    | SignalDirection::Bidirectional { default } => match default {
+                        InputValue::Value(n) => {
+                            (stmt::DataEntry::Number(*n), EntryDirection::Input)
+                        }
+                        InputValue::Z => (stmt::DataEntry::Z, EntryDirection::Input),
                     },
 
-                    SignalDirection::Output | SignalDirection::BidirectionalOutput => {
-                        stmt::DataEntry::X
-                    }
+                    SignalDirection::Output => (stmt::DataEntry::X, EntryDirection::Output),
                 };
-                DataEntry::new(entry, signal, true)
+                DataEntry::new(entry, signal, dir, true)
             })
             .collect();
 
@@ -363,7 +386,7 @@ impl TestCase<Signal, StaticTest> {
     }
 }
 
-impl<'a> IntoIterator for &'a TestCase<Signal, StaticTest> {
+impl<'a> IntoIterator for &'a TestCase<StaticTest> {
     type Item = DataRow<'a>;
 
     type IntoIter = TestCaseIterator<'a>;
@@ -373,7 +396,7 @@ impl<'a> IntoIterator for &'a TestCase<Signal, StaticTest> {
     }
 }
 
-impl FromStr for TestCase<String, DynamicTest> {
+impl FromStr for ParsedTestCase {
     type Err = anyhow::Error;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
@@ -399,26 +422,19 @@ impl Signal {
     }
 
     pub fn is_bidirectional(&self) -> bool {
-        matches!(
-            self.dir,
-            SignalDirection::BidirectionalInput { default: _ }
-                | SignalDirection::BidirectionalOutput
-        )
+        matches!(self.dir, SignalDirection::Bidirectional { default: _ })
     }
 
-    pub fn is_output(&self) -> bool {
-        matches!(
-            self.dir,
-            SignalDirection::Output | SignalDirection::BidirectionalOutput
-        )
-    }
+    // pub fn is_output(&self) -> bool {
+    //     matches!(self.dir, SignalDirection::Output)
+    // }
 
-    pub fn is_input(&self) -> bool {
-        matches!(
-            self.dir,
-            SignalDirection::Input { .. } | SignalDirection::BidirectionalInput { .. }
-        )
-    }
+    // pub fn is_input(&self) -> bool {
+    //     matches!(
+    //         self.dir,
+    //         SignalDirection::Input { .. } | SignalDirection::Bidirectional { .. }
+    //     )
+    // }
 }
 
 impl<'a> Display for DataEntry<'a, Value> {
@@ -437,15 +453,14 @@ impl Display for Signal {
                 write!(f, "{}({}:{})", self.name, self.bits, default)
             }
             SignalDirection::Output => write!(f, "{}({})", self.name, self.bits),
-            SignalDirection::BidirectionalInput { default } => {
+            SignalDirection::Bidirectional { default } => {
                 write!(f, "{}[{}:{}]", self.name, self.bits, default)
             }
-            SignalDirection::BidirectionalOutput => write!(f, "{}[{}]", self.name, self.bits),
         }
     }
 }
 
-impl<T: Display, S: TestType> Display for TestCase<T, S> {
+impl<S: TestType> Display for TestCase<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let signal_names = self
             .signals
@@ -506,8 +521,8 @@ end loop
                 dir: SignalDirection::Output,
             });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase = TestCase::try_from_test(input)?
-            .with_signals(&known_signals)?
+        let testcase = ParsedTestCase::try_from_test(input)?
+            .with_signals(known_signals)?
             .get_static()?;
         for row in &testcase {
             for entry in row {
@@ -528,14 +543,14 @@ Z 1";
         let known_inputs = ["A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::BidirectionalInput {
+            dir: SignalDirection::Bidirectional {
                 default: InputValue::Value(0),
             },
         });
 
         let known_signals = Vec::from_iter(known_inputs);
-        let testcase = TestCase::try_from_test(input)?
-            .with_signals(&known_signals)?
+        let testcase = ParsedTestCase::try_from_test(input)?
+            .with_signals(known_signals)?
             .get_static()?;
 
         let result: Vec<DataRow> = testcase.into_iter().collect();
@@ -590,12 +605,12 @@ CLK IN OUT
             dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase = TestCase::try_from_test(input)?
-            .with_signals(&known_signals)?
+        let testcase = ParsedTestCase::try_from_test(input)?
+            .with_signals(known_signals.clone())?
             .get_static()?;
 
-        let expanded_testcase = TestCase::try_from_test(expanded_input)?
-            .with_signals(&known_signals)?
+        let expanded_testcase = ParsedTestCase::try_from_test(expanded_input)?
+            .with_signals(known_signals)?
             .get_static()?;
 
         let rows: Vec<_> = testcase.into_iter().collect();
@@ -633,12 +648,12 @@ A B OUT
             dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase = TestCase::try_from_test(input)?
-            .with_signals(&known_signals)?
+        let testcase = ParsedTestCase::try_from_test(input)?
+            .with_signals(known_signals.clone())?
             .get_static()?;
 
-        let expanded_testcase = TestCase::try_from_test(expanded_input)?
-            .with_signals(&known_signals)?
+        let expanded_testcase = ParsedTestCase::try_from_test(expanded_input)?
+            .with_signals(known_signals)?
             .get_static()?;
 
         let rows: Vec<_> = testcase.into_iter().collect();
@@ -678,12 +693,12 @@ CLK A OUT
             dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase = TestCase::try_from_test(input)?
-            .with_signals(&known_signals)?
+        let testcase = ParsedTestCase::try_from_test(input)?
+            .with_signals(known_signals.clone())?
             .get_static()?;
 
-        let expanded_testcase = TestCase::try_from_test(expanded_input)?
-            .with_signals(&known_signals)?
+        let expanded_testcase = ParsedTestCase::try_from_test(expanded_input)?
+            .with_signals(known_signals)?
             .get_static()?;
 
         let rows: Vec<_> = testcase.into_iter().collect();

@@ -4,7 +4,7 @@ mod stmt;
 
 use crate::{
     lexer::{HeaderTokenKind, Token, TokenIter, TokenKind},
-    DynamicTest, TestCase,
+    ParsedTestCase,
 };
 use logos::{Lexer, Logos};
 use std::iter::Peekable;
@@ -110,24 +110,20 @@ impl<'a> Parser<'a> {
     }
 }
 
-pub(crate) fn parse_testcase(input: &str) -> anyhow::Result<TestCase<String, DynamicTest>> {
+pub(crate) fn parse_testcase(input: &str) -> anyhow::Result<ParsedTestCase> {
     let mut parser = HeaderParser::new(input);
     let signals = parser.parse()?;
 
     let mut parser = Parser::from(parser);
     let stmts = parser.parse_stmt_block(None)?;
 
-    let test_case = TestCase {
-        stmts,
-        signals,
-        phantom: std::marker::PhantomData,
-    };
+    let test_case = ParsedTestCase { stmts, signals };
     Ok(test_case)
 }
 
 #[cfg(test)]
 mod test {
-    use crate::{parser::parse_testcase, stmt::Stmt, DynamicTest, TestCase};
+    use crate::{parser::parse_testcase, stmt::Stmt, ParsedTestCase};
 
     #[test]
     fn can_parse_simple_program() {
@@ -152,7 +148,7 @@ end loop
 end loop
 
 ";
-        let testcase: TestCase<String, DynamicTest> = parse_testcase(input).unwrap();
+        let testcase: ParsedTestCase = parse_testcase(input).unwrap();
         assert_eq!(testcase.signals.len(), 11);
         assert_eq!(testcase.stmts.len(), 7);
         let Stmt::DataRow { data: _, line } = &testcase.stmts[4] else {

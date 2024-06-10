@@ -130,8 +130,7 @@ pub fn parse(input: &str) -> anyhow::Result<DigFile> {
         for name in HeaderParser::new(&test_case.test_data).parse()? {
             if let Some(stripped_name) = name.strip_suffix("_out") {
                 let stripped_name = stripped_name.to_string();
-                bidirectional.insert(stripped_name.clone());
-                test_signal_names.insert(stripped_name);
+                bidirectional.insert(stripped_name);
             } else {
                 test_signal_names.insert(name);
             }
@@ -156,7 +155,10 @@ pub fn parse(input: &str) -> anyhow::Result<DigFile> {
             .find(|sig| sig.name == name)
             .expect("We already checked that all test signals appear in the circuit");
         let dir = std::mem::replace(&mut sig.dir, SignalDirection::Output);
-        sig.dir = dir.into_bidirectional();
+        let SignalDirection::Input { default } = dir else {
+            anyhow::bail!("");
+        };
+        sig.dir = SignalDirection::Bidirectional { default };
     }
 
     Ok(DigFile {

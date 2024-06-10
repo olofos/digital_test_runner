@@ -1,22 +1,28 @@
 use crate::expr::{Expr, FUNC_TABLE};
 use crate::framed_map::FramedSet;
 use crate::stmt::{DataEntry, Stmt};
-use crate::Signal;
+use crate::{EntryIndex, Signal};
 
 #[derive(Debug)]
 pub(crate) struct CheckContext<'a> {
     vars: FramedSet<String>,
     signals: &'a [Signal],
+    entry_indices: &'a [EntryIndex],
     pub is_static: bool,
 }
 
 pub trait TestCheck<'a> {
-    fn check(&self, signals: &'a [Signal]) -> anyhow::Result<bool>;
+    fn check(&self, signals: &'a [Signal], entry_indices: &'a [EntryIndex])
+        -> anyhow::Result<bool>;
 }
 
 impl<'a> TestCheck<'a> for Vec<Stmt> {
-    fn check(&self, signals: &'a [Signal]) -> anyhow::Result<bool> {
-        let mut ctx = CheckContext::new(signals);
+    fn check(
+        &self,
+        signals: &'a [Signal],
+        entry_indices: &'a [EntryIndex],
+    ) -> anyhow::Result<bool> {
+        let mut ctx = CheckContext::new(signals, entry_indices);
         for stmt in self {
             stmt.check(&mut ctx)?;
         }
@@ -25,10 +31,11 @@ impl<'a> TestCheck<'a> for Vec<Stmt> {
 }
 
 impl<'a> CheckContext<'a> {
-    pub fn new(signals: &'a [Signal]) -> Self {
+    pub fn new(signals: &'a [Signal], entry_indices: &'a [EntryIndex]) -> Self {
         Self {
             vars: FramedSet::new(),
             signals,
+            entry_indices,
             is_static: true,
         }
     }
@@ -40,9 +47,9 @@ impl<'a> CheckContext<'a> {
     fn check_var(&mut self, name: &String) -> anyhow::Result<()> {
         if !self.vars.contains(name) {
             if self
-                .signals
+                .entry_indices
                 .iter()
-                .any(|sig| sig.is_output() && sig.name == *name)
+                .any(|index| index.is_output() && self.signals[index.index].name == *name)
             {
                 self.is_static = false;
             } else {
@@ -66,10 +73,10 @@ impl Stmt {
                     index += match entry {
                         DataEntry::Number(_) | DataEntry::X | DataEntry::Z => 1,
                         DataEntry::C => {
-                            if !ctx.signals[index].is_input() {
+                            if !ctx.entry_indices[index].is_input() {
                                 anyhow::bail!(
                                     "Unexpected C for output signal {} on line {line}",
-                                    ctx.signals[index].name
+                                    ctx.signals[ctx.entry_indices[index].index].name
                                 );
                             }
                             1
@@ -84,10 +91,10 @@ impl Stmt {
                         }
                     }
                 }
-                if index != ctx.signals.len() {
+                if index != ctx.entry_indices.len() {
                     anyhow::bail!(
                         "Error on line {line}: expected {} entries but found {index}",
-                        ctx.signals.len()
+                        ctx.entry_indices.len()
                     );
                 }
             }
@@ -162,7 +169,7 @@ impl Expr {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{InputValue, TestCase};
+    use crate::{EntryDirection, InputValue, ParsedTestCase};
     use rstest::rstest;
 
     fn output_signal(name: impl Into<String>, bits: u8) -> Signal {
@@ -181,6 +188,21 @@ mod tests {
         }
     }
 
+    fn make_entry_indices(signals: &[Signal]) -> Vec<EntryIndex> {
+        signals
+            .iter()
+            .enumerate()
+            .map(|(index, sig)| {
+                let dir = match sig.dir {
+                    crate::SignalDirection::Input { .. } => EntryDirection::Input,
+                    crate::SignalDirection::Output => EntryDirection::Output,
+                    crate::SignalDirection::Bidirectional { .. } => unimplemented!(),
+                };
+                EntryIndex { index, dir }
+            })
+            .collect::<Vec<_>>()
+    }
+
     #[rstest]
     #[case("A B\n1 1 1\n")]
     #[case("A B\nbits(2,11) 1\n")]
@@ -193,13 +215,13 @@ mod tests {
     #[case("A B\nlet x = random(1,2,3);\n")]
     #[case("A B\nlet m = 2;\nloop (i,m)\nend loop\n")]
     fn check_returns_error(#[case] input: &str) {
-        let testcase: TestCase<_, _> = input.parse().unwrap();
+        let testcase: ParsedTestCase = input.parse().unwrap();
         let signals = vec![
             input_signal("A", 1, InputValue::Value(1)),
             output_signal("B", 1),
         ];
-
-        let mut ctx = CheckContext::new(&signals);
+        let entry_indices = make_entry_indices(&signals);
+        let mut ctx = CheckContext::new(&signals, &entry_indices);
         let result: anyhow::Result<Vec<_>> = testcase
             .stmts
             .into_iter()
@@ -222,13 +244,14 @@ end loop
 (C) (D)
 C 1
 "#;
-        let testcase: TestCase<_, _> = input.parse().unwrap();
+        let testcase: ParsedTestCase = input.parse().unwrap();
         let signals = vec![
             input_signal("A", 1, InputValue::Value(1)),
             output_signal("B", 1),
         ];
 
-        let mut ctx = CheckContext::new(&signals);
+        let entry_indices = make_entry_indices(&signals);
+        let mut ctx = CheckContext::new(&signals, &entry_indices);
         for stmt in testcase.stmts {
             stmt.check(&mut ctx).unwrap();
         }
@@ -242,13 +265,14 @@ loop (B,1)
 (B) (B)
 end loop
 ";
-        let testcase: TestCase<_, _> = input.parse().unwrap();
+        let testcase: ParsedTestCase = input.parse().unwrap();
         let signals = vec![
             input_signal("A", 1, InputValue::Value(1)),
             output_signal("B", 1),
         ];
 
-        let mut ctx = CheckContext::new(&signals);
+        let entry_indices = make_entry_indices(&signals);
+        let mut ctx = CheckContext::new(&signals, &entry_indices);
         for stmt in testcase.stmts {
             stmt.check(&mut ctx).unwrap();
         }
@@ -264,13 +288,14 @@ loop (B,1)
 end loop
 (B) (B)
 ";
-        let testcase: TestCase<_, _> = input.parse().unwrap();
+        let testcase: ParsedTestCase = input.parse().unwrap();
         let signals = vec![
             input_signal("A", 1, InputValue::Value(1)),
             output_signal("B", 1),
         ];
 
-        let mut ctx = CheckContext::new(&signals);
+        let entry_indices = make_entry_indices(&signals);
+        let mut ctx = CheckContext::new(&signals, &entry_indices);
         for stmt in testcase.stmts {
             stmt.check(&mut ctx).unwrap();
         }
