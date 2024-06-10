@@ -22,15 +22,15 @@ pub enum SignalDirection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EntryDirection {
+pub(crate) enum EntryDirection {
     Input,
     Output,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EntryIndex {
-    pub index: usize,
-    pub dir: EntryDirection,
+pub(crate) struct EntryIndex {
+    index: usize,
+    dir: EntryDirection,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,7 +65,7 @@ pub struct ParsedTestCase {
 pub struct TestCase<S: TestType> {
     stmts: Vec<stmt::Stmt>,
     pub signals: Vec<Signal>,
-    pub entry_indices: Vec<EntryIndex>,
+    entry_indices: Vec<EntryIndex>,
     phantom: PhantomData<S>,
 }
 
