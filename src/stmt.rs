@@ -42,7 +42,7 @@ struct LoopState<'a> {
 enum StmtIteratorState<'a> {
     Iterate,
     StartLoop(LoopState<'a>),
-    StateIterateInner(LoopState<'a>),
+    StartIterateInner(LoopState<'a>),
     IterateInner {
         inner_iterator: Box<StmtIterator<'a>>,
         loop_state: LoopState<'a>,
@@ -109,9 +109,9 @@ impl<'a> StmtIterator<'a> {
                 StmtIteratorState::StartLoop(loop_state) => {
                     ctx.push_frame();
                     ctx.set(loop_state.variable, 0);
-                    self.inner_state = StmtIteratorState::StateIterateInner(loop_state.take());
+                    self.inner_state = StmtIteratorState::StartIterateInner(loop_state.take());
                 }
-                StmtIteratorState::StateIterateInner(loop_state) => {
+                StmtIteratorState::StartIterateInner(loop_state) => {
                     let loop_state = loop_state.take();
                     let inner_iterator = Box::new(StmtIterator {
                         stmt_iter: loop_state.stmts.iter(),
@@ -126,7 +126,7 @@ impl<'a> StmtIterator<'a> {
                     let value = ctx.get(loop_state.variable).unwrap() + 1;
                     if value < loop_state.max {
                         ctx.set(loop_state.variable, value);
-                        self.inner_state = StmtIteratorState::StateIterateInner(loop_state.take());
+                        self.inner_state = StmtIteratorState::StartIterateInner(loop_state.take());
                     } else {
                         ctx.pop_frame();
                         self.inner_state = StmtIteratorState::Iterate;
