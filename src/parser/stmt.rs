@@ -81,11 +81,11 @@ impl<'a> Parser<'a> {
                 TokenKind::While => {
                     self.skip();
                     self.expect(TokenKind::LParen)?;
-                    let _expr = self.parse_expr()?;
+                    let condition = self.parse_expr()?;
                     self.expect(TokenKind::RParen)?;
                     self.expect(TokenKind::Eol)?;
-                    let _inner = self.parse_stmt_block(Some(TokenKind::While))?;
-                    unimplemented!("While stmt is not implemented")
+                    let inner = self.parse_stmt_block(Some(TokenKind::While))?;
+                    block.push(Stmt::While { condition, inner });
                 }
                 TokenKind::Declare => todo!(),
                 TokenKind::Program => todo!(),

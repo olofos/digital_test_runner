@@ -18,6 +18,10 @@ pub(crate) enum Stmt {
         max: Expr,
         inner: Vec<Stmt>,
     },
+    While {
+        condition: Expr,
+        inner: Vec<Stmt>,
+    },
     ResetRandom,
 }
 
@@ -39,6 +43,12 @@ struct LoopState<'a> {
 }
 
 #[derive(Debug)]
+struct WhileState<'a> {
+    condition: &'a Expr,
+    stmts: &'a [Stmt],
+}
+
+#[derive(Debug)]
 enum StmtIteratorState<'a> {
     Iterate,
     StartLoop(LoopState<'a>),
@@ -48,6 +58,11 @@ enum StmtIteratorState<'a> {
         loop_state: LoopState<'a>,
     },
     EndIterateInner(LoopState<'a>),
+    StartWhile(WhileState<'a>),
+    WhileIterateInner {
+        inner_iterator: Box<StmtIterator<'a>>,
+        while_state: WhileState<'a>,
+    },
 }
 
 #[derive(Debug)]
@@ -63,6 +78,18 @@ impl<'a> LoopState<'a> {
             LoopState {
                 variable: "",
                 max: 0,
+                stmts: &[],
+            },
+        )
+    }
+}
+
+impl<'a> WhileState<'a> {
+    fn take(&mut self) -> Self {
+        mem::replace(
+            self,
+            WhileState {
+                condition: &Expr::Number(0),
                 stmts: &[],
             },
         )
@@ -96,6 +123,12 @@ impl<'a> StmtIterator<'a> {
                         })
                     }
                     Stmt::ResetRandom => ctx.reset_random_seed(),
+                    Stmt::While { condition, inner } => {
+                        self.inner_state = StmtIteratorState::StartWhile(WhileState {
+                            condition,
+                            stmts: inner,
+                        })
+                    }
                 },
                 StmtIteratorState::IterateInner {
                     inner_iterator,
@@ -131,6 +164,31 @@ impl<'a> StmtIterator<'a> {
                         ctx.pop_frame();
                         self.inner_state = StmtIteratorState::Iterate;
                     }
+                }
+                StmtIteratorState::StartWhile(while_state) => {
+                    let cond = while_state.condition.eval(ctx).unwrap();
+                    if cond == 0 {
+                        self.inner_state = StmtIteratorState::Iterate;
+                    } else {
+                        let while_state = while_state.take();
+                        let inner_iterator = Box::new(StmtIterator {
+                            stmt_iter: while_state.stmts.iter(),
+                            inner_state: StmtIteratorState::Iterate,
+                        });
+                        self.inner_state = StmtIteratorState::WhileIterateInner {
+                            inner_iterator,
+                            while_state,
+                        }
+                    }
+                }
+                StmtIteratorState::WhileIterateInner {
+                    inner_iterator,
+                    while_state,
+                } => {
+                    if let Some(result) = inner_iterator.next_with_context(ctx) {
+                        return Some(result);
+                    }
+                    self.inner_state = StmtIteratorState::StartWhile(while_state.take())
                 }
             }
         }
@@ -178,6 +236,13 @@ impl std::fmt::Display for Stmt {
                     write!(f, "{} ", entry)?;
                 }
                 Ok(())
+            }
+            Self::While { condition, inner } => {
+                writeln!(f, "while({condition})")?;
+                for stmt in inner.iter() {
+                    writeln!(f, "{stmt}")?;
+                }
+                write!(f, "end while")
             }
         }
     }
@@ -314,6 +379,33 @@ bits(2,n)
 ";
 
         let expectation = vec![[1, 0], [0, 0], [0, 1], [1, 0], [1, 1], [1, 0]]
+            .into_iter()
+            .map(|v| v.into_iter().map(DataEntry::Number).collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+
+        let testcase: ParsedTestCase = input.parse().unwrap();
+
+        let mut ctx = EvalContext::new();
+        let mut result = vec![];
+        let mut iter = StmtIterator::new(&testcase.stmts);
+        while let Some(row) = iter.next_with_context(&mut ctx) {
+            result.push(row);
+        }
+        assert_eq!(result, expectation)
+    }
+
+    #[test]
+    fn can_iterate_program_with_while() {
+        let input = r"
+A B
+let n = 0;
+while(n<4)
+bits(2,n)
+let n = n+1;
+end while
+";
+
+        let expectation = vec![[0, 0], [0, 1], [1, 0], [1, 1]]
             .into_iter()
             .map(|v| v.into_iter().map(DataEntry::Number).collect::<Vec<_>>())
             .collect::<Vec<_>>();

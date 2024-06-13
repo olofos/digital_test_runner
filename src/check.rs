@@ -114,6 +114,12 @@ impl Stmt {
                 ctx.vars.pop_frame();
             }
             Stmt::ResetRandom => {}
+            Stmt::While { condition, inner } => {
+                condition.check(ctx)?;
+                for stmt in inner {
+                    stmt.check(ctx)?;
+                }
+            }
         }
         Ok(())
     }
