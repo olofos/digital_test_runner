@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::io::prelude::*;
+
 use digital_test_runner::{dig, InputValue, SignalDirection, TestCase};
 
 fn main() -> anyhow::Result<()> {
@@ -67,24 +70,50 @@ fn main() -> anyhow::Result<()> {
     println!("Test case {test_num} after transformation:");
     println!("{test_case}");
 
-    println!();
+    let mut child = std::process::Command::new("/tmp/counter")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()?;
+
+    let mut stdout = std::io::BufReader::new(child.stdout.take().unwrap());
+    let mut stdin = child.stdin.take().unwrap();
+
+    let mut error_count = 0;
     for row in &test_case {
-        for input in row.inputs() {
-            if input.changed {
-                print!("{} ", input.value);
-            } else {
-                print!("- ");
-            }
+        for input in row.changed_inputs() {
+            writeln!(stdin, "{} {}", input.signal.name, input.value)?;
         }
-        print!("| ");
-        for output in row.outputs() {
-            if !output.value.is_x() {
-                print!("{} ", output.value);
-            } else {
-                print!("- ");
-            }
+        writeln!(stdin, "STEP")?;
+
+        let mut values = HashMap::new();
+
+        for line in (&mut stdout)
+            .lines()
+            .take_while(|l| !l.as_ref().unwrap().is_empty())
+        {
+            let mut pair: Vec<String> = line?.split_whitespace().map(String::from).collect();
+            let value = pair[1].parse::<i64>()?;
+            values.insert(pair.swap_remove(0), value);
         }
-        println!();
+
+        for output in row.checked_outputs().filter(|entry| {
+            values
+                .get(&entry.signal.name)
+                .map(|&v| !entry.value.check(v))
+                .unwrap_or(false)
+        }) {
+            eprintln!(
+                "Expected {} but got {}",
+                output.value,
+                values.get(&output.signal.name).unwrap()
+            );
+            error_count += 1;
+        }
+    }
+    if error_count == 0 {
+        eprintln!("All tests passed");
+    } else {
+        eprintln!("Found {error_count} failing assertions");
     }
 
     Ok(())

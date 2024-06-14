@@ -30,6 +30,21 @@ impl OutputValue {
             OutputValue::Z | OutputValue::X => None,
         }
     }
+
+    pub fn check(&self, other: impl Into<InputValue>) -> bool {
+        let other = other.into();
+        match self {
+            OutputValue::Value(n) => other == InputValue::Value(*n),
+            OutputValue::Z => matches!(other, InputValue::Z),
+            OutputValue::X => true,
+        }
+    }
+}
+
+impl From<i64> for InputValue {
+    fn from(value: i64) -> Self {
+        Self::Value(value)
+    }
 }
 
 impl Display for InputValue {
