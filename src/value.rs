@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{Binary, Display};
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum InputValue {
@@ -71,6 +71,21 @@ impl Display for Value {
         match self {
             Value::InputValue(v) => write!(f, "{v}"),
             Value::OutputValue(v) => write!(f, "{v}"),
+        }
+    }
+}
+
+impl Binary for InputValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InputValue::Value(n) => std::fmt::Binary::fmt(&n, f),
+            InputValue::Z => {
+                if let Some(width) = f.width() {
+                    write!(f, "{}", "z".repeat(width))
+                } else {
+                    write!(f, "z")
+                }
+            }
         }
     }
 }
