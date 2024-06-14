@@ -1,13 +1,35 @@
-use std::collections::HashMap;
+use digital_test_runner::{dig, InputValue, SignalDirection, TestCase};
 use std::io::prelude::*;
 
-use digital_test_runner::{dig, InputValue, SignalDirection, TestCase};
+#[derive(Debug, Clone)]
+struct Cursor<'a> {
+    slice: &'a str,
+}
+
+impl<'a> Cursor<'a> {
+    pub fn new(slice: impl Into<&'a str>) -> Self {
+        Self {
+            slice: slice.into(),
+        }
+    }
+
+    pub fn grab(&mut self, len: impl Into<usize>) -> anyhow::Result<&'a str> {
+        let len = len.into();
+        if self.slice.len() < len {
+            Err(anyhow::anyhow!("Unexpected end of input"))
+        } else {
+            let result;
+            (result, self.slice) = self.slice.split_at(len);
+            Ok(result)
+        }
+    }
+}
 
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args();
     let prog_name = args.next().unwrap();
     let Some(path) = args.next() else {
-        eprintln!("Usage: {prog_name} file.dig [num]");
+        println!("Usage: {prog_name} file.dig [num]");
         return Ok(());
     };
     let test_num: Option<usize> = args.next().map(|s| s.parse().ok()).flatten();
@@ -75,45 +97,30 @@ fn main() -> anyhow::Result<()> {
         .stdout(std::process::Stdio::piped())
         .spawn()?;
 
-    let mut stdout = std::io::BufReader::new(child.stdout.take().unwrap());
+    let mut lines = std::io::BufReader::new(child.stdout.take().unwrap()).lines();
     let mut stdin = child.stdin.take().unwrap();
 
     let mut error_count = 0;
     for row in &test_case {
-        for input in row.changed_inputs() {
-            writeln!(stdin, "{} {}", input.signal.name, input.value)?;
+        for input in row.inputs() {
+            write!(stdin, "{:01$b}", input.value, input.signal.bits as usize)?;
         }
-        writeln!(stdin, "STEP")?;
+        writeln!(stdin)?;
 
-        let mut values = HashMap::new();
-
-        for line in (&mut stdout)
-            .lines()
-            .take_while(|l| !l.as_ref().unwrap().is_empty())
-        {
-            let mut pair: Vec<String> = line?.split_whitespace().map(String::from).collect();
-            let value = pair[1].parse::<i64>()?;
-            values.insert(pair.swap_remove(0), value);
-        }
-
-        for output in row.checked_outputs().filter(|entry| {
-            values
-                .get(&entry.signal.name)
-                .map(|&v| !entry.value.check(v))
-                .unwrap_or(false)
-        }) {
-            eprintln!(
-                "Expected {} but got {}",
-                output.value,
-                values.get(&output.signal.name).unwrap()
-            );
-            error_count += 1;
+        let line = lines.next().ok_or(anyhow::anyhow!("Unexpected EOF"))??;
+        let mut cursor = Cursor::new(line.as_str());
+        for output in row.outputs() {
+            let value = i64::from_str_radix(cursor.grab(output.signal.bits)?, 2)?;
+            if !output.value.check(value) {
+                println!("Expected {} but got {}", output.value, value);
+                error_count += 1;
+            }
         }
     }
     if error_count == 0 {
-        eprintln!("All tests passed");
+        println!("All tests passed");
     } else {
-        eprintln!("Found {error_count} failing assertions");
+        println!("Found {error_count} failing assertions");
     }
 
     Ok(())
