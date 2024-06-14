@@ -1,5 +1,7 @@
-use digital_test_runner::{dig, InputValue, SignalDirection, TestCase};
+use digital_test_runner::{dig, TestCase};
 use std::io::prelude::*;
+
+mod util;
 
 #[derive(Debug, Clone)]
 struct Cursor<'a> {
@@ -26,73 +28,13 @@ impl<'a> Cursor<'a> {
 }
 
 fn main() -> anyhow::Result<()> {
-    let mut args = std::env::args();
-    let prog_name = args.next().unwrap();
-    let Some(path) = args.next() else {
-        println!("Usage: {prog_name} file.dig [num]");
-        return Ok(());
-    };
-    let test_num: Option<usize> = args.next().map(|s| s.parse().ok()).flatten();
-    println!("Loading file {path}");
-    let input = std::fs::read_to_string(path)?;
-    let dig_file = dig::parse(&input)?;
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/Counter.dig");
+    let dig_file = dig::parse(&std::fs::read_to_string(path)?)?;
+    let test_case = TestCase::try_from_static_dig(&dig_file, 0)?;
 
-    println!("Signals");
-    println!("=======");
-    for signal in &dig_file.signals {
-        print!(
-            "{} ({} {}",
-            signal.name,
-            signal.bits,
-            if signal.bits == 1 { "bit" } else { "bits" }
-        );
-        match &signal.dir {
-            SignalDirection::Input { default } | SignalDirection::Bidirectional { default } => {
-                println!(
-                    ", {})",
-                    match default {
-                        InputValue::Value(n) =>
-                            if (0..10).contains(n) {
-                                format!("{n}")
-                            } else {
-                                format!("0x{n:x}")
-                            },
-                        InputValue::Z => String::from("Z"),
-                    },
-                );
-            }
-            SignalDirection::Output => println!(")"),
-        }
-    }
-    println!();
+    let counter_path = util::compile_verilog("counter_int_tb", &["Counter.v", "Counter_int_tb.v"])?;
 
-    println!("Found {} test cases:", dig_file.test_cases.len());
-
-    for (i, test_case) in dig_file.test_cases.iter().enumerate() {
-        println!("{}: {}", i + 1, test_case.name);
-    }
-    println!();
-
-    let test_num = if let Some(test_num) = test_num {
-        test_num
-    } else {
-        use std::io::prelude::*;
-        print!("Which one do you want to run? ");
-        std::io::stdout().flush()?;
-        let mut answer = String::new();
-        std::io::stdin().read_line(&mut answer)?;
-        let n = answer.trim().parse();
-        n.unwrap_or(1)
-    }
-    .clamp(1, dig_file.test_cases.len());
-
-    let test_case = TestCase::try_from_static_dig(&dig_file, test_num - 1)?;
-
-    println!();
-    println!("Test case {test_num} after transformation:");
-    println!("{test_case}");
-
-    let mut child = std::process::Command::new("/tmp/counter")
+    let mut child = std::process::Command::new(counter_path)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()?;
