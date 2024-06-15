@@ -54,7 +54,7 @@ fn attrib<'a, 'b>(node: roxmltree::Node<'a, 'b>, label: &str) -> Option<roxmltre
     None
 }
 
-fn extract_signal_data<'a>(node: roxmltree::Node<'a, '_>) -> Option<(&'a str, u8)> {
+fn extract_signal_data<'a>(node: roxmltree::Node<'a, '_>) -> Option<(&'a str, usize)> {
     let label = attrib(node, "Label")?.text()?;
     let bits = attrib(node, "Bits")
         .and_then(|node| node.text()?.parse().ok())

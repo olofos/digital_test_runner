@@ -178,7 +178,7 @@ mod tests {
     use crate::{EntryDirection, InputValue, ParsedTestCase};
     use rstest::rstest;
 
-    fn output_signal(name: impl Into<String>, bits: u8) -> Signal {
+    fn output_signal(name: impl Into<String>, bits: usize) -> Signal {
         Signal {
             name: name.into(),
             bits,
@@ -186,7 +186,7 @@ mod tests {
         }
     }
 
-    fn input_signal(name: impl Into<String>, bits: u8, default: InputValue) -> Signal {
+    fn input_signal(name: impl Into<String>, bits: usize, default: InputValue) -> Signal {
         Signal {
             name: name.into(),
             bits,

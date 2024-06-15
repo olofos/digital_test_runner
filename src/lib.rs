@@ -36,7 +36,7 @@ pub(crate) struct EntryIndex {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Signal {
     pub name: String,
-    pub bits: u8,
+    pub bits: usize,
     pub dir: SignalDirection,
 }
 
@@ -405,7 +405,7 @@ impl FromStr for ParsedTestCase {
 }
 
 impl Signal {
-    pub fn output(name: impl Into<String>, bits: u8) -> Self {
+    pub fn output(name: impl Into<String>, bits: usize) -> Self {
         Self {
             name: name.into(),
             bits,
@@ -413,7 +413,7 @@ impl Signal {
         }
     }
 
-    pub fn input(name: impl Into<String>, bits: u8, default: InputValue) -> Self {
+    pub fn input(name: impl Into<String>, bits: usize, default: InputValue) -> Self {
         Self {
             name: name.into(),
             bits,
