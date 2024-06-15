@@ -1,28 +1,42 @@
 use digital_test_runner::{dig, TestCase};
-use std::io::prelude::*;
+use std::io::{prelude::*, BufReader};
 
 mod util;
 
-#[derive(Debug, Clone)]
-struct Cursor<'a> {
-    slice: &'a str,
+#[derive(Debug)]
+struct Cursor<T> {
+    reader: BufReader<T>,
+    line: String,
+    index: usize,
 }
 
-impl<'a> Cursor<'a> {
-    pub fn new(slice: impl Into<&'a str>) -> Self {
+impl<T: Read> Cursor<T> {
+    pub fn new(reader: T) -> Self {
         Self {
-            slice: slice.into(),
+            reader: std::io::BufReader::new(reader),
+            line: String::new(),
+            index: 0,
         }
     }
 
-    pub fn grab(&mut self, len: impl Into<usize>) -> anyhow::Result<&'a str> {
+    pub fn grab(&mut self, len: impl Into<usize>) -> anyhow::Result<i64> {
+        if self.index >= self.line.len() {
+            self.line.clear();
+            if self.reader.read_line(&mut self.line)? == 0 {
+                anyhow::bail!("Unexpected end of file")
+            };
+            if self.line.ends_with('\n') {
+                self.line.pop();
+            }
+            self.index = 0;
+        }
         let len = len.into();
-        if self.slice.len() < len {
-            Err(anyhow::anyhow!("Unexpected end of input"))
+        if self.line.len() < self.index + len {
+            Err(anyhow::anyhow!("Not enough data in line"))
         } else {
-            let result;
-            (result, self.slice) = self.slice.split_at(len);
-            Ok(result)
+            let s = &self.line[self.index..(self.index + len)];
+            self.index += len;
+            Ok(i64::from_str_radix(s, 2)?)
         }
     }
 }
@@ -39,20 +53,18 @@ fn main() -> anyhow::Result<()> {
         .stdout(std::process::Stdio::piped())
         .spawn()?;
 
-    let mut lines = std::io::BufReader::new(child.stdout.take().unwrap()).lines();
     let mut stdin = child.stdin.take().unwrap();
+    let mut cursor = Cursor::new(child.stdout.take().unwrap());
 
     let mut error_count = 0;
     for row in &test_case {
         for input in row.inputs() {
-            write!(stdin, "{:01$b}", input.value, input.signal.bits as usize)?;
+            write!(stdin, "{:01$b}", input.value, input.signal.bits)?;
         }
         writeln!(stdin)?;
 
-        let line = lines.next().ok_or(anyhow::anyhow!("Unexpected EOF"))??;
-        let mut cursor = Cursor::new(line.as_str());
         for output in row.outputs() {
-            let value = i64::from_str_radix(cursor.grab(output.signal.bits)?, 2)?;
+            let value = cursor.grab(output.signal.bits)?;
             if !output.value.check(value) {
                 println!("Expected {} but got {}", output.value, value);
                 error_count += 1;
