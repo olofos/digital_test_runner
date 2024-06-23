@@ -1,37 +1,13 @@
-use crate::framed_map::FramedMap;
+use crate::{framed_map::FramedMap, DataEntry, InputValue};
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use std::cell::RefCell;
+use std::{cell::RefCell, collections::HashMap};
 
 #[derive(Debug)]
 pub struct EvalContext {
     vars: FramedMap<String, i64>,
+    outputs: HashMap<String, InputValue>,
     rng: RefCell<StdRng>,
     seed: u64,
-}
-
-#[derive(Debug)]
-pub struct EvalContextGuard<'a> {
-    ctx: &'a mut EvalContext,
-}
-
-impl<'a> std::ops::Deref for EvalContextGuard<'a> {
-    type Target = EvalContext;
-
-    fn deref(&self) -> &Self::Target {
-        self.ctx
-    }
-}
-
-impl<'a> std::ops::DerefMut for EvalContextGuard<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.ctx
-    }
-}
-
-impl<'a> Drop for EvalContextGuard<'a> {
-    fn drop(&mut self) {
-        self.ctx.pop_frame()
-    }
 }
 
 impl EvalContext {
@@ -46,6 +22,7 @@ impl EvalContext {
     pub fn with_seed(seed: u64) -> Self {
         Self {
             vars: FramedMap::new(),
+            outputs: HashMap::new(),
             rng: RefCell::new(StdRng::seed_from_u64(seed)),
             seed,
         }
@@ -59,18 +36,26 @@ impl EvalContext {
         self.vars.pop_frame()
     }
 
-    #[allow(dead_code)]
-    pub fn new_frame(&mut self) -> EvalContextGuard {
-        self.push_frame();
-        EvalContextGuard { ctx: self }
-    }
-
     pub fn set(&mut self, name: &str, value: i64) {
         self.vars.set(name, value)
     }
 
     pub fn get(&self, name: &str) -> Option<i64> {
-        self.vars.get(name)
+        if let Some(n) = self.vars.get(name) {
+            Some(n)
+        } else {
+            match self.outputs.get(name)? {
+                InputValue::Value(n) => Some(*n),
+                InputValue::Z => None,
+            }
+        }
+    }
+
+    pub fn set_outputs(&mut self, outputs: Vec<DataEntry<'_, InputValue>>) {
+        self.outputs = outputs
+            .into_iter()
+            .map(|entry| (entry.signal.name.to_string(), entry.value))
+            .collect();
     }
 
     pub fn reset_random_seed(&mut self) {
@@ -115,40 +100,6 @@ mod tests {
 
         ctx.pop_frame();
         assert_eq!(ctx.get("a"), Some(4));
-        assert_eq!(ctx.get("b"), Some(2));
-        assert_eq!(ctx.get("c"), Some(3));
-    }
-
-    #[test]
-    fn eval_context_guard_works() {
-        let mut ctx = EvalContext::new();
-
-        ctx.set("a", 1);
-        ctx.set("b", 2);
-        ctx.set("c", 3);
-        assert_eq!(ctx.get("a"), Some(1));
-        assert_eq!(ctx.get("b"), Some(2));
-        assert_eq!(ctx.get("c"), Some(3));
-        {
-            let mut ctx = ctx.new_frame();
-            ctx.set("a", 4);
-            assert_eq!(ctx.get("a"), Some(4));
-            assert_eq!(ctx.get("b"), Some(2));
-            assert_eq!(ctx.get("c"), Some(3));
-
-            {
-                let mut ctx = ctx.new_frame();
-                ctx.set("c", 5);
-                assert_eq!(ctx.get("a"), Some(4));
-                assert_eq!(ctx.get("b"), Some(2));
-                assert_eq!(ctx.get("c"), Some(5));
-            }
-
-            assert_eq!(ctx.get("a"), Some(4));
-            assert_eq!(ctx.get("b"), Some(2));
-            assert_eq!(ctx.get("c"), Some(3));
-        }
-        assert_eq!(ctx.get("a"), Some(1));
         assert_eq!(ctx.get("b"), Some(2));
         assert_eq!(ctx.get("c"), Some(3));
     }

@@ -14,6 +14,18 @@ use check::TestCheck;
 use eval_context::EvalContext;
 use std::{fmt::Display, marker::PhantomData, str::FromStr};
 
+pub trait TestDriver {
+    fn write_input_and_read_output(
+        &mut self,
+        inputs: &[DataEntry<InputValue>],
+    ) -> anyhow::Result<Vec<DataEntry<InputValue>>>;
+
+    fn write_input(&mut self, inputs: &[DataEntry<InputValue>]) -> anyhow::Result<()> {
+        let _ = self.write_input_and_read_output(inputs)?;
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SignalDirection {
     Input { default: InputValue },
@@ -76,12 +88,13 @@ pub struct TestCaseIterator<'a> {
     signals: &'a [Signal],
     entry_indices: &'a [EntryIndex],
     prev: Option<Vec<stmt::DataEntry>>,
-    cache: Vec<Vec<stmt::DataEntry>>,
+    cache: Vec<(Vec<stmt::DataEntry>, bool)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataRow<'a> {
     pub entries: Vec<DataEntry<'a, Value>>,
+    update_output: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -207,14 +220,14 @@ impl<'a> Iterator for TestCaseIterator<'a> {
                     for (bit_index, entry_index) in x_positions.iter().enumerate() {
                         entries[*entry_index] = stmt::DataEntry::Number((n >> bit_index) & 1);
                     }
-                    self.cache.push(entries);
+                    self.cache.push((entries, true));
                 }
             } else {
-                self.cache.push(stmt_entries);
+                self.cache.push((stmt_entries, true));
             }
         }
 
-        let mut stmt_entries = self.cache.pop()?;
+        let (mut stmt_entries, mut update_output) = self.cache.pop()?;
 
         let has_c = stmt_entries
             .iter()
@@ -229,7 +242,7 @@ impl<'a> Iterator for TestCaseIterator<'a> {
                     *entry = stmt::DataEntry::Number(0);
                 }
             }
-            self.cache.push(entries);
+            self.cache.push((entries, true));
 
             let mut entries = stmt_entries.clone();
 
@@ -240,7 +253,7 @@ impl<'a> Iterator for TestCaseIterator<'a> {
                     *entry = stmt::DataEntry::Number(1);
                 }
             }
-            self.cache.push(entries);
+            self.cache.push((entries, false));
 
             for (i, entry) in stmt_entries.iter_mut().enumerate() {
                 if self.entry_indices[i].is_output() {
@@ -249,6 +262,8 @@ impl<'a> Iterator for TestCaseIterator<'a> {
                     *entry = stmt::DataEntry::Number(0);
                 }
             }
+
+            update_output = false;
         }
 
         let changed = if self.prev.is_some() {
@@ -270,7 +285,10 @@ impl<'a> Iterator for TestCaseIterator<'a> {
                 DataEntry::new(entry, signal, entry_index.dir, changed)
             })
             .collect();
-        Some(DataRow { entries })
+        Some(DataRow {
+            entries,
+            update_output,
+        })
     }
 }
 
@@ -311,6 +329,38 @@ impl ParsedTestCase {
             entry_indices,
             phantom: PhantomData,
         })
+    }
+}
+
+impl<T: TestType> TestCase<T> {
+    pub fn run(&self, driver: &mut impl TestDriver) -> anyhow::Result<()> {
+        let mut iter = TestCaseIterator {
+            iter: crate::stmt::StmtIterator::new(&self.stmts),
+            ctx: EvalContext::new(),
+            signals: &self.signals,
+            entry_indices: &self.entry_indices,
+            prev: None,
+            cache: vec![],
+        };
+
+        while let Some(row) = iter.next() {
+            let inputs = row.inputs().collect::<Vec<DataEntry<'_, InputValue>>>();
+            if row.update_output {
+                let outputs = driver.write_input_and_read_output(&inputs)?;
+                let expected: Vec<_> = row.outputs().map(|entry| entry.value).collect();
+
+                expected.iter().zip(&outputs).for_each(|(e, o)| {
+                    if !e.check(o.value) {
+                        eprintln!("Error: {} != {}", o.value, e);
+                    }
+                });
+
+                iter.ctx.set_outputs(outputs);
+            } else {
+                driver.write_input(&inputs)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -382,7 +432,10 @@ impl TestCase<StaticTest> {
             })
             .collect();
 
-        DataRow { entries }
+        DataRow {
+            entries,
+            update_output: true,
+        }
     }
 }
 
@@ -613,8 +666,8 @@ CLK IN OUT
             .with_signals(known_signals)?
             .get_static()?;
 
-        let rows: Vec<_> = testcase.into_iter().collect();
-        let expanded_rows: Vec<_> = expanded_testcase.into_iter().collect();
+        let rows: Vec<_> = testcase.into_iter().map(|r| r.entries).collect();
+        let expanded_rows: Vec<_> = expanded_testcase.into_iter().map(|r| r.entries).collect();
 
         assert_eq!(rows, expanded_rows);
 
@@ -656,8 +709,8 @@ A B OUT
             .with_signals(known_signals)?
             .get_static()?;
 
-        let rows: Vec<_> = testcase.into_iter().collect();
-        let expanded_rows: Vec<_> = expanded_testcase.into_iter().collect();
+        let rows: Vec<_> = testcase.into_iter().map(|r| r.entries).collect();
+        let expanded_rows: Vec<_> = expanded_testcase.into_iter().map(|r| r.entries).collect();
 
         assert_eq!(rows, expanded_rows);
 
@@ -701,8 +754,8 @@ CLK A OUT
             .with_signals(known_signals)?
             .get_static()?;
 
-        let rows: Vec<_> = testcase.into_iter().collect();
-        let expanded_rows: Vec<_> = expanded_testcase.into_iter().collect();
+        let rows: Vec<_> = testcase.into_iter().map(|r| r.entries).collect();
+        let expanded_rows: Vec<_> = expanded_testcase.into_iter().map(|r| r.entries).collect();
 
         assert_eq!(rows, expanded_rows);
 
