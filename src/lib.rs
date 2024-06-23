@@ -12,7 +12,7 @@ pub use crate::value::{InputValue, OutputValue, Value};
 
 use check::TestCheck;
 use eval_context::EvalContext;
-use std::{fmt::Display, marker::PhantomData, str::FromStr};
+use std::{fmt::Display, str::FromStr};
 
 pub trait TestDriver {
     fn write_input_and_read_output(
@@ -52,21 +52,6 @@ pub struct Signal {
     pub dir: SignalDirection,
 }
 
-mod private {
-    pub trait Sealed {}
-}
-
-pub trait TestType: private::Sealed {}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StaticTest;
-pub struct DynamicTest;
-
-impl private::Sealed for StaticTest {}
-impl private::Sealed for DynamicTest {}
-impl TestType for StaticTest {}
-impl TestType for DynamicTest {}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedTestCase {
     stmts: Vec<stmt::Stmt>,
@@ -74,11 +59,10 @@ pub struct ParsedTestCase {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TestCase<S: TestType> {
+pub struct TestCase {
     stmts: Vec<stmt::Stmt>,
     pub signals: Vec<Signal>,
     entry_indices: Vec<EntryIndex>,
-    phantom: PhantomData<S>,
 }
 
 #[derive(Debug)]
@@ -297,7 +281,7 @@ impl ParsedTestCase {
         src.parse()
     }
 
-    pub fn with_signals(self, signals: Vec<Signal>) -> anyhow::Result<TestCase<DynamicTest>> {
+    pub fn with_signals(self, signals: Vec<Signal>) -> anyhow::Result<TestCase> {
         let entry_indices = self
             .signals
             .into_iter()
@@ -327,12 +311,11 @@ impl ParsedTestCase {
             stmts: self.stmts,
             signals,
             entry_indices,
-            phantom: PhantomData,
         })
     }
 }
 
-impl<T: TestType> TestCase<T> {
+impl TestCase {
     pub fn run(&self, driver: &mut impl TestDriver) -> anyhow::Result<()> {
         let mut iter = TestCaseIterator {
             iter: crate::stmt::StmtIterator::new(&self.stmts),
@@ -362,13 +345,8 @@ impl<T: TestType> TestCase<T> {
         }
         Ok(())
     }
-}
 
-impl TestCase<DynamicTest> {
-    pub fn try_from_dig(
-        dig: &crate::dig::DigFile,
-        n: usize,
-    ) -> anyhow::Result<TestCase<DynamicTest>> {
+    pub fn try_from_dig(dig: &crate::dig::DigFile, n: usize) -> anyhow::Result<TestCase> {
         if n >= dig.test_cases.len() {
             anyhow::bail!(
                 "Trying to load test case #{n}, but file only contains {} test cases",
@@ -379,35 +357,18 @@ impl TestCase<DynamicTest> {
             .with_signals(dig.signals.clone())
     }
 
-    pub fn get_static(self) -> anyhow::Result<TestCase<StaticTest>> {
+    pub fn try_iter(&self) -> anyhow::Result<TestCaseIterator> {
         if self.stmts.check(&self.signals, &self.entry_indices)? {
-            return Ok(TestCase {
-                stmts: self.stmts,
-                signals: self.signals,
-                entry_indices: self.entry_indices,
-                phantom: PhantomData,
-            });
-        }
-        anyhow::bail!("Test is not static")
-    }
-}
-
-impl TestCase<StaticTest> {
-    pub fn try_from_static_dig(
-        dig: &crate::dig::DigFile,
-        n: usize,
-    ) -> anyhow::Result<TestCase<StaticTest>> {
-        TestCase::try_from_dig(dig, n)?.get_static()
-    }
-
-    pub fn iter(&self) -> TestCaseIterator {
-        TestCaseIterator {
-            iter: crate::stmt::StmtIterator::new(&self.stmts),
-            ctx: EvalContext::new(),
-            signals: &self.signals,
-            entry_indices: &self.entry_indices,
-            prev: None,
-            cache: vec![],
+            Ok(TestCaseIterator {
+                iter: crate::stmt::StmtIterator::new(&self.stmts),
+                ctx: EvalContext::new(),
+                signals: &self.signals,
+                entry_indices: &self.entry_indices,
+                prev: None,
+                cache: vec![],
+            })
+        } else {
+            Err(anyhow::anyhow!("Not a static test"))
         }
     }
 
@@ -439,15 +400,15 @@ impl TestCase<StaticTest> {
     }
 }
 
-impl<'a> IntoIterator for &'a TestCase<StaticTest> {
-    type Item = DataRow<'a>;
+// impl<'a> IntoIterator for &'a TestCase {
+//     type Item = DataRow<'a>;
 
-    type IntoIter = TestCaseIterator<'a>;
+//     type IntoIter = TestCaseIterator<'a>;
 
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
+//     fn into_iter(self) -> Self::IntoIter {
+//         self.iter()
+//     }
+// }
 
 impl FromStr for ParsedTestCase {
     type Err = anyhow::Error;
@@ -513,7 +474,7 @@ impl Display for Signal {
     }
 }
 
-impl<S: TestType> Display for TestCase<S> {
+impl Display for TestCase {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let signal_names = self
             .signals
@@ -574,10 +535,8 @@ end loop
                 dir: SignalDirection::Output,
             });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase = ParsedTestCase::try_from_test(input)?
-            .with_signals(known_signals)?
-            .get_static()?;
-        for row in &testcase {
+        let testcase = ParsedTestCase::try_from_test(input)?.with_signals(known_signals)?;
+        for row in testcase.try_iter()? {
             for entry in row {
                 print!("{entry} ");
             }
@@ -602,11 +561,9 @@ Z 1";
         });
 
         let known_signals = Vec::from_iter(known_inputs);
-        let testcase = ParsedTestCase::try_from_test(input)?
-            .with_signals(known_signals)?
-            .get_static()?;
+        let testcase = ParsedTestCase::try_from_test(input)?.with_signals(known_signals)?;
 
-        let result: Vec<DataRow> = testcase.into_iter().collect();
+        let result: Vec<DataRow> = testcase.try_iter()?.collect();
 
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].entries[0].signal.name, "A");
@@ -658,16 +615,13 @@ CLK IN OUT
             dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase = ParsedTestCase::try_from_test(input)?
-            .with_signals(known_signals.clone())?
-            .get_static()?;
+        let testcase = ParsedTestCase::try_from_test(input)?.with_signals(known_signals.clone())?;
 
-        let expanded_testcase = ParsedTestCase::try_from_test(expanded_input)?
-            .with_signals(known_signals)?
-            .get_static()?;
+        let expanded_testcase =
+            ParsedTestCase::try_from_test(expanded_input)?.with_signals(known_signals)?;
 
-        let rows: Vec<_> = testcase.into_iter().map(|r| r.entries).collect();
-        let expanded_rows: Vec<_> = expanded_testcase.into_iter().map(|r| r.entries).collect();
+        let rows: Vec<_> = testcase.try_iter()?.map(|r| r.entries).collect();
+        let expanded_rows: Vec<_> = expanded_testcase.try_iter()?.map(|r| r.entries).collect();
 
         assert_eq!(rows, expanded_rows);
 
@@ -701,16 +655,13 @@ A B OUT
             dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase = ParsedTestCase::try_from_test(input)?
-            .with_signals(known_signals.clone())?
-            .get_static()?;
+        let testcase = ParsedTestCase::try_from_test(input)?.with_signals(known_signals.clone())?;
 
-        let expanded_testcase = ParsedTestCase::try_from_test(expanded_input)?
-            .with_signals(known_signals)?
-            .get_static()?;
+        let expanded_testcase =
+            ParsedTestCase::try_from_test(expanded_input)?.with_signals(known_signals)?;
 
-        let rows: Vec<_> = testcase.into_iter().map(|r| r.entries).collect();
-        let expanded_rows: Vec<_> = expanded_testcase.into_iter().map(|r| r.entries).collect();
+        let rows: Vec<_> = testcase.try_iter()?.map(|r| r.entries).collect();
+        let expanded_rows: Vec<_> = expanded_testcase.try_iter()?.map(|r| r.entries).collect();
 
         assert_eq!(rows, expanded_rows);
 
@@ -746,16 +697,13 @@ CLK A OUT
             dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase = ParsedTestCase::try_from_test(input)?
-            .with_signals(known_signals.clone())?
-            .get_static()?;
+        let testcase = ParsedTestCase::try_from_test(input)?.with_signals(known_signals.clone())?;
 
-        let expanded_testcase = ParsedTestCase::try_from_test(expanded_input)?
-            .with_signals(known_signals)?
-            .get_static()?;
+        let expanded_testcase =
+            ParsedTestCase::try_from_test(expanded_input)?.with_signals(known_signals)?;
 
-        let rows: Vec<_> = testcase.into_iter().map(|r| r.entries).collect();
-        let expanded_rows: Vec<_> = expanded_testcase.into_iter().map(|r| r.entries).collect();
+        let rows: Vec<_> = testcase.try_iter()?.map(|r| r.entries).collect();
+        let expanded_rows: Vec<_> = expanded_testcase.try_iter()?.map(|r| r.entries).collect();
 
         assert_eq!(rows, expanded_rows);
 

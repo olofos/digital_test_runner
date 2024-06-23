@@ -6,7 +6,7 @@ mod util;
 fn main() -> anyhow::Result<()> {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/Counter.dig");
     let dig_file = dig::parse(&std::fs::read_to_string(path)?)?;
-    let test_case = TestCase::try_from_static_dig(&dig_file, 0)?;
+    let test_case = TestCase::try_from_dig(&dig_file, 0)?;
 
     let counter_path = util::compile_verilog("counter_int_tb", &["Counter.v", "Counter_int_tb.v"])?;
 
@@ -19,7 +19,7 @@ fn main() -> anyhow::Result<()> {
     let mut cursor = util::Cursor::new(child.stdout.take().unwrap());
 
     let mut error_count = 0;
-    for row in &test_case {
+    for row in test_case.try_iter()? {
         for input in row.inputs() {
             write!(stdin, "{:01$b}", input.value, input.signal.bits)?;
         }

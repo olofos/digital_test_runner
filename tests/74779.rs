@@ -9,5 +9,5 @@ fn load_file() {
         std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/74779.dig"))
             .unwrap();
     let dig: DigFile = parse(&input).unwrap();
-    let _ = TestCase::try_from_static_dig(&dig, 0).unwrap();
+    let _ = TestCase::try_from_dig(&dig, 0).unwrap();
 }
