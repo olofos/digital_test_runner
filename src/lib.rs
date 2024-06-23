@@ -11,6 +11,7 @@ mod value;
 pub use crate::value::{InputValue, OutputValue, Value};
 
 use check::TestCheck;
+use dig::DigFile;
 use eval_context::EvalContext;
 use std::{fmt::Display, str::FromStr};
 
@@ -277,10 +278,6 @@ impl<'a> Iterator for TestCaseIterator<'a> {
 }
 
 impl ParsedTestCase {
-    pub fn try_from_test(src: &str) -> anyhow::Result<ParsedTestCase> {
-        src.parse()
-    }
-
     pub fn with_signals(self, signals: Vec<Signal>) -> anyhow::Result<TestCase> {
         let entry_indices = self
             .signals
@@ -315,6 +312,18 @@ impl ParsedTestCase {
     }
 }
 
+impl DigFile {
+    pub fn load_test(&self, n: usize) -> anyhow::Result<TestCase> {
+        if n >= self.test_cases.len() {
+            anyhow::bail!(
+                "Trying to load test case #{n}, but file only contains {} test cases",
+                self.test_cases.len()
+            );
+        }
+        ParsedTestCase::from_str(&self.test_cases[n].test_data)?.with_signals(self.signals.clone())
+    }
+}
+
 impl TestCase {
     pub fn run(&self, driver: &mut impl TestDriver) -> anyhow::Result<()> {
         let mut iter = TestCaseIterator {
@@ -344,17 +353,6 @@ impl TestCase {
             }
         }
         Ok(())
-    }
-
-    pub fn try_from_dig(dig: &crate::dig::DigFile, n: usize) -> anyhow::Result<TestCase> {
-        if n >= dig.test_cases.len() {
-            anyhow::bail!(
-                "Trying to load test case #{n}, but file only contains {} test cases",
-                dig.test_cases.len()
-            );
-        }
-        ParsedTestCase::try_from_test(&dig.test_cases[n].test_data)?
-            .with_signals(dig.signals.clone())
     }
 
     pub fn try_iter(&self) -> anyhow::Result<TestCaseIterator> {
@@ -535,7 +533,7 @@ end loop
                 dir: SignalDirection::Output,
             });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase = ParsedTestCase::try_from_test(input)?.with_signals(known_signals)?;
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
         for row in testcase.try_iter()? {
             for entry in row {
                 print!("{entry} ");
@@ -561,7 +559,7 @@ Z 1";
         });
 
         let known_signals = Vec::from_iter(known_inputs);
-        let testcase = ParsedTestCase::try_from_test(input)?.with_signals(known_signals)?;
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
 
         let result: Vec<DataRow> = testcase.try_iter()?.collect();
 
@@ -615,10 +613,10 @@ CLK IN OUT
             dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase = ParsedTestCase::try_from_test(input)?.with_signals(known_signals.clone())?;
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals.clone())?;
 
         let expanded_testcase =
-            ParsedTestCase::try_from_test(expanded_input)?.with_signals(known_signals)?;
+            ParsedTestCase::from_str(expanded_input)?.with_signals(known_signals)?;
 
         let rows: Vec<_> = testcase.try_iter()?.map(|r| r.entries).collect();
         let expanded_rows: Vec<_> = expanded_testcase.try_iter()?.map(|r| r.entries).collect();
@@ -655,10 +653,10 @@ A B OUT
             dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase = ParsedTestCase::try_from_test(input)?.with_signals(known_signals.clone())?;
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals.clone())?;
 
         let expanded_testcase =
-            ParsedTestCase::try_from_test(expanded_input)?.with_signals(known_signals)?;
+            ParsedTestCase::from_str(expanded_input)?.with_signals(known_signals)?;
 
         let rows: Vec<_> = testcase.try_iter()?.map(|r| r.entries).collect();
         let expanded_rows: Vec<_> = expanded_testcase.try_iter()?.map(|r| r.entries).collect();
@@ -697,10 +695,10 @@ CLK A OUT
             dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase = ParsedTestCase::try_from_test(input)?.with_signals(known_signals.clone())?;
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals.clone())?;
 
         let expanded_testcase =
-            ParsedTestCase::try_from_test(expanded_input)?.with_signals(known_signals)?;
+            ParsedTestCase::from_str(expanded_input)?.with_signals(known_signals)?;
 
         let rows: Vec<_> = testcase.try_iter()?.map(|r| r.entries).collect();
         let expanded_rows: Vec<_> = expanded_testcase.try_iter()?.map(|r| r.entries).collect();

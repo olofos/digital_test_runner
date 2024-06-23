@@ -1,6 +1,4 @@
-use digital_test_runner::{
-    dig, DataEntry, InputValue, Signal, SignalDirection, TestCase, TestDriver,
-};
+use digital_test_runner::{dig, DataEntry, InputValue, Signal, SignalDirection, TestDriver};
 use std::{ffi::OsStr, io::Write};
 use util::Cursor;
 
@@ -81,7 +79,7 @@ fn main() -> anyhow::Result<()> {
 
     for n in 0..dig_file.test_cases.len() {
         println!("Running test #{n} \"{}\"", dig_file.test_cases[n].name);
-        let test_case = TestCase::try_from_dig(&dig_file, n)?;
+        let test_case = dig_file.load_test(n)?;
 
         let counter_path =
             util::compile_verilog("counter_int_tb", &["Counter.v", "Counter_int_tb.v"])?;

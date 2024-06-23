@@ -1,7 +1,4 @@
-use digital_test_runner::{
-    dig::{parse, DigFile},
-    TestCase,
-};
+use digital_test_runner::dig::{parse, DigFile};
 
 #[test]
 fn load_file() {
@@ -9,5 +6,5 @@ fn load_file() {
         std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/74779.dig"))
             .unwrap();
     let dig: DigFile = parse(&input).unwrap();
-    let _ = TestCase::try_from_dig(&dig, 0).unwrap();
+    let _ = dig.load_test(0).unwrap();
 }

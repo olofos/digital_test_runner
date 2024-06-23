@@ -1,4 +1,4 @@
-use digital_test_runner::{dig, TestCase};
+use digital_test_runner::dig;
 use std::io::Write;
 
 mod util;
@@ -6,7 +6,7 @@ mod util;
 fn main() -> anyhow::Result<()> {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/Counter.dig");
     let dig_file = dig::parse(&std::fs::read_to_string(path)?)?;
-    let test_case = TestCase::try_from_dig(&dig_file, 0)?;
+    let test_case = dig_file.load_test(0)?;
 
     let counter_path = util::compile_verilog("counter_int_tb", &["Counter.v", "Counter_int_tb.v"])?;
 
