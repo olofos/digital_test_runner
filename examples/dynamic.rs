@@ -24,10 +24,10 @@ impl TestDriver for Driver {
 
         self.output_signals
             .iter()
-            .map(|s| {
-                self.cursor.grab(s.bits).map(|n| DataEntry {
-                    signal: s,
-                    value: InputValue::Value(n),
+            .map(|signal| {
+                self.cursor.grab(signal.bits).map(|value| DataEntry {
+                    signal,
+                    value,
                     changed: true,
                 })
             })

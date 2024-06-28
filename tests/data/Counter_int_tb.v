@@ -23,7 +23,7 @@ module InteractiveTb ();
       if (res == 1) {CLK, RESET} = in;
       else exit = 1;
       #1;
-      $fwrite('h8000_0001, "%b\n", {OUT, TC});
+      $fwrite('h8000_0001, "> %b\n", {OUT, TC});
       $fflush('h8000_0001);
     end
   end
