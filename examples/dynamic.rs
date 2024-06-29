@@ -1,4 +1,4 @@
-use digital_test_runner::{dig, DataEntry, InputValue, Signal, SignalDirection, TestDriver};
+use digital_test_runner::{dig, InputEntry, OutputEntry, Signal, SignalDirection, TestDriver};
 use std::{ffi::OsStr, io::Write};
 use util::Cursor;
 
@@ -15,8 +15,8 @@ struct Driver {
 impl TestDriver for Driver {
     fn write_input_and_read_output(
         &mut self,
-        inputs: &[DataEntry<InputValue>],
-    ) -> Result<Vec<DataEntry<'_, InputValue>>, anyhow::Error> {
+        inputs: &[&InputEntry],
+    ) -> Result<Vec<OutputEntry>, anyhow::Error> {
         for input in inputs {
             write!(self.stdin, "{:01$b}", input.value, input.signal.bits)?;
         }
@@ -25,11 +25,9 @@ impl TestDriver for Driver {
         self.output_signals
             .iter()
             .map(|signal| {
-                self.cursor.grab(signal.bits).map(|value| DataEntry {
-                    signal,
-                    value,
-                    changed: true,
-                })
+                self.cursor
+                    .grab(signal.bits)
+                    .map(|value| OutputEntry { signal, value })
             })
             .collect::<Result<Vec<_>, _>>()
     }
@@ -74,24 +72,40 @@ impl Drop for Driver {
 }
 
 fn main() -> anyhow::Result<()> {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/Counter.dig");
-    let dig_file = dig::parse(&std::fs::read_to_string(path)?)?;
+    for test_name in ["Counter", "74779"] {
+        println!("Testing circuit {test_name}");
+        let path = format!(
+            "{}/tests/data/{}.dig",
+            env!("CARGO_MANIFEST_DIR"),
+            test_name
+        );
+        let dig_file = dig::parse(&std::fs::read_to_string(path)?)?;
 
-    for n in 0..dig_file.test_cases.len() {
-        println!("Running test #{n} \"{}\"", dig_file.test_cases[n].name);
-        let test_case = dig_file.load_test(n)?;
+        for test_num in 0..dig_file.test_cases.len() {
+            println!(
+                "Running test #{test_num} \"{}\"",
+                dig_file.test_cases[test_num].name
+            );
+            let test_case = dig_file.load_test(test_num)?;
 
-        let counter_path =
-            util::compile_verilog("counter_int_tb", &["Counter.v", "Counter_int_tb.v"])?;
-        let mut driver = Driver::try_new(counter_path, &test_case.signals)?;
+            let prog_path = util::compile_verilog(
+                &format!("{}_int_tb", test_name),
+                &[
+                    &format!("{}.v", test_name),
+                    &format!("{}_int_tb.v", test_name),
+                ],
+            )?;
+            let mut driver = Driver::try_new(prog_path, &test_case.signals)?;
 
-        test_case.run(&mut driver)?;
+            test_case.run(&mut driver)?;
 
-        if driver.error_count == 0 {
-            println!("All tests passed");
-        } else {
-            println!("Found {} failing assertions", driver.error_count);
+            if driver.error_count == 0 {
+                println!("Test passed");
+            } else {
+                println!("Found {} failing assertions", driver.error_count);
+            }
         }
+        println!();
     }
 
     Ok(())
