@@ -41,7 +41,7 @@ pub(crate) enum EntryDirection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EntryIndex {
+pub(crate) struct EntryToSignalIndex {
     index: usize,
     dir: EntryDirection,
 }
@@ -63,7 +63,20 @@ pub struct ParsedTestCase {
 pub struct TestCase {
     stmts: Vec<stmt::Stmt>,
     pub signals: Vec<Signal>,
-    entry_indices: Vec<EntryIndex>,
+    entry_indices: Vec<EntryToSignalIndex>,
+    input_indices: Vec<EntryIndex>,
+    output_indices: Vec<EntryIndex>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum EntryIndex {
+    Entry {
+        entry_index: usize,
+        signal_index: usize,
+    },
+    Default {
+        signal_index: usize,
+    },
 }
 
 #[derive(Debug)]
@@ -71,7 +84,9 @@ pub struct TestCaseIterator<'a> {
     iter: crate::stmt::StmtIterator<'a>,
     ctx: EvalContext,
     signals: &'a [Signal],
-    entry_indices: &'a [EntryIndex],
+    entry_indices: &'a [EntryToSignalIndex],
+    input_indices: &'a [EntryIndex],
+    output_indices: &'a [EntryIndex],
     prev: Option<Vec<stmt::DataEntry>>,
     cache: Vec<(Vec<stmt::DataEntry>, bool)>,
 }
@@ -96,7 +111,7 @@ pub struct OutputEntry<'a> {
     pub value: OutputValue,
 }
 
-impl EntryIndex {
+impl EntryToSignalIndex {
     fn is_input(&self) -> bool {
         self.dir == EntryDirection::Input
     }
@@ -201,64 +216,68 @@ impl<'a> Iterator for TestCaseIterator<'a> {
         };
         self.prev = Some(stmt_entries.clone());
 
-        let mut inputs =
-            self.signals
-                .iter()
-                .filter_map(|signal| match signal.dir {
-                    SignalDirection::Input { default }
-                    | SignalDirection::Bidirectional { default } => Some(InputEntry {
-                        signal,
-                        value: default,
-                        changed: false,
-                    }),
-                    SignalDirection::Output => None,
-                })
-                .collect::<Vec<_>>();
+        let mut inputs = Vec::with_capacity(self.input_indices.len());
+        let mut outputs = Vec::with_capacity(self.output_indices.len());
 
-        let mut outputs = self
-            .signals
-            .iter()
-            .filter_map(|signal| {
-                if signal.is_output() {
-                    Some(OutputEntry {
+        for index in self.input_indices {
+            let entry = match index {
+                EntryIndex::Entry {
+                    entry_index,
+                    signal_index,
+                } => {
+                    let signal = &self.signals[*signal_index];
+                    let value = match &stmt_entries[*entry_index] {
+                        stmt::DataEntry::Number(n) => {
+                            InputValue::Value(n & ((1 << signal.bits) - 1))
+                        }
+                        stmt::DataEntry::Z => InputValue::Z,
+                        _ => unreachable!(),
+                    };
+                    let changed = changed[*entry_index];
+                    InputEntry {
+                        signal,
+                        value,
+                        changed,
+                    }
+                }
+                EntryIndex::Default { signal_index } => {
+                    let signal = &self.signals[*signal_index];
+                    InputEntry {
+                        signal,
+                        value: signal.default_value().unwrap(),
+                        changed: false,
+                    }
+                }
+            };
+            inputs.push(entry);
+        }
+
+        for index in self.output_indices {
+            let entry = match index {
+                EntryIndex::Entry {
+                    entry_index,
+                    signal_index,
+                } => {
+                    let signal = &self.signals[*signal_index];
+                    let value = match &stmt_entries[*entry_index] {
+                        stmt::DataEntry::Number(n) => {
+                            OutputValue::Value(n & ((1 << signal.bits) - 1))
+                        }
+                        stmt::DataEntry::Z => OutputValue::Z,
+                        stmt::DataEntry::X => OutputValue::X,
+                        _ => unreachable!(),
+                    };
+                    OutputEntry { signal, value }
+                }
+                EntryIndex::Default { signal_index } => {
+                    let signal = &self.signals[*signal_index];
+                    OutputEntry {
                         signal,
                         value: OutputValue::X,
-                    })
-                } else {
-                    None
+                    }
                 }
-            })
-            .collect::<Vec<_>>();
-
-        for ((entry, entry_index), changed) in stmt_entries
-            .into_iter()
-            .zip(self.entry_indices)
-            .zip(changed)
-        {
-            let signal = &self.signals[entry_index.index];
-            if entry_index.is_input() {
-                let i = inputs.iter().position(|e| e.signal == signal).unwrap();
-                let value = match entry {
-                    stmt::DataEntry::Number(n) => InputValue::Value(n & ((1 << signal.bits) - 1)),
-                    stmt::DataEntry::Z => InputValue::Z,
-                    _ => unreachable!(),
-                };
-                inputs[i] = InputEntry {
-                    signal,
-                    value,
-                    changed,
-                }
-            } else {
-                let i = outputs.iter().position(|e| e.signal == signal).unwrap();
-
-                let value = match entry {
-                    stmt::DataEntry::Number(n) => OutputValue::Value(n & ((1 << signal.bits) - 1)),
-                    stmt::DataEntry::Z => OutputValue::Z,
-                    stmt::DataEntry::X => OutputValue::X,
-                    _ => unreachable!(),
-                };
-                outputs[i].value = value;
-            }
+            };
+            outputs.push(entry);
         }
 
         Some(DataRow {
@@ -271,6 +290,56 @@ impl<'a> Iterator for TestCaseIterator<'a> {
 
 impl ParsedTestCase {
     pub fn with_signals(self, signals: Vec<Signal>) -> anyhow::Result<TestCase> {
+        let mut input_indices = vec![];
+        let mut output_indices = vec![];
+
+        for (signal_index, signal) in signals.iter().enumerate() {
+            let index = self
+                .signals
+                .iter()
+                .position(|signal_name| signal_name == &signal.name);
+
+            let index_out = self
+                .signals
+                .iter()
+                .position(|signal_name| signal_name == &(signal.name.clone() + "_out"));
+
+            match signal.dir {
+                SignalDirection::Input { .. } | SignalDirection::Bidirectional { .. } => {
+                    input_indices.push(match &index {
+                        Some(entry_index) => EntryIndex::Entry {
+                            entry_index: *entry_index,
+                            signal_index,
+                        },
+                        None => EntryIndex::Default { signal_index },
+                    });
+                }
+                SignalDirection::Output => {}
+            }
+
+            match signal.dir {
+                SignalDirection::Input { .. } => {}
+                SignalDirection::Bidirectional { .. } => {
+                    output_indices.push(match &index_out {
+                        Some(entry_index) => EntryIndex::Entry {
+                            entry_index: *entry_index,
+                            signal_index,
+                        },
+                        None => EntryIndex::Default { signal_index },
+                    });
+                }
+                SignalDirection::Output => {
+                    output_indices.push(match &index {
+                        Some(entry_index) => EntryIndex::Entry {
+                            entry_index: *entry_index,
+                            signal_index,
+                        },
+                        None => EntryIndex::Default { signal_index },
+                    });
+                }
+            }
+        }
+
         let entry_indices = self
             .signals
             .into_iter()
@@ -290,7 +359,7 @@ impl ParsedTestCase {
                     EntryDirection::Input
                 };
 
-                Ok(EntryIndex { index, dir })
+                Ok(EntryToSignalIndex { index, dir })
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
 
@@ -300,6 +369,8 @@ impl ParsedTestCase {
             stmts: self.stmts,
             signals,
             entry_indices,
+            input_indices,
+            output_indices,
         })
     }
 }
@@ -323,6 +394,8 @@ impl TestCase {
             ctx: EvalContext::new(),
             signals: &self.signals,
             entry_indices: &self.entry_indices,
+            input_indices: &self.input_indices,
+            output_indices: &self.output_indices,
             prev: None,
             cache: vec![],
         };
@@ -353,6 +426,8 @@ impl TestCase {
                 ctx: EvalContext::new(),
                 signals: &self.signals,
                 entry_indices: &self.entry_indices,
+                input_indices: &self.input_indices,
+                output_indices: &self.output_indices,
                 prev: None,
                 cache: vec![],
             })
@@ -427,6 +502,15 @@ impl Signal {
             self.dir,
             SignalDirection::Output | SignalDirection::Bidirectional { .. }
         )
+    }
+
+    pub fn default_value(&self) -> Option<InputValue> {
+        match self.dir {
+            SignalDirection::Input { default } | SignalDirection::Bidirectional { default } => {
+                Some(default)
+            }
+            SignalDirection::Output => None,
+        }
     }
 }
 

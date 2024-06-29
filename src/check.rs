@@ -1,26 +1,29 @@
 use crate::expr::{Expr, FUNC_TABLE};
 use crate::framed_map::FramedSet;
 use crate::stmt::{DataEntry, Stmt};
-use crate::{EntryIndex, Signal};
+use crate::{EntryToSignalIndex, Signal};
 
 #[derive(Debug)]
 pub(crate) struct CheckContext<'a> {
     vars: FramedSet<String>,
     signals: &'a [Signal],
-    entry_indices: &'a [EntryIndex],
+    entry_indices: &'a [EntryToSignalIndex],
     pub is_static: bool,
 }
 
 pub trait TestCheck<'a> {
-    fn check(&self, signals: &'a [Signal], entry_indices: &'a [EntryIndex])
-        -> anyhow::Result<bool>;
+    fn check(
+        &self,
+        signals: &'a [Signal],
+        entry_indices: &'a [EntryToSignalIndex],
+    ) -> anyhow::Result<bool>;
 }
 
 impl<'a> TestCheck<'a> for Vec<Stmt> {
     fn check(
         &self,
         signals: &'a [Signal],
-        entry_indices: &'a [EntryIndex],
+        entry_indices: &'a [EntryToSignalIndex],
     ) -> anyhow::Result<bool> {
         let mut ctx = CheckContext::new(signals, entry_indices);
         for stmt in self {
@@ -31,7 +34,7 @@ impl<'a> TestCheck<'a> for Vec<Stmt> {
 }
 
 impl<'a> CheckContext<'a> {
-    pub fn new(signals: &'a [Signal], entry_indices: &'a [EntryIndex]) -> Self {
+    pub fn new(signals: &'a [Signal], entry_indices: &'a [EntryToSignalIndex]) -> Self {
         Self {
             vars: FramedSet::new(),
             signals,
@@ -194,7 +197,7 @@ mod tests {
         }
     }
 
-    fn make_entry_indices(signals: &[Signal]) -> Vec<EntryIndex> {
+    fn make_entry_indices(signals: &[Signal]) -> Vec<EntryToSignalIndex> {
         signals
             .iter()
             .enumerate()
@@ -204,7 +207,7 @@ mod tests {
                     crate::SignalDirection::Output => EntryDirection::Output,
                     crate::SignalDirection::Bidirectional { .. } => unimplemented!(),
                 };
-                EntryIndex { index, dir }
+                EntryToSignalIndex { index, dir }
             })
             .collect::<Vec<_>>()
     }
