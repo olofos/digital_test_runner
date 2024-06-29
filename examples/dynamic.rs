@@ -15,7 +15,7 @@ struct Driver {
 impl TestDriver for Driver {
     fn write_input_and_read_output(
         &mut self,
-        inputs: &[&InputEntry],
+        inputs: &[InputEntry],
     ) -> Result<Vec<OutputEntry>, anyhow::Error> {
         for input in inputs {
             write!(self.stdin, "{:01$b}", input.value, input.signal.bits)?;

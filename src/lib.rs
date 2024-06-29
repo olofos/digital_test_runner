@@ -18,10 +18,10 @@ use std::{fmt::Display, str::FromStr};
 pub trait TestDriver {
     fn write_input_and_read_output(
         &mut self,
-        inputs: &[&InputEntry],
+        inputs: &[InputEntry],
     ) -> anyhow::Result<Vec<OutputEntry>>;
 
-    fn write_input(&mut self, inputs: &[&InputEntry]) -> anyhow::Result<()> {
+    fn write_input(&mut self, inputs: &[InputEntry]) -> anyhow::Result<()> {
         let _ = self.write_input_and_read_output(inputs)?;
         Ok(())
     }
@@ -107,20 +107,13 @@ impl EntryIndex {
 }
 
 impl<'a> DataRow<'a> {
-    pub fn inputs(&self) -> impl Iterator<Item = &InputEntry> {
-        self.inputs.iter()
-    }
-
     pub fn changed_inputs(&self) -> impl Iterator<Item = &InputEntry> {
-        self.inputs().filter(|entry| entry.changed)
-    }
-
-    pub fn outputs(&self) -> impl Iterator<Item = &OutputEntry> {
-        self.outputs.iter()
+        self.inputs.iter().filter(|entry| entry.changed)
     }
 
     pub fn checked_outputs(&self) -> impl Iterator<Item = &OutputEntry> {
-        self.outputs()
+        self.outputs
+            .iter()
             .filter(|entry| !matches!(entry.value, OutputValue::X))
     }
 }
@@ -335,10 +328,9 @@ impl TestCase {
         };
 
         while let Some(row) = iter.next() {
-            let inputs = row.inputs().collect::<Vec<_>>();
             if row.update_output {
-                let outputs = driver.write_input_and_read_output(&inputs)?;
-                let expected: Vec<_> = row.outputs().map(|entry| entry.value).collect();
+                let outputs = driver.write_input_and_read_output(&row.inputs)?;
+                let expected: Vec<_> = row.outputs.iter().map(|entry| entry.value).collect();
 
                 expected.iter().zip(&outputs).for_each(|(e, o)| {
                     if !e.check(o.value) {
@@ -348,7 +340,7 @@ impl TestCase {
 
                 iter.ctx.set_outputs(outputs);
             } else {
-                driver.write_input(&inputs)?;
+                driver.write_input(&row.inputs)?;
             }
         }
         Ok(())

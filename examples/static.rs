@@ -45,12 +45,12 @@ fn main() -> anyhow::Result<()> {
             };
 
             for row in iter {
-                for input in row.inputs() {
+                for input in &row.inputs {
                     write!(stdin, "{:01$b}", input.value, input.signal.bits)?;
                 }
                 writeln!(stdin)?;
 
-                for output in row.outputs() {
+                for output in &row.outputs {
                     let value = cursor.grab(output.signal.bits)?;
                     if !output.value.check(value) {
                         println!(
