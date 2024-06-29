@@ -1,7 +1,7 @@
 use std::io::{BufRead, BufReader, Read};
 use std::{path::PathBuf, process::Command};
 
-use digital_test_runner::InputValue;
+use digital_test_runner::OutputValue;
 
 pub fn compile_verilog(name: &str, sources: &[&str]) -> anyhow::Result<PathBuf> {
     let iverilog_path = which::which("iverilog")?;
@@ -45,7 +45,7 @@ impl<T: Read> Cursor<T> {
         }
     }
 
-    pub fn grab(&mut self, len: impl Into<usize>) -> anyhow::Result<InputValue> {
+    pub fn grab(&mut self, len: impl Into<usize>) -> anyhow::Result<OutputValue> {
         if self.index >= self.line.len() {
             loop {
                 self.line.clear();
@@ -69,11 +69,11 @@ impl<T: Read> Cursor<T> {
             self.index += len;
             if s.contains('x') {
                 eprintln!("Warning, unexpected x in data");
-                Ok(InputValue::Value(0))
+                Ok(OutputValue::X)
             } else if s.contains('z') {
-                Ok(InputValue::Z)
+                Ok(OutputValue::Z)
             } else {
-                Ok(InputValue::Value(i64::from_str_radix(s, 2)?))
+                Ok(OutputValue::Value(i64::from_str_radix(s, 2)?))
             }
         }
     }

@@ -31,12 +31,14 @@ impl OutputValue {
         }
     }
 
-    pub fn check(&self, other: impl Into<InputValue>) -> bool {
+    pub fn check(&self, other: impl Into<OutputValue>) -> bool {
         let other = other.into();
-        match self {
-            OutputValue::Value(n) => other == InputValue::Value(*n),
-            OutputValue::Z => matches!(other, InputValue::Z),
-            OutputValue::X => true,
+        if self.is_x() {
+            true
+        } else if other.is_x() {
+            false
+        } else {
+            self == &other
         }
     }
 }

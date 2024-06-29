@@ -18,10 +18,10 @@ use std::{fmt::Display, str::FromStr};
 pub trait TestDriver {
     fn write_input_and_read_output(
         &mut self,
-        inputs: &[DataEntry<InputValue>],
-    ) -> anyhow::Result<Vec<DataEntry<InputValue>>>;
+        inputs: &[&InputEntry],
+    ) -> anyhow::Result<Vec<OutputEntry>>;
 
-    fn write_input(&mut self, inputs: &[DataEntry<InputValue>]) -> anyhow::Result<()> {
+    fn write_input(&mut self, inputs: &[&InputEntry]) -> anyhow::Result<()> {
         let _ = self.write_input_and_read_output(inputs)?;
         Ok(())
     }
@@ -78,15 +78,22 @@ pub struct TestCaseIterator<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataRow<'a> {
-    pub entries: Vec<DataEntry<'a, Value>>,
+    pub inputs: Vec<InputEntry<'a>>,
+    pub outputs: Vec<OutputEntry<'a>>,
     update_output: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DataEntry<'a, T> {
+pub struct InputEntry<'a> {
     pub signal: &'a Signal,
-    pub value: T,
+    pub value: InputValue,
     pub changed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutputEntry<'a> {
+    pub signal: &'a Signal,
+    pub value: OutputValue,
 }
 
 impl EntryIndex {
@@ -99,83 +106,22 @@ impl EntryIndex {
     }
 }
 
-impl<'a> IntoIterator for DataRow<'a> {
-    type Item = DataEntry<'a, Value>;
-
-    type IntoIter = std::vec::IntoIter<DataEntry<'a, Value>>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.entries.into_iter()
-    }
-}
-
-impl<'a, 'b> IntoIterator for &'a DataRow<'b> {
-    type Item = &'a DataEntry<'b, Value>;
-
-    type IntoIter = std::slice::Iter<'a, DataEntry<'b, Value>>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
-
 impl<'a> DataRow<'a> {
-    pub fn iter(&self) -> std::slice::Iter<'_, DataEntry<'a, Value>> {
-        self.entries.iter()
+    pub fn inputs(&self) -> impl Iterator<Item = &InputEntry> {
+        self.inputs.iter()
     }
 
-    pub fn inputs(&self) -> impl Iterator<Item = DataEntry<'_, InputValue>> {
-        self.iter().filter_map(|entry| match entry.value {
-            Value::InputValue(value) => Some(DataEntry {
-                signal: entry.signal,
-                changed: entry.changed,
-                value,
-            }),
-            Value::OutputValue(_) => None,
-        })
-    }
-
-    pub fn changed_inputs(&self) -> impl Iterator<Item = DataEntry<'_, InputValue>> {
+    pub fn changed_inputs(&self) -> impl Iterator<Item = &InputEntry> {
         self.inputs().filter(|entry| entry.changed)
     }
 
-    pub fn outputs(&self) -> impl Iterator<Item = DataEntry<'_, OutputValue>> {
-        self.iter().filter_map(|entry| match entry.value {
-            Value::OutputValue(value) => Some(DataEntry {
-                signal: entry.signal,
-                changed: entry.changed,
-                value,
-            }),
-            Value::InputValue(_) => None,
-        })
+    pub fn outputs(&self) -> impl Iterator<Item = &OutputEntry> {
+        self.outputs.iter()
     }
 
-    pub fn checked_outputs(&self) -> impl Iterator<Item = DataEntry<'_, OutputValue>> {
+    pub fn checked_outputs(&self) -> impl Iterator<Item = &OutputEntry> {
         self.outputs()
             .filter(|entry| !matches!(entry.value, OutputValue::X))
-    }
-}
-
-impl<'a> DataEntry<'a, Value> {
-    fn new(entry: stmt::DataEntry, signal: &'a Signal, dir: EntryDirection, changed: bool) -> Self {
-        let value = match dir {
-            EntryDirection::Input => Value::InputValue(match entry {
-                stmt::DataEntry::Number(n) => InputValue::Value(n & ((1 << signal.bits) - 1)),
-                stmt::DataEntry::Z => InputValue::Z,
-                _ => unreachable!(),
-            }),
-            EntryDirection::Output => Value::OutputValue(match entry {
-                stmt::DataEntry::Number(n) => OutputValue::Value(n & ((1 << signal.bits) - 1)),
-                stmt::DataEntry::Z => OutputValue::Z,
-                stmt::DataEntry::X => OutputValue::X,
-                _ => unreachable!(),
-            }),
-        };
-        Self {
-            signal,
-            value,
-            changed,
-        }
     }
 }
 
@@ -261,17 +207,70 @@ impl<'a> Iterator for TestCaseIterator<'a> {
             vec![true; stmt_entries.len()]
         };
         self.prev = Some(stmt_entries.clone());
-        let entries = stmt_entries
+
+        let mut inputs =
+            self.signals
+                .iter()
+                .filter_map(|signal| match signal.dir {
+                    SignalDirection::Input { default }
+                    | SignalDirection::Bidirectional { default } => Some(InputEntry {
+                        signal,
+                        value: default,
+                        changed: false,
+                    }),
+                    SignalDirection::Output => None,
+                })
+                .collect::<Vec<_>>();
+
+        let mut outputs = self
+            .signals
+            .iter()
+            .filter_map(|signal| {
+                if signal.is_output() {
+                    Some(OutputEntry {
+                        signal,
+                        value: OutputValue::X,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        for ((entry, entry_index), changed) in stmt_entries
             .into_iter()
             .zip(self.entry_indices)
             .zip(changed)
-            .map(|((entry, entry_index), changed)| {
-                let signal = &self.signals[entry_index.index];
-                DataEntry::new(entry, signal, entry_index.dir, changed)
-            })
-            .collect();
+        {
+            let signal = &self.signals[entry_index.index];
+            if entry_index.is_input() {
+                let i = inputs.iter().position(|e| e.signal == signal).unwrap();
+                let value = match entry {
+                    stmt::DataEntry::Number(n) => InputValue::Value(n & ((1 << signal.bits) - 1)),
+                    stmt::DataEntry::Z => InputValue::Z,
+                    _ => unreachable!(),
+                };
+                inputs[i] = InputEntry {
+                    signal,
+                    value,
+                    changed,
+                }
+            } else {
+                let i = outputs.iter().position(|e| e.signal == signal).unwrap();
+
+                let value = match entry {
+                    stmt::DataEntry::Number(n) => OutputValue::Value(n & ((1 << signal.bits) - 1)),
+                    stmt::DataEntry::Z => OutputValue::Z,
+                    stmt::DataEntry::X => OutputValue::X,
+                    _ => unreachable!(),
+                };
+                outputs[i].value = value;
+            }
+        }
+
         Some(DataRow {
-            entries,
+            inputs,
+            outputs,
             update_output,
         })
     }
@@ -336,7 +335,7 @@ impl TestCase {
         };
 
         while let Some(row) = iter.next() {
-            let inputs = row.inputs().collect::<Vec<DataEntry<'_, InputValue>>>();
+            let inputs = row.inputs().collect::<Vec<_>>();
             if row.update_output {
                 let outputs = driver.write_input_and_read_output(&inputs)?;
                 let expected: Vec<_> = row.outputs().map(|entry| entry.value).collect();
@@ -371,42 +370,29 @@ impl TestCase {
     }
 
     pub fn default_row(&self) -> DataRow {
-        let entries = self
-            .entry_indices
-            .iter()
-            .map(|EntryIndex { index, .. }| {
-                let signal = &self.signals[*index];
-                let (entry, dir) = match &signal.dir {
+        let inputs =
+            self.signals
+                .iter()
+                .filter_map(|signal| match signal.dir {
                     SignalDirection::Input { default }
-                    | SignalDirection::Bidirectional { default } => match default {
-                        InputValue::Value(n) => {
-                            (stmt::DataEntry::Number(*n), EntryDirection::Input)
-                        }
-                        InputValue::Z => (stmt::DataEntry::Z, EntryDirection::Input),
-                    },
+                    | SignalDirection::Bidirectional { default } => Some(InputEntry {
+                        signal,
+                        value: default,
+                        changed: true,
+                    }),
+                    SignalDirection::Output => None,
+                })
+                .collect::<Vec<_>>();
 
-                    SignalDirection::Output => (stmt::DataEntry::X, EntryDirection::Output),
-                };
-                DataEntry::new(entry, signal, dir, true)
-            })
-            .collect();
+        let outputs = vec![];
 
         DataRow {
-            entries,
+            inputs,
+            outputs,
             update_output: true,
         }
     }
 }
-
-// impl<'a> IntoIterator for &'a TestCase {
-//     type Item = DataRow<'a>;
-
-//     type IntoIter = TestCaseIterator<'a>;
-
-//     fn into_iter(self) -> Self::IntoIter {
-//         self.iter()
-//     }
-// }
 
 impl FromStr for ParsedTestCase {
     type Err = anyhow::Error;
@@ -437,24 +423,18 @@ impl Signal {
         matches!(self.dir, SignalDirection::Bidirectional { default: _ })
     }
 
-    // pub fn is_output(&self) -> bool {
-    //     matches!(self.dir, SignalDirection::Output)
-    // }
+    pub fn is_input(&self) -> bool {
+        matches!(
+            self.dir,
+            SignalDirection::Input { .. } | SignalDirection::Bidirectional { .. }
+        )
+    }
 
-    // pub fn is_input(&self) -> bool {
-    //     matches!(
-    //         self.dir,
-    //         SignalDirection::Input { .. } | SignalDirection::Bidirectional { .. }
-    //     )
-    // }
-}
-
-impl<'a> Display for DataEntry<'a, Value> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.value {
-            Value::InputValue(value) => write!(f, "{value}"),
-            Value::OutputValue(value) => write!(f, "{value}"),
-        }
+    pub fn is_output(&self) -> bool {
+        matches!(
+            self.dir,
+            SignalDirection::Output | SignalDirection::Bidirectional { .. }
+        )
     }
 }
 
@@ -535,8 +515,12 @@ end loop
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
         for row in testcase.try_iter()? {
-            for entry in row {
-                print!("{entry} ");
+            for input in row.inputs {
+                print!("{} ", input.value);
+            }
+            print!("| ");
+            for output in row.outputs {
+                print!("{} ", output.value);
             }
             println!()
         }
@@ -564,25 +548,16 @@ Z 1";
         let result: Vec<DataRow> = testcase.try_iter()?.collect();
 
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0].entries[0].signal.name, "A");
-        assert_eq!(result[0].entries[1].signal.name, "A");
-        assert_eq!(result[1].entries[0].signal.name, "A");
-        assert_eq!(result[1].entries[1].signal.name, "A");
+        assert_eq!(result[0].inputs[0].signal.name, "A");
+        assert_eq!(result[0].outputs[0].signal.name, "A");
+        assert_eq!(result[1].inputs[0].signal.name, "A");
+        assert_eq!(result[1].outputs[0].signal.name, "A");
 
-        assert_eq!(
-            result[0].entries[0].value,
-            Value::InputValue(InputValue::Value(1))
-        );
-        assert_eq!(
-            result[0].entries[1].value,
-            Value::OutputValue(OutputValue::X)
-        );
+        assert_eq!(result[0].inputs[0].value, InputValue::Value(1));
+        assert_eq!(result[0].outputs[0].value, OutputValue::X);
 
-        assert_eq!(result[1].entries[0].value, Value::InputValue(InputValue::Z));
-        assert_eq!(
-            result[1].entries[1].value,
-            Value::OutputValue(OutputValue::Value(1))
-        );
+        assert_eq!(result[1].inputs[0].value, InputValue::Z);
+        assert_eq!(result[1].outputs[0].value, OutputValue::Value(1));
 
         Ok(())
     }
@@ -590,16 +565,16 @@ Z 1";
     #[test]
     fn iter_with_c_works() -> anyhow::Result<()> {
         let input = r"
-CLK IN OUT
-C 0 0
-";
+    CLK IN OUT
+    C 0 0
+    ";
 
         let expanded_input = r"
-CLK IN OUT
-0 0 X
-1 0 X
-0 0 0
-";
+    CLK IN OUT
+    0 0 X
+    1 0 X
+    0 0 0
+    ";
         let known_inputs = ["CLK", "IN"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
@@ -618,10 +593,16 @@ CLK IN OUT
         let expanded_testcase =
             ParsedTestCase::from_str(expanded_input)?.with_signals(known_signals)?;
 
-        let rows: Vec<_> = testcase.try_iter()?.map(|r| r.entries).collect();
-        let expanded_rows: Vec<_> = expanded_testcase.try_iter()?.map(|r| r.entries).collect();
+        let input_rows: Vec<_> = testcase.try_iter()?.map(|r| r.inputs).collect();
+        let input_expanded_rows: Vec<_> = expanded_testcase.try_iter()?.map(|r| r.inputs).collect();
 
-        assert_eq!(rows, expanded_rows);
+        assert_eq!(input_rows, input_expanded_rows);
+
+        let output_rows: Vec<_> = testcase.try_iter()?.map(|r| r.outputs).collect();
+        let output_expanded_rows: Vec<_> =
+            expanded_testcase.try_iter()?.map(|r| r.outputs).collect();
+
+        assert_eq!(output_rows, output_expanded_rows);
 
         Ok(())
     }
@@ -629,17 +610,17 @@ CLK IN OUT
     #[test]
     fn iter_with_x_works() -> anyhow::Result<()> {
         let input = r"
-A B OUT
-X X 0
-";
+    A B OUT
+    X X 0
+    ";
 
         let expanded_input = r"
-A B OUT
-0 0 0
-1 0 0
-0 1 0
-1 1 0
-";
+    A B OUT
+    0 0 0
+    1 0 0
+    0 1 0
+    1 1 0
+    ";
         let known_inputs = ["A", "B"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
@@ -658,10 +639,16 @@ A B OUT
         let expanded_testcase =
             ParsedTestCase::from_str(expanded_input)?.with_signals(known_signals)?;
 
-        let rows: Vec<_> = testcase.try_iter()?.map(|r| r.entries).collect();
-        let expanded_rows: Vec<_> = expanded_testcase.try_iter()?.map(|r| r.entries).collect();
+        let input_rows: Vec<_> = testcase.try_iter()?.map(|r| r.inputs).collect();
+        let input_expanded_rows: Vec<_> = expanded_testcase.try_iter()?.map(|r| r.inputs).collect();
 
-        assert_eq!(rows, expanded_rows);
+        assert_eq!(input_rows, input_expanded_rows);
+
+        let output_rows: Vec<_> = testcase.try_iter()?.map(|r| r.outputs).collect();
+        let output_expanded_rows: Vec<_> =
+            expanded_testcase.try_iter()?.map(|r| r.outputs).collect();
+
+        assert_eq!(output_rows, output_expanded_rows);
 
         Ok(())
     }
@@ -669,19 +656,19 @@ A B OUT
     #[test]
     fn iter_with_x_and_c_works() -> anyhow::Result<()> {
         let input = r"
-CLK A OUT
-C X 0
-";
+    CLK A OUT
+    C X 0
+    ";
 
         let expanded_input = r"
-CLK A OUT
-0 0 X
-1 0 X
-0 0 0
-0 1 X
-1 1 X
-0 1 0
-";
+    CLK A OUT
+    0 0 X
+    1 0 X
+    0 0 0
+    0 1 X
+    1 1 X
+    0 1 0
+    ";
         let known_inputs = ["CLK", "A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
@@ -700,10 +687,16 @@ CLK A OUT
         let expanded_testcase =
             ParsedTestCase::from_str(expanded_input)?.with_signals(known_signals)?;
 
-        let rows: Vec<_> = testcase.try_iter()?.map(|r| r.entries).collect();
-        let expanded_rows: Vec<_> = expanded_testcase.try_iter()?.map(|r| r.entries).collect();
+        let input_rows: Vec<_> = testcase.try_iter()?.map(|r| r.inputs).collect();
+        let input_expanded_rows: Vec<_> = expanded_testcase.try_iter()?.map(|r| r.inputs).collect();
 
-        assert_eq!(rows, expanded_rows);
+        assert_eq!(input_rows, input_expanded_rows);
+
+        let output_rows: Vec<_> = testcase.try_iter()?.map(|r| r.outputs).collect();
+        let output_expanded_rows: Vec<_> =
+            expanded_testcase.try_iter()?.map(|r| r.outputs).collect();
+
+        assert_eq!(output_rows, output_expanded_rows);
 
         Ok(())
     }

@@ -1,11 +1,11 @@
-use crate::{framed_map::FramedMap, DataEntry, InputValue};
+use crate::{framed_map::FramedMap, OutputEntry, OutputValue};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::{cell::RefCell, collections::HashMap};
 
 #[derive(Debug)]
 pub struct EvalContext {
     vars: FramedMap<String, i64>,
-    outputs: HashMap<String, InputValue>,
+    outputs: HashMap<String, OutputValue>,
     rng: RefCell<StdRng>,
     seed: u64,
 }
@@ -45,13 +45,13 @@ impl EvalContext {
             Some(n)
         } else {
             match self.outputs.get(name)? {
-                InputValue::Value(n) => Some(*n),
-                InputValue::Z => None,
+                OutputValue::Value(n) => Some(*n),
+                OutputValue::Z | OutputValue::X => None,
             }
         }
     }
 
-    pub fn set_outputs(&mut self, outputs: Vec<DataEntry<'_, InputValue>>) {
+    pub fn set_outputs(&mut self, outputs: Vec<OutputEntry>) {
         self.outputs = outputs
             .into_iter()
             .map(|entry| (entry.signal.name.to_string(), entry.value))
