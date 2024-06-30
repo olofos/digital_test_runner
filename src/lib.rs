@@ -34,18 +34,6 @@ pub enum SignalDirection {
     Bidirectional { default: InputValue },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EntryDirection {
-    Input,
-    Output,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EntryToSignalIndex {
-    index: usize,
-    dir: EntryDirection,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Signal {
     pub name: String,
@@ -63,7 +51,6 @@ pub struct ParsedTestCase {
 pub struct TestCase {
     stmts: Vec<stmt::Stmt>,
     pub signals: Vec<Signal>,
-    entry_indices: Vec<EntryToSignalIndex>,
     input_indices: Vec<EntryIndex>,
     output_indices: Vec<EntryIndex>,
 }
@@ -84,7 +71,6 @@ pub struct TestCaseIterator<'a> {
     iter: crate::stmt::StmtIterator<'a>,
     ctx: EvalContext,
     signals: &'a [Signal],
-    entry_indices: &'a [EntryToSignalIndex],
     input_indices: &'a [EntryIndex],
     output_indices: &'a [EntryIndex],
     prev: Option<Vec<stmt::DataEntry>>,
@@ -111,13 +97,29 @@ pub struct OutputEntry<'a> {
     pub value: OutputValue,
 }
 
-impl EntryToSignalIndex {
-    fn is_input(&self) -> bool {
-        self.dir == EntryDirection::Input
+impl EntryIndex {
+    pub(crate) fn signal_index(&self) -> usize {
+        match self {
+            EntryIndex::Entry {
+                entry_index: _,
+                signal_index,
+            } => *signal_index,
+            EntryIndex::Default { signal_index } => *signal_index,
+        }
     }
 
-    fn is_output(&self) -> bool {
-        self.dir == EntryDirection::Output
+    pub(crate) fn indexes(&self, entry_index: usize) -> bool {
+        match self {
+            EntryIndex::Entry {
+                entry_index: i,
+                signal_index: _,
+            } => *i == entry_index,
+            EntryIndex::Default { signal_index: _ } => false,
+        }
+    }
+
+    pub(crate) fn is_entry(&self) -> bool {
+        matches!(self, EntryIndex::Entry { .. })
     }
 }
 
@@ -133,6 +135,20 @@ impl<'a> DataRow<'a> {
     }
 }
 
+impl<'a> TestCaseIterator<'a> {
+    fn entry_is_input(&self, entry_index: usize) -> bool {
+        self.input_indices
+            .iter()
+            .any(|entry| entry.indexes(entry_index))
+    }
+
+    fn entry_is_output(&self, entry_index: usize) -> bool {
+        self.output_indices
+            .iter()
+            .any(|entry| entry.indexes(entry_index))
+    }
+}
+
 impl<'a> Iterator for TestCaseIterator<'a> {
     type Item = DataRow<'a>;
 
@@ -144,7 +160,7 @@ impl<'a> Iterator for TestCaseIterator<'a> {
                 .iter()
                 .enumerate()
                 .filter_map(|(i, entry)| {
-                    if self.entry_indices[i].is_input() && entry == &stmt::DataEntry::X {
+                    if entry == &stmt::DataEntry::X && self.entry_is_input(i) {
                         Some(i)
                     } else {
                         None
@@ -171,7 +187,7 @@ impl<'a> Iterator for TestCaseIterator<'a> {
         let has_c = stmt_entries
             .iter()
             .enumerate()
-            .any(|(i, entry)| self.entry_indices[i].is_input() && entry == &stmt::DataEntry::C);
+            .any(|(i, entry)| entry == &stmt::DataEntry::C && self.entry_is_input(i));
 
         if has_c {
             let mut entries = stmt_entries.clone();
@@ -186,7 +202,7 @@ impl<'a> Iterator for TestCaseIterator<'a> {
             let mut entries = stmt_entries.clone();
 
             for (i, entry) in entries.iter_mut().enumerate() {
-                if self.entry_indices[i].is_output() {
+                if self.entry_is_output(i) {
                     *entry = stmt::DataEntry::X;
                 } else if *entry == stmt::DataEntry::C {
                     *entry = stmt::DataEntry::Number(1);
@@ -195,7 +211,7 @@ impl<'a> Iterator for TestCaseIterator<'a> {
             self.cache.push((entries, false));
 
             for (i, entry) in stmt_entries.iter_mut().enumerate() {
-                if self.entry_indices[i].is_output() {
+                if self.entry_is_output(i) {
                     *entry = stmt::DataEntry::X;
                 } else if *entry == stmt::DataEntry::C {
                     *entry = stmt::DataEntry::Number(0);
@@ -340,35 +356,12 @@ impl ParsedTestCase {
             }
         }
 
-        let entry_indices = self
-            .signals
-            .into_iter()
-            .map(|sig_name| {
-                let name = sig_name.strip_suffix("_out").unwrap_or(&sig_name);
-
-                let index = signals
-                    .iter()
-                    .position(|sig| sig.name == name)
-                    .ok_or(anyhow::anyhow!("Could not find signal {sig_name}"))?;
-
-                let dir = if sig_name.ends_with("_out")
-                    || matches!(&signals[index].dir, SignalDirection::Output)
-                {
-                    EntryDirection::Output
-                } else {
-                    EntryDirection::Input
-                };
-
-                Ok(EntryToSignalIndex { index, dir })
-            })
-            .collect::<anyhow::Result<Vec<_>>>()?;
-
-        self.stmts.check(&signals, &entry_indices)?;
+        self.stmts
+            .check(&signals, &input_indices, &output_indices)?;
 
         Ok(TestCase {
             stmts: self.stmts,
             signals,
-            entry_indices,
             input_indices,
             output_indices,
         })
@@ -393,7 +386,6 @@ impl TestCase {
             iter: crate::stmt::StmtIterator::new(&self.stmts),
             ctx: EvalContext::new(),
             signals: &self.signals,
-            entry_indices: &self.entry_indices,
             input_indices: &self.input_indices,
             output_indices: &self.output_indices,
             prev: None,
@@ -420,12 +412,14 @@ impl TestCase {
     }
 
     pub fn try_iter(&self) -> anyhow::Result<TestCaseIterator> {
-        if self.stmts.check(&self.signals, &self.entry_indices)? {
+        if self
+            .stmts
+            .check(&self.signals, &self.input_indices, &self.output_indices)?
+        {
             Ok(TestCaseIterator {
                 iter: crate::stmt::StmtIterator::new(&self.stmts),
                 ctx: EvalContext::new(),
                 signals: &self.signals,
-                entry_indices: &self.entry_indices,
                 input_indices: &self.input_indices,
                 output_indices: &self.output_indices,
                 prev: None,
