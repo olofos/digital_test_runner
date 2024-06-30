@@ -356,6 +356,30 @@ impl ParsedTestCase {
             }
         }
 
+        let missing_signals = self
+            .signals
+            .iter()
+            .enumerate()
+            .filter_map(|(entry_index, signal_name)| {
+                if !input_indices
+                    .iter()
+                    .chain(&output_indices)
+                    .any(|entry| entry.indexes(entry_index))
+                {
+                    Some(signal_name.to_owned())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        if !missing_signals.is_empty() {
+            anyhow::bail!(
+                "No description provided of signals {}",
+                missing_signals.join(", ")
+            )
+        }
+
         self.stmts
             .check(&signals, &input_indices, &output_indices)?;
 
@@ -767,6 +791,33 @@ Z 1";
             expanded_testcase.try_iter()?.map(|r| r.outputs).collect();
 
         assert_eq!(output_rows, output_expanded_rows);
+
+        Ok(())
+    }
+
+    #[test]
+    fn with_signals_returns_error_for_missing_signal() -> anyhow::Result<()> {
+        let input = r"
+    A B C
+    0 0 0
+    ";
+
+        let known_inputs = ["A"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Input {
+                default: InputValue::Value(0),
+            },
+        });
+        let known_outputs = ["B"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Output,
+        });
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+        let testcase_result = ParsedTestCase::from_str(input)?.with_signals(known_signals.clone());
+
+        assert!(testcase_result.is_err());
 
         Ok(())
     }
