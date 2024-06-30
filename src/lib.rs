@@ -10,9 +10,10 @@ mod value;
 
 pub use crate::value::{InputValue, OutputValue, Value};
 
-use check::TestCheck;
-use dig::DigFile;
-use eval_context::EvalContext;
+use crate::check::TestCheck;
+use crate::dig::DigFile;
+use crate::eval_context::EvalContext;
+use crate::stmt::{DataEntry, Stmt, StmtIterator};
 use std::{fmt::Display, str::FromStr};
 
 pub trait TestDriver {
@@ -43,13 +44,13 @@ pub struct Signal {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedTestCase {
-    stmts: Vec<stmt::Stmt>,
+    stmts: Vec<Stmt>,
     pub signals: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TestCase {
-    stmts: Vec<stmt::Stmt>,
+    stmts: Vec<Stmt>,
     pub signals: Vec<Signal>,
     input_indices: Vec<EntryIndex>,
     output_indices: Vec<EntryIndex>,
@@ -68,13 +69,13 @@ enum EntryIndex {
 
 #[derive(Debug)]
 pub struct TestCaseIterator<'a> {
-    iter: crate::stmt::StmtIterator<'a>,
+    iter: StmtIterator<'a>,
     ctx: EvalContext,
     signals: &'a [Signal],
     input_indices: &'a [EntryIndex],
     output_indices: &'a [EntryIndex],
-    prev: Option<Vec<stmt::DataEntry>>,
-    cache: Vec<(Vec<stmt::DataEntry>, bool)>,
+    prev: Option<Vec<DataEntry>>,
+    cache: Vec<(Vec<DataEntry>, bool)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -160,7 +161,7 @@ impl<'a> Iterator for TestCaseIterator<'a> {
                 .iter()
                 .enumerate()
                 .filter_map(|(i, entry)| {
-                    if entry == &stmt::DataEntry::X && self.entry_is_input(i) {
+                    if entry == &DataEntry::X && self.entry_is_input(i) {
                         Some(i)
                     } else {
                         None
@@ -173,7 +174,7 @@ impl<'a> Iterator for TestCaseIterator<'a> {
                 for n in (0..(1 << len)).rev() {
                     let mut entries = stmt_entries.clone();
                     for (bit_index, entry_index) in x_positions.iter().enumerate() {
-                        entries[*entry_index] = stmt::DataEntry::Number((n >> bit_index) & 1);
+                        entries[*entry_index] = DataEntry::Number((n >> bit_index) & 1);
                     }
                     self.cache.push((entries, true));
                 }
@@ -187,14 +188,14 @@ impl<'a> Iterator for TestCaseIterator<'a> {
         let has_c = stmt_entries
             .iter()
             .enumerate()
-            .any(|(i, entry)| entry == &stmt::DataEntry::C && self.entry_is_input(i));
+            .any(|(i, entry)| entry == &DataEntry::C && self.entry_is_input(i));
 
         if has_c {
             let mut entries = stmt_entries.clone();
 
             for entry in entries.iter_mut() {
-                if *entry == stmt::DataEntry::C {
-                    *entry = stmt::DataEntry::Number(0);
+                if *entry == DataEntry::C {
+                    *entry = DataEntry::Number(0);
                 }
             }
             self.cache.push((entries, true));
@@ -203,18 +204,18 @@ impl<'a> Iterator for TestCaseIterator<'a> {
 
             for (i, entry) in entries.iter_mut().enumerate() {
                 if self.entry_is_output(i) {
-                    *entry = stmt::DataEntry::X;
-                } else if *entry == stmt::DataEntry::C {
-                    *entry = stmt::DataEntry::Number(1);
+                    *entry = DataEntry::X;
+                } else if *entry == DataEntry::C {
+                    *entry = DataEntry::Number(1);
                 }
             }
             self.cache.push((entries, false));
 
             for (i, entry) in stmt_entries.iter_mut().enumerate() {
                 if self.entry_is_output(i) {
-                    *entry = stmt::DataEntry::X;
-                } else if *entry == stmt::DataEntry::C {
-                    *entry = stmt::DataEntry::Number(0);
+                    *entry = DataEntry::X;
+                } else if *entry == DataEntry::C {
+                    *entry = DataEntry::Number(0);
                 }
             }
 
@@ -243,10 +244,8 @@ impl<'a> Iterator for TestCaseIterator<'a> {
                 } => {
                     let signal = &self.signals[*signal_index];
                     let value = match &stmt_entries[*entry_index] {
-                        stmt::DataEntry::Number(n) => {
-                            InputValue::Value(n & ((1 << signal.bits) - 1))
-                        }
-                        stmt::DataEntry::Z => InputValue::Z,
+                        DataEntry::Number(n) => InputValue::Value(n & ((1 << signal.bits) - 1)),
+                        DataEntry::Z => InputValue::Z,
                         _ => unreachable!(),
                     };
                     let changed = changed[*entry_index];
@@ -276,11 +275,9 @@ impl<'a> Iterator for TestCaseIterator<'a> {
                 } => {
                     let signal = &self.signals[*signal_index];
                     let value = match &stmt_entries[*entry_index] {
-                        stmt::DataEntry::Number(n) => {
-                            OutputValue::Value(n & ((1 << signal.bits) - 1))
-                        }
-                        stmt::DataEntry::Z => OutputValue::Z,
-                        stmt::DataEntry::X => OutputValue::X,
+                        DataEntry::Number(n) => OutputValue::Value(n & ((1 << signal.bits) - 1)),
+                        DataEntry::Z => OutputValue::Z,
+                        DataEntry::X => OutputValue::X,
                         _ => unreachable!(),
                     };
                     OutputEntry { signal, value }
@@ -407,7 +404,7 @@ impl DigFile {
 impl TestCase {
     pub fn run(&self, driver: &mut impl TestDriver) -> anyhow::Result<()> {
         let mut iter = TestCaseIterator {
-            iter: crate::stmt::StmtIterator::new(&self.stmts),
+            iter: StmtIterator::new(&self.stmts),
             ctx: EvalContext::new(),
             signals: &self.signals,
             input_indices: &self.input_indices,
@@ -441,7 +438,7 @@ impl TestCase {
             .check(&self.signals, &self.input_indices, &self.output_indices)?
         {
             Ok(TestCaseIterator {
-                iter: crate::stmt::StmtIterator::new(&self.stmts),
+                iter: StmtIterator::new(&self.stmts),
                 ctx: EvalContext::new(),
                 signals: &self.signals,
                 input_indices: &self.input_indices,
