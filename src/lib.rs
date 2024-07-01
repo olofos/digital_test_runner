@@ -75,7 +75,7 @@ pub struct TestCaseIterator<'a> {
     input_indices: &'a [EntryIndex],
     output_indices: &'a [EntryIndex],
     prev: Option<Vec<DataEntry>>,
-    cache: Vec<(Vec<DataEntry>, bool)>,
+    cache: Vec<(Vec<DataEntry>, Option<bool>)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -143,99 +143,79 @@ impl<'a> TestCaseIterator<'a> {
             .any(|entry| entry.indexes(entry_index))
     }
 
-    fn entry_is_output(&self, entry_index: usize) -> bool {
-        self.output_indices
-            .iter()
-            .any(|entry| entry.indexes(entry_index))
-    }
-}
-
-impl<'a> Iterator for TestCaseIterator<'a> {
-    type Item = DataRow<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.cache.is_empty() {
-            let stmt_entries = self.iter.next_with_context(&mut self.ctx)?;
-
-            let x_positions: Vec<usize> = stmt_entries
+    fn expand_x(&mut self) {
+        loop {
+            let (stmt_entries, _) = self.cache.last().unwrap();
+            let Some(x_index) = stmt_entries
                 .iter()
                 .enumerate()
-                .filter_map(|(i, entry)| {
+                .rev()
+                .find_map(|(i, entry)| {
                     if entry == &DataEntry::X && self.entry_is_input(i) {
                         Some(i)
                     } else {
                         None
                     }
                 })
-                .collect();
-
-            let len = x_positions.len();
-            if len > 0 {
-                for n in (0..(1 << len)).rev() {
-                    let mut entries = stmt_entries.clone();
-                    for (bit_index, entry_index) in x_positions.iter().enumerate() {
-                        entries[*entry_index] = DataEntry::Number((n >> bit_index) & 1);
-                    }
-                    self.cache.push((entries, true));
-                }
-            } else {
-                self.cache.push((stmt_entries, true));
-            }
+            else {
+                break;
+            };
+            let (mut stmt_entries, _) = self.cache.pop().unwrap();
+            stmt_entries[x_index] = DataEntry::Number(1);
+            self.cache.push((stmt_entries.clone(), None));
+            stmt_entries[x_index] = DataEntry::Number(0);
+            self.cache.push((stmt_entries, None));
         }
+    }
 
-        let (mut stmt_entries, mut update_output) = self.cache.pop()?;
+    fn expand_c(&mut self) {
+        let (mut stmt_entries, _) = self.cache.pop().unwrap();
 
-        let has_c = stmt_entries
+        let c_indices = stmt_entries
             .iter()
             .enumerate()
-            .any(|(i, entry)| entry == &DataEntry::C && self.entry_is_input(i));
-
-        if has_c {
-            let mut entries = stmt_entries.clone();
-
-            for entry in entries.iter_mut() {
-                if *entry == DataEntry::C {
-                    *entry = DataEntry::Number(0);
+            .filter_map(|(i, entry)| {
+                if entry == &DataEntry::C && self.entry_is_input(i) {
+                    Some(i)
+                } else {
+                    None
                 }
-            }
-            self.cache.push((entries, true));
+            })
+            .collect::<Vec<_>>();
 
-            let mut entries = stmt_entries.clone();
-
-            for (i, entry) in entries.iter_mut().enumerate() {
-                if self.entry_is_output(i) {
-                    *entry = DataEntry::X;
-                } else if *entry == DataEntry::C {
-                    *entry = DataEntry::Number(1);
-                }
-            }
-            self.cache.push((entries, false));
-
-            for (i, entry) in stmt_entries.iter_mut().enumerate() {
-                if self.entry_is_output(i) {
-                    *entry = DataEntry::X;
-                } else if *entry == DataEntry::C {
-                    *entry = DataEntry::Number(0);
-                }
-            }
-
-            update_output = false;
-        }
-
-        let changed = if self.prev.is_some() {
-            stmt_entries
-                .iter()
-                .zip(self.prev.as_ref().unwrap())
-                .map(|(new, old)| new != old)
-                .collect()
+        if c_indices.is_empty() {
+            self.cache.push((stmt_entries, Some(true)));
         } else {
-            vec![true; stmt_entries.len()]
-        };
-        self.prev = Some(stmt_entries.clone());
+            for &i in &c_indices {
+                stmt_entries[i] = DataEntry::Number(0);
+            }
+            self.cache.push((stmt_entries.clone(), Some(true)));
+            for entry_index in self.output_indices {
+                match entry_index {
+                    EntryIndex::Entry {
+                        entry_index,
+                        signal_index: _,
+                    } => stmt_entries[*entry_index] = DataEntry::X,
+                    EntryIndex::Default { signal_index: _ } => continue,
+                }
+            }
+            for &i in &c_indices {
+                stmt_entries[i] = DataEntry::Number(1);
+            }
+            self.cache.push((stmt_entries.clone(), Some(false)));
+            for &i in &c_indices {
+                stmt_entries[i] = DataEntry::Number(0);
+            }
+            self.cache.push((stmt_entries.clone(), Some(false)));
+        }
+    }
 
+    fn generate_input_entries(
+        &self,
+        stmt_entries: &[DataEntry],
+        changed: &[bool],
+    ) -> Vec<InputEntry<'a>> {
         let mut inputs = Vec::with_capacity(self.input_indices.len());
-        let mut outputs = Vec::with_capacity(self.output_indices.len());
-
         for index in self.input_indices {
             let entry = match index {
                 EntryIndex::Entry {
@@ -266,6 +246,11 @@ impl<'a> Iterator for TestCaseIterator<'a> {
             };
             inputs.push(entry);
         }
+        inputs
+    }
+
+    fn generate_output_entries(&self, stmt_entries: &[DataEntry]) -> Vec<OutputEntry<'a>> {
+        let mut outputs = Vec::with_capacity(self.output_indices.len());
 
         for index in self.output_indices {
             let entry = match index {
@@ -292,11 +277,46 @@ impl<'a> Iterator for TestCaseIterator<'a> {
             };
             outputs.push(entry);
         }
+        outputs
+    }
+
+    fn check_changed_entries(&self, stmt_entries: &[DataEntry]) -> Vec<bool> {
+        if self.prev.is_some() {
+            stmt_entries
+                .iter()
+                .zip(self.prev.as_ref().unwrap())
+                .map(|(new, old)| new != old)
+                .collect()
+        } else {
+            vec![true; stmt_entries.len()]
+        }
+    }
+}
+
+impl<'a> Iterator for TestCaseIterator<'a> {
+    type Item = DataRow<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.cache.is_empty() {
+            let stmt_entries = self.iter.next_with_context(&mut self.ctx)?;
+            self.cache.push((stmt_entries, None));
+        }
+
+        self.expand_x();
+        self.expand_c();
+
+        let (stmt_entries, update_output) = self.cache.pop().unwrap();
+
+        let changed = self.check_changed_entries(&stmt_entries);
+        self.prev = Some(stmt_entries.clone());
+
+        let inputs = self.generate_input_entries(&stmt_entries, &changed);
+        let outputs = self.generate_output_entries(&stmt_entries);
 
         Some(DataRow {
             inputs,
             outputs,
-            update_output,
+            update_output: update_output.unwrap(),
         })
     }
 }
