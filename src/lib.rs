@@ -17,14 +17,15 @@ use crate::stmt::{DataEntry, Stmt, StmtIterator};
 use std::{fmt::Display, str::FromStr};
 
 pub trait TestDriver {
+    type Error;
+
     fn write_input_and_read_output(
         &mut self,
         inputs: &[InputEntry],
-    ) -> anyhow::Result<Vec<OutputEntry>>;
+    ) -> Result<Vec<OutputEntry>, Self::Error>;
 
-    fn write_input(&mut self, inputs: &[InputEntry]) -> anyhow::Result<()> {
-        let _ = self.write_input_and_read_output(inputs)?;
-        Ok(())
+    fn write_input(&mut self, inputs: &[InputEntry]) -> Result<(), Self::Error> {
+        self.write_input_and_read_output(inputs).map(|_| ())
     }
 }
 
@@ -434,7 +435,7 @@ impl DigFile {
 }
 
 impl<'a> TestCase<'a> {
-    pub fn run(&self, driver: &mut impl TestDriver) -> anyhow::Result<()> {
+    pub fn run<T: TestDriver>(&self, driver: &mut T) -> Result<(), T::Error> {
         let mut iter = TestCaseIterator {
             iter: StmtIterator::new(&self.stmts),
             ctx: EvalContext::new(),
