@@ -419,6 +419,18 @@ impl DigFile {
         }
         ParsedTestCase::from_str(&self.test_cases[n].test_data)?.with_signals(&self.signals)
     }
+
+    pub fn load_test_by_name(&self, name: &str) -> anyhow::Result<TestCase> {
+        if let Some(n) = self
+            .test_cases
+            .iter()
+            .position(|test_case| test_case.name == name)
+        {
+            self.load_test(n)
+        } else {
+            anyhow::bail!("Could not find test case \"{name}\"");
+        }
+    }
 }
 
 impl<'a> TestCase<'a> {
