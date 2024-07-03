@@ -105,8 +105,8 @@ pub(crate) enum TokenKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Token {
-    pub kind: TokenKind,
-    pub span: logos::Span,
+    pub(crate) kind: TokenKind,
+    pub(crate) span: logos::Span,
 }
 
 #[cfg(test)]

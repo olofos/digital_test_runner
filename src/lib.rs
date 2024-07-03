@@ -21,10 +21,10 @@ pub trait TestDriver {
 
     fn write_input_and_read_output(
         &mut self,
-        inputs: &[InputEntry],
-    ) -> Result<Vec<OutputEntry>, Self::Error>;
+        inputs: &[InputEntry<'_>],
+    ) -> Result<Vec<OutputEntry<'_>>, Self::Error>;
 
-    fn write_input(&mut self, inputs: &[InputEntry]) -> Result<(), Self::Error> {
+    fn write_input(&mut self, inputs: &[InputEntry<'_>]) -> Result<(), Self::Error> {
         self.write_input_and_read_output(inputs).map(|_| ())
     }
 }
@@ -126,11 +126,11 @@ impl EntryIndex {
 }
 
 impl<'a> DataRow<'a> {
-    pub fn changed_inputs(&self) -> impl Iterator<Item = &InputEntry> {
+    pub fn changed_inputs(&self) -> impl Iterator<Item = &InputEntry<'_>> {
         self.inputs.iter().filter(|entry| entry.changed)
     }
 
-    pub fn checked_outputs(&self) -> impl Iterator<Item = &OutputEntry> {
+    pub fn checked_outputs(&self) -> impl Iterator<Item = &OutputEntry<'_>> {
         self.outputs
             .iter()
             .filter(|entry| !matches!(entry.value, OutputValue::X))
@@ -323,7 +323,7 @@ impl<'a> Iterator for TestCaseIterator<'a> {
 }
 
 impl ParsedTestCase {
-    pub fn with_signals(self, signals: &[Signal]) -> anyhow::Result<TestCase> {
+    pub fn with_signals(self, signals: &[Signal]) -> anyhow::Result<TestCase<'_>> {
         let mut input_indices = vec![];
         let mut output_indices = vec![];
 
@@ -411,7 +411,7 @@ impl ParsedTestCase {
 }
 
 impl DigFile {
-    pub fn load_test(&self, n: usize) -> anyhow::Result<TestCase> {
+    pub fn load_test(&self, n: usize) -> anyhow::Result<TestCase<'_>> {
         if n >= self.test_cases.len() {
             anyhow::bail!(
                 "Trying to load test case #{n}, but file only contains {} test cases",
@@ -421,7 +421,7 @@ impl DigFile {
         ParsedTestCase::from_str(&self.test_cases[n].test_data)?.with_signals(&self.signals)
     }
 
-    pub fn load_test_by_name(&self, name: &str) -> anyhow::Result<TestCase> {
+    pub fn load_test_by_name(&self, name: &str) -> anyhow::Result<TestCase<'_>> {
         if let Some(n) = self
             .test_cases
             .iter()
@@ -465,7 +465,7 @@ impl<'a> TestCase<'a> {
         Ok(())
     }
 
-    pub fn try_iter(&self) -> anyhow::Result<TestCaseIterator> {
+    pub fn try_iter(&self) -> anyhow::Result<TestCaseIterator<'_>> {
         if self
             .stmts
             .check(&self.signals, &self.input_indices, &self.output_indices)?
@@ -484,7 +484,7 @@ impl<'a> TestCase<'a> {
         }
     }
 
-    pub fn default_row(&self) -> DataRow {
+    pub fn default_row(&self) -> DataRow<'_> {
         let inputs =
             self.signals
                 .iter()
@@ -669,7 +669,7 @@ Z 1";
         let known_signals = Vec::from_iter(known_inputs);
         let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
 
-        let result: Vec<DataRow> = testcase.try_iter()?.collect();
+        let result: Vec<DataRow<'_>> = testcase.try_iter()?.collect();
 
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].inputs[0].signal.name, "A");

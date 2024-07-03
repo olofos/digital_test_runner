@@ -29,13 +29,13 @@ impl<'a> From<HeaderParser<'a>> for Parser<'a> {
 }
 
 impl<'a> HeaderParser<'a> {
-    pub fn new(input: &'a str) -> Self {
-        let iter: Lexer<HeaderTokenKind> = HeaderTokenKind::lexer(input);
+    pub(crate) fn new(input: &'a str) -> Self {
+        let iter: Lexer<'_, HeaderTokenKind> = HeaderTokenKind::lexer(input);
         let line = 1;
         Self { input, iter, line }
     }
 
-    pub fn parse(&mut self) -> anyhow::Result<Vec<String>> {
+    pub(crate) fn parse(&mut self) -> anyhow::Result<Vec<String>> {
         let mut signals: Vec<String> = vec![];
         loop {
             match self.iter.next() {
@@ -61,7 +61,7 @@ impl<'a> HeaderParser<'a> {
 
 impl<'a> Parser<'a> {
     #[allow(dead_code)]
-    pub fn new(input: &'a str) -> Self {
+    pub(crate) fn new(input: &'a str) -> Self {
         let iter = TokenIter::new(input);
         Self {
             iter: iter.peekable(),
@@ -70,7 +70,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn get(&mut self) -> anyhow::Result<Token> {
+    pub(crate) fn get(&mut self) -> anyhow::Result<Token> {
         let Some(tok) = self.iter.next() else {
             anyhow::bail!("Unexpected EOF on line {}", self.line);
         };
@@ -80,23 +80,23 @@ impl<'a> Parser<'a> {
         Ok(tok)
     }
 
-    pub fn peek(&mut self) -> TokenKind {
+    pub(crate) fn peek(&mut self) -> TokenKind {
         self.iter
             .peek()
             .expect("peek should not be called after EOF is found")
             .kind
     }
 
-    pub fn at(&mut self, kind: TokenKind) -> bool {
+    pub(crate) fn at(&mut self, kind: TokenKind) -> bool {
         self.peek() == kind
     }
 
-    pub fn skip(&mut self) {
+    pub(crate) fn skip(&mut self) {
         self.get()
             .expect("skip should not be called after EOF is found");
     }
 
-    pub fn expect(&mut self, kind: TokenKind) -> anyhow::Result<Token> {
+    pub(crate) fn expect(&mut self, kind: TokenKind) -> anyhow::Result<Token> {
         let tok = self.get()?;
         if tok.kind != kind {
             anyhow::bail!("Expected a {kind:?} token but found {:?}", tok.kind);
@@ -105,7 +105,7 @@ impl<'a> Parser<'a> {
         Ok(tok)
     }
 
-    pub fn text(&self, token: &Token) -> &'a str {
+    pub(crate) fn text(&self, token: &Token) -> &'a str {
         &self.input[token.span.clone()]
     }
 }

@@ -1,34 +1,34 @@
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct FramedMap<K, V> {
+pub(crate) struct FramedMap<K, V> {
     values: Vec<(K, V)>,
     frame_stack: Vec<usize>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct FramedSet<K> {
+pub(crate) struct FramedSet<K> {
     map: FramedMap<K, ()>,
 }
 
 impl<K, V> FramedMap<K, V> {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             values: vec![],
             frame_stack: vec![],
         }
     }
 
-    pub fn push_frame(&mut self) {
+    pub(crate) fn push_frame(&mut self) {
         self.frame_stack.push(self.values.len())
     }
 
-    pub fn pop_frame(&mut self) {
+    pub(crate) fn pop_frame(&mut self) {
         let len = self.frame_stack.pop().unwrap_or(0);
         self.values.truncate(len);
     }
 }
 
 impl<K: Eq, V: Copy> FramedMap<K, V> {
-    pub fn set(&mut self, key: impl Into<K>, value: V) {
+    pub(crate) fn set(&mut self, key: impl Into<K>, value: V) {
         let key = key.into();
         let frame_start = *self.frame_stack.last().unwrap_or(&0);
         if let Some((_, entry_value)) = self.values[frame_start..]
@@ -41,7 +41,7 @@ impl<K: Eq, V: Copy> FramedMap<K, V> {
         }
     }
 
-    pub fn get<Q>(&self, key: &Q) -> Option<V>
+    pub(crate) fn get<Q>(&self, key: &Q) -> Option<V>
     where
         K: std::borrow::Borrow<Q>,
         Q: Eq + ?Sized,
@@ -55,7 +55,7 @@ impl<K: Eq, V: Copy> FramedMap<K, V> {
 }
 
 impl<K> FramedSet<K> {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             map: FramedMap::new(),
         }
@@ -63,19 +63,19 @@ impl<K> FramedSet<K> {
 }
 
 impl<K: Eq> FramedSet<K> {
-    pub fn push_frame(&mut self) {
+    pub(crate) fn push_frame(&mut self) {
         self.map.push_frame()
     }
 
-    pub fn pop_frame(&mut self) {
+    pub(crate) fn pop_frame(&mut self) {
         self.map.pop_frame()
     }
 
-    pub fn insert(&mut self, key: impl Into<K>) {
+    pub(crate) fn insert(&mut self, key: impl Into<K>) {
         self.map.set(key, ())
     }
 
-    pub fn contains<Q>(&self, key: &Q) -> bool
+    pub(crate) fn contains<Q>(&self, key: &Q) -> bool
     where
         K: std::borrow::Borrow<Q>,
         Q: Eq + ?Sized,

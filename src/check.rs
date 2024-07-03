@@ -9,10 +9,10 @@ pub(crate) struct CheckContext<'a> {
     signals: &'a [Signal],
     input_indices: &'a [EntryIndex],
     output_indices: &'a [EntryIndex],
-    pub is_static: bool,
+    pub(crate) is_static: bool,
 }
 
-pub trait TestCheck<'a> {
+pub(crate) trait TestCheck<'a> {
     fn check(
         &self,
         signals: &'a [Signal],
@@ -37,7 +37,7 @@ impl<'a> TestCheck<'a> for Vec<Stmt> {
 }
 
 impl<'a> CheckContext<'a> {
-    pub fn new(
+    pub(crate) fn new(
         signals: &'a [Signal],
         input_indices: &'a [EntryIndex],
         output_indices: &'a [EntryIndex],
@@ -72,7 +72,7 @@ impl<'a> CheckContext<'a> {
 }
 
 impl Stmt {
-    pub(crate) fn check(&self, ctx: &mut CheckContext) -> anyhow::Result<()> {
+    pub(crate) fn check(&self, ctx: &mut CheckContext<'_>) -> anyhow::Result<()> {
         let expected_length = ctx
             .input_indices
             .iter()
@@ -153,7 +153,7 @@ impl Stmt {
 }
 
 impl Expr {
-    pub(crate) fn check(&self, ctx: &mut CheckContext) -> anyhow::Result<()> {
+    pub(crate) fn check(&self, ctx: &mut CheckContext<'_>) -> anyhow::Result<()> {
         match self {
             Expr::Number(_) => {}
             Expr::Variable(var) => {

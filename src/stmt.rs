@@ -26,7 +26,7 @@ pub(crate) enum Stmt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DataEntry {
+pub(crate) enum DataEntry {
     Number(i64),
     Expr(Expr),
     Bits { number: u8, expr: Expr },

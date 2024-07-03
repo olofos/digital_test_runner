@@ -2,7 +2,7 @@ use crate::eval_context::EvalContext;
 use std::{fmt::Display, str::FromStr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BinOp {
+pub(crate) enum BinOp {
     Equal,
     NotEqual,
     GreaterThan,
@@ -72,7 +72,7 @@ impl Display for BinOp {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum UnaryOp {
+pub(crate) enum UnaryOp {
     Minus,
     LogicalNot,
     BinaryNot,
@@ -90,7 +90,7 @@ impl Display for UnaryOp {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Expr {
+pub(crate) enum Expr {
     Number(i64),
     Variable(String),
     BinOp {
@@ -127,23 +127,23 @@ impl Display for Expr {
     }
 }
 
-pub struct FuncTableEntry {
-    pub name: &'static str,
-    pub number_of_args: usize,
+pub(crate) struct FuncTableEntry {
+    pub(crate) name: &'static str,
+    pub(crate) number_of_args: usize,
     f: fn(&EvalContext, &[Expr]) -> anyhow::Result<i64>,
 }
 
-pub struct FuncTable {
+pub(crate) struct FuncTable {
     entries: &'static [FuncTableEntry],
 }
 
 impl FuncTable {
-    pub fn get(&self, name: &str) -> Option<&FuncTableEntry> {
+    pub(crate) fn get(&self, name: &str) -> Option<&FuncTableEntry> {
         self.entries.iter().find(|entry| entry.name == name)
     }
 }
 
-pub const FUNC_TABLE: FuncTable = FuncTable {
+pub(crate) const FUNC_TABLE: FuncTable = FuncTable {
     entries: &[
         FuncTableEntry {
             name: "random",
@@ -182,7 +182,7 @@ fn func_sign_ext(_ctx: &EvalContext, _args: &[Expr]) -> anyhow::Result<i64> {
 }
 
 impl Expr {
-    pub fn eval(&self, ctx: &EvalContext) -> anyhow::Result<i64> {
+    pub(crate) fn eval(&self, ctx: &EvalContext) -> anyhow::Result<i64> {
         match self {
             Self::Number(n) => Ok(*n),
             Self::Variable(name) => ctx

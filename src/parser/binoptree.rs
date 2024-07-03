@@ -1,7 +1,7 @@
 use crate::expr::{BinOp, Expr};
 
 impl BinOp {
-    pub fn precedence(&self) -> u8 {
+    pub(crate) fn precedence(&self) -> u8 {
         match self {
             Self::Equal => 8,
             Self::NotEqual => 8,
@@ -67,7 +67,7 @@ impl From<Box<BinOpTree>> for Expr {
 }
 
 impl BinOpTree {
-    pub fn add(&mut self, new_op: BinOp, new_expr: Expr) {
+    pub(crate) fn add(&mut self, new_op: BinOp, new_expr: Expr) {
         if let Self::BinOp { op, left: _, right } = self {
             if new_op.precedence() < op.precedence() {
                 right.add(new_op, new_expr);

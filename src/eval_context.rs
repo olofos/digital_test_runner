@@ -3,7 +3,7 @@ use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::{cell::RefCell, collections::HashMap};
 
 #[derive(Debug)]
-pub struct EvalContext {
+pub(crate) struct EvalContext {
     vars: FramedMap<String, i64>,
     outputs: HashMap<String, OutputValue>,
     rng: RefCell<StdRng>,
@@ -11,7 +11,7 @@ pub struct EvalContext {
 }
 
 impl EvalContext {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let mut seed_bytes: [u8; 8] = Default::default();
         getrandom::getrandom(&mut seed_bytes).unwrap();
         let seed = u64::from_le_bytes(seed_bytes);
@@ -19,7 +19,7 @@ impl EvalContext {
         Self::with_seed(seed)
     }
 
-    pub fn with_seed(seed: u64) -> Self {
+    pub(crate) fn with_seed(seed: u64) -> Self {
         Self {
             vars: FramedMap::new(),
             outputs: HashMap::new(),
@@ -28,19 +28,19 @@ impl EvalContext {
         }
     }
 
-    pub fn push_frame(&mut self) {
+    pub(crate) fn push_frame(&mut self) {
         self.vars.push_frame()
     }
 
-    pub fn pop_frame(&mut self) {
+    pub(crate) fn pop_frame(&mut self) {
         self.vars.pop_frame()
     }
 
-    pub fn set(&mut self, name: &str, value: i64) {
+    pub(crate) fn set(&mut self, name: &str, value: i64) {
         self.vars.set(name, value)
     }
 
-    pub fn get(&self, name: &str) -> Option<i64> {
+    pub(crate) fn get(&self, name: &str) -> Option<i64> {
         if let Some(n) = self.vars.get(name) {
             Some(n)
         } else {
@@ -51,18 +51,21 @@ impl EvalContext {
         }
     }
 
-    pub fn set_outputs(&mut self, outputs: Vec<OutputEntry>) {
+    pub(crate) fn set_outputs(&mut self, outputs: Vec<OutputEntry<'_>>) {
         self.outputs = outputs
             .into_iter()
             .map(|entry| (entry.signal.name.to_string(), entry.value))
             .collect();
     }
 
-    pub fn reset_random_seed(&mut self) {
+    pub(crate) fn reset_random_seed(&mut self) {
         self.rng = RefCell::new(StdRng::seed_from_u64(self.seed));
     }
 
-    pub fn random<R: rand::distributions::uniform::SampleRange<i64>>(&self, range: R) -> i64 {
+    pub(crate) fn random<R: rand::distributions::uniform::SampleRange<i64>>(
+        &self,
+        range: R,
+    ) -> i64 {
         self.rng.borrow_mut().gen_range(range)
     }
 }

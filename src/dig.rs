@@ -63,7 +63,7 @@ fn extract_signal_data<'a>(node: roxmltree::Node<'a, '_>) -> Option<(&'a str, us
     Some((label, bits))
 }
 
-fn extract_input_data(node: roxmltree::Node) -> InputValue {
+fn extract_input_data(node: roxmltree::Node<'_, '_>) -> InputValue {
     attrib(node, "InDefault")
         .and_then(|default_node| {
             if default_node.attribute("z") == Some("true") {
