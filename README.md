@@ -11,5 +11,5 @@ The simplest way of loading a test is to first load a `.dig` file
 
     use digital_test_runner::dig;
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/Counter.dig");
-    let dig_file = dig::parse(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let dig_file: dig::File = std::fs::read_to_string(path).unwrap().parse().unwrap();
     let test_case = dig_file.load_test(0).unwrap();
