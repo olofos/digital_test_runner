@@ -2,15 +2,21 @@ use std::collections::HashSet;
 
 use crate::{parser::HeaderParser, InputValue, Signal, SignalDirection};
 
+/// Represent a test case in the dig file
 #[derive(Debug, Clone)]
 pub struct TestCaseDescription {
+    /// The name of the test case
     pub name: String,
+    /// The source code of the test
     pub test_data: String,
 }
 
+/// A parsed dig file
 #[derive(Debug, Clone)]
 pub struct DigFile {
+    /// The input and output signals of the circuit
     pub signals: Vec<Signal>,
+    /// A list of test cases
     pub test_cases: Vec<TestCaseDescription>,
 }
 
@@ -77,6 +83,7 @@ fn extract_input_data(node: roxmltree::Node<'_, '_>) -> InputValue {
         .unwrap_or(InputValue::Value(0))
 }
 
+/// Parse the input string as dig file
 pub fn parse(input: &str) -> anyhow::Result<DigFile> {
     let doc = roxmltree::Document::parse(input)?;
 
