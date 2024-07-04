@@ -46,6 +46,7 @@ pub trait TestDriver {
 /// which is sent to an input port of the DUT. `Input` and `Bidirectional` signals specify a default value which is used if the
 /// test itself does not override it.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(missing_docs)]
 pub enum SignalDirection {
     Input { default: InputValue },
     Output,
@@ -55,8 +56,11 @@ pub enum SignalDirection {
 /// Represent a input or output signal of the device under test
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Signal {
+    /// Name of the signal
     pub name: String,
+    /// Bit width of the signal
     pub bits: usize,
+    /// The type of the signal
     pub dir: SignalDirection,
 }
 
@@ -67,6 +71,7 @@ pub struct Signal {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedTestCase {
     stmts: Vec<Stmt>,
+    /// List of signal names appearing in the test
     pub signals: Vec<String>,
 }
 
@@ -74,6 +79,9 @@ pub struct ParsedTestCase {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TestCase<'a> {
     stmts: Vec<Stmt>,
+    /// List of input and output signals for the device under test
+    ///
+    /// Not all signals are necessarily involved in the test
     pub signals: &'a [Signal],
     input_indices: Vec<EntryIndex>,
     output_indices: Vec<EntryIndex>,
@@ -94,13 +102,16 @@ pub struct TestCaseIterator<'a> {
 /// A single row of input values and expected output values
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataRow<'a> {
+    /// List of input values
     pub inputs: Vec<InputEntry<'a>>,
+    /// List of expected output values
     pub outputs: Vec<ExpectedEntry<'a>>,
     update_output: bool,
 }
 
 /// An input value sent to a specific signal
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(missing_docs)]
 pub struct InputEntry<'a> {
     pub signal: &'a Signal,
     pub value: InputValue,
@@ -110,6 +121,7 @@ pub struct InputEntry<'a> {
 
 /// An output value read from a specific signal
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(missing_docs)]
 pub struct OutputEntry<'a> {
     pub signal: &'a Signal,
     pub value: OutputValue,
@@ -117,6 +129,7 @@ pub struct OutputEntry<'a> {
 
 /// Represents the expected output value from a specific signal
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(missing_docs)]
 pub struct ExpectedEntry<'a> {
     pub signal: &'a Signal,
     pub value: ExpectedValue,
@@ -160,10 +173,12 @@ impl EntryIndex {
 }
 
 impl<'a> DataRow<'a> {
+    /// Iterator over those inputs that changed compared to the previous row
     pub fn changed_inputs(&self) -> impl Iterator<Item = &InputEntry<'_>> {
         self.inputs.iter().filter(|entry| entry.changed)
     }
 
+    /// Iterator over the non-trivial expected outputs
     pub fn checked_outputs(&self) -> impl Iterator<Item = &ExpectedEntry<'_>> {
         self.outputs
             .iter()
@@ -357,6 +372,8 @@ impl<'a> Iterator for TestCaseIterator<'a> {
 }
 
 impl ParsedTestCase {
+    /// Construct a complete test case by supplying a description of the
+    /// input and output signals of the device under test
     pub fn with_signals(self, signals: &[Signal]) -> anyhow::Result<TestCase<'_>> {
         let mut input_indices = vec![];
         let mut output_indices = vec![];
@@ -445,6 +462,7 @@ impl ParsedTestCase {
 }
 
 impl DigFile {
+    /// Load a test by index
     pub fn load_test(&self, n: usize) -> anyhow::Result<TestCase<'_>> {
         if n >= self.test_cases.len() {
             anyhow::bail!(
@@ -455,6 +473,7 @@ impl DigFile {
         ParsedTestCase::from_str(&self.test_cases[n].source)?.with_signals(&self.signals)
     }
 
+    /// Load a test by name
     pub fn load_test_by_name(&self, name: &str) -> anyhow::Result<TestCase<'_>> {
         if let Some(n) = self
             .test_cases
@@ -519,6 +538,8 @@ impl<'a> TestCase<'a> {
         }
     }
 
+    /// Return a `DataRow` where the input values all take their default values
+    /// and there are no expectations put on the outputs
     pub fn default_row(&self) -> DataRow<'_> {
         let inputs =
             self.signals
