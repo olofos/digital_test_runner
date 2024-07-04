@@ -34,7 +34,7 @@ pub enum ExpectedValue {
 impl OutputValue {
     /// Check if the output value matches the expected value
     ///
-    /// See [ExpectedOutputValue::check]
+    /// See [ExpectedValue::check]
     pub fn check(&self, other: ExpectedValue) -> bool {
         other.check(*self)
     }

@@ -32,7 +32,7 @@ pub trait TestDriver {
 
     /// Write `input` to the device under test
     ///
-    /// By default this simply calls `self.write_input_and_read_output` and ignores the output.
+    /// By default this simply calls [Self::write_input_and_read_output] and ignores the output.
     /// An optimised driver can directly implement this method to avoid reading the output which might be costly.
     fn write_input(&mut self, inputs: &[InputEntry<'_>]) -> Result<(), Self::Error> {
         self.write_input_and_read_output(inputs).map(|_| ())
@@ -487,6 +487,7 @@ impl dig::File {
 }
 
 impl<'a> TestCase<'a> {
+    /// Run the test using `driver` to handle input to and output from the device under test.
     pub fn run<T: TestDriver>(&self, driver: &mut T) -> Result<(), T::Error> {
         let mut iter = TestCaseIterator {
             iter: StmtIterator::new(&self.stmts),
@@ -517,6 +518,10 @@ impl<'a> TestCase<'a> {
         Ok(())
     }
 
+    /// Get an iterator over the data rows of the test
+    ///
+    /// This is only possible if the test is *static*, which means that the test does no depend on the output produced by the device under test.
+    /// For a more general *dynamic* test the [TestCase::run] function should be used in combination with a driver implementing the [TestDriver] trait.
     pub fn try_iter(&self) -> anyhow::Result<TestCaseIterator<'_>> {
         if self
             .stmts
