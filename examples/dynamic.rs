@@ -81,7 +81,7 @@ fn main() -> anyhow::Result<()> {
             env!("CARGO_MANIFEST_DIR"),
             test_name
         );
-        let dig_file = dig::parse(&std::fs::read_to_string(path)?)?;
+        let dig_file = dig::DigFile::parse(&std::fs::read_to_string(path)?)?;
 
         for test_num in 0..dig_file.test_cases.len() {
             println!(

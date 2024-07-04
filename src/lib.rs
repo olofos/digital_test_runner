@@ -15,7 +15,6 @@ mod value;
 pub use crate::value::{ExpectedValue, InputValue, OutputValue};
 
 use crate::check::TestCheck;
-use crate::dig::DigFile;
 use crate::eval_context::EvalContext;
 use crate::stmt::{DataEntry, Stmt, StmtIterator};
 use std::{fmt::Display, str::FromStr};
@@ -461,7 +460,7 @@ impl ParsedTestCase {
     }
 }
 
-impl DigFile {
+impl dig::DigFile {
     /// Load a test by index
     pub fn load_test(&self, n: usize) -> anyhow::Result<TestCase<'_>> {
         if n >= self.test_cases.len() {

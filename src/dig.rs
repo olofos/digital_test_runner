@@ -87,101 +87,103 @@ impl FromStr for DigFile {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        parse(s)
+        DigFile::parse(s)
     }
 }
 
-/// Parse the input string as dig file
-pub fn parse(input: &str) -> anyhow::Result<DigFile> {
-    let doc = roxmltree::Document::parse(input)?;
+impl DigFile {
+    /// Parse the input string as dig file
+    pub fn parse(input: &str) -> anyhow::Result<DigFile> {
+        let doc = roxmltree::Document::parse(input)?;
 
-    let output_signals = visual_elements(&doc, &["Out"])
-        .filter_map(|node| extract_signal_data(node))
-        .map(|(name, bits)| Signal {
-            name: name.to_string(),
-            bits,
-            dir: SignalDirection::Output,
-        });
+        let output_signals = visual_elements(&doc, &["Out"])
+            .filter_map(|node| extract_signal_data(node))
+            .map(|(name, bits)| Signal {
+                name: name.to_string(),
+                bits,
+                dir: SignalDirection::Output,
+            });
 
-    let inputs_signals = visual_elements(&doc, &["In", "Clock"])
-        .filter_map(|node| {
-            if let Some((name, bits)) = extract_signal_data(node) {
-                let default = extract_input_data(node);
-                Some((name, bits, default))
-            } else {
-                None
-            }
-        })
-        .map(|(name, bits, default)| Signal {
-            name: name.to_string(),
-            bits,
-            dir: SignalDirection::Input { default },
-        });
+        let inputs_signals = visual_elements(&doc, &["In", "Clock"])
+            .filter_map(|node| {
+                if let Some((name, bits)) = extract_signal_data(node) {
+                    let default = extract_input_data(node);
+                    Some((name, bits, default))
+                } else {
+                    None
+                }
+            })
+            .map(|(name, bits, default)| Signal {
+                name: name.to_string(),
+                bits,
+                dir: SignalDirection::Input { default },
+            });
 
-    let signals = Vec::from_iter(inputs_signals.chain(output_signals));
+        let signals = Vec::from_iter(inputs_signals.chain(output_signals));
 
-    let test_cases = visual_elements(&doc, &["Testcase"])
-        .filter_map(|node| {
-            let name: String = if let Some(label_node) = attrib(node, "Label") {
-                label_node.text()?.to_string()
-            } else {
-                String::from("(unnamed)")
-            };
-            let test_data_node = attrib(node, "Testdata")?;
-            if test_data_node.tag_name().name() != "testData" {
-                return None;
-            }
-            let data_string_node = test_data_node.first_element_child()?;
-            if data_string_node.tag_name().name() != "dataString" {
-                return None;
-            }
-            let source = data_string_node.text()?.to_string();
+        let test_cases = visual_elements(&doc, &["Testcase"])
+            .filter_map(|node| {
+                let name: String = if let Some(label_node) = attrib(node, "Label") {
+                    label_node.text()?.to_string()
+                } else {
+                    String::from("(unnamed)")
+                };
+                let test_data_node = attrib(node, "Testdata")?;
+                if test_data_node.tag_name().name() != "testData" {
+                    return None;
+                }
+                let data_string_node = test_data_node.first_element_child()?;
+                if data_string_node.tag_name().name() != "dataString" {
+                    return None;
+                }
+                let source = data_string_node.text()?.to_string();
 
-            Some(TestCaseDescription { name, source })
-        })
-        .collect::<Vec<_>>();
+                Some(TestCaseDescription { name, source })
+            })
+            .collect::<Vec<_>>();
 
-    let mut test_signal_names: HashSet<String> = HashSet::new();
-    let mut bidirectional: HashSet<String> = HashSet::new();
-    for test_case in &test_cases {
-        for name in HeaderParser::new(&test_case.source).parse()? {
-            if let Some(stripped_name) = name.strip_suffix("_out") {
-                let stripped_name = stripped_name.to_string();
-                bidirectional.insert(stripped_name);
-            } else {
-                test_signal_names.insert(name);
+        let mut test_signal_names: HashSet<String> = HashSet::new();
+        let mut bidirectional: HashSet<String> = HashSet::new();
+        for test_case in &test_cases {
+            for name in HeaderParser::new(&test_case.source).parse()? {
+                if let Some(stripped_name) = name.strip_suffix("_out") {
+                    let stripped_name = stripped_name.to_string();
+                    bidirectional.insert(stripped_name);
+                } else {
+                    test_signal_names.insert(name);
+                }
             }
         }
+
+        let signal_names: HashSet<String> = signals.iter().map(|s| s.name.clone()).collect();
+
+        if !test_signal_names.is_subset(&signal_names) {
+            let missing = test_signal_names
+                .difference(&signal_names)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ");
+            anyhow::bail!("Signals {missing} found in tests but not found in circuit");
+        }
+
+        let mut signals = signals;
+        for name in bidirectional {
+            let sig = signals
+                .iter_mut()
+                .find(|sig| sig.name == name)
+                .expect("We already checked that all test signals appear in the circuit");
+            let dir = std::mem::replace(&mut sig.dir, SignalDirection::Output);
+            let SignalDirection::Input { default } = dir else {
+                anyhow::bail!("");
+            };
+            sig.dir = SignalDirection::Bidirectional { default };
+        }
+
+        Ok(DigFile {
+            signals,
+            test_cases,
+        })
     }
-
-    let signal_names: HashSet<String> = signals.iter().map(|s| s.name.clone()).collect();
-
-    if !test_signal_names.is_subset(&signal_names) {
-        let missing = test_signal_names
-            .difference(&signal_names)
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(", ");
-        anyhow::bail!("Signals {missing} found in tests but not found in circuit");
-    }
-
-    let mut signals = signals;
-    for name in bidirectional {
-        let sig = signals
-            .iter_mut()
-            .find(|sig| sig.name == name)
-            .expect("We already checked that all test signals appear in the circuit");
-        let dir = std::mem::replace(&mut sig.dir, SignalDirection::Output);
-        let SignalDirection::Input { default } = dir else {
-            anyhow::bail!("");
-        };
-        sig.dir = SignalDirection::Bidirectional { default };
-    }
-
-    Ok(DigFile {
-        signals,
-        test_cases,
-    })
 }
 
 #[cfg(test)]
@@ -193,7 +195,7 @@ mod test {
         let input =
             std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/74779.dig"))
                 .unwrap();
-        let dig: DigFile = parse(&input).unwrap();
+        let dig: DigFile = input.parse().unwrap();
         dbg!(dig.signals);
     }
 }
