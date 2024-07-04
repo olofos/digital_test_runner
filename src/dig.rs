@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, str::FromStr};
 
 use crate::{parser::HeaderParser, InputValue, Signal, SignalDirection};
 
@@ -81,6 +81,14 @@ fn extract_input_data(node: roxmltree::Node<'_, '_>) -> InputValue {
             }
         })
         .unwrap_or(InputValue::Value(0))
+}
+
+impl FromStr for DigFile {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse(s)
+    }
 }
 
 /// Parse the input string as dig file
