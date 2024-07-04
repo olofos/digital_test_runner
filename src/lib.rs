@@ -460,7 +460,7 @@ impl ParsedTestCase {
     }
 }
 
-impl dig::DigFile {
+impl dig::File {
     /// Load a test by index
     pub fn load_test(&self, n: usize) -> anyhow::Result<TestCase<'_>> {
         if n >= self.test_cases.len() {

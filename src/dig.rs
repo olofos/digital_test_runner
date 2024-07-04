@@ -13,7 +13,7 @@ pub struct TestCaseDescription {
 
 /// A parsed dig file
 #[derive(Debug, Clone)]
-pub struct DigFile {
+pub struct File {
     /// The input and output signals of the circuit
     pub signals: Vec<Signal>,
     /// A list of test cases
@@ -83,17 +83,17 @@ fn extract_input_data(node: roxmltree::Node<'_, '_>) -> InputValue {
         .unwrap_or(InputValue::Value(0))
 }
 
-impl FromStr for DigFile {
+impl FromStr for File {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        DigFile::parse(s)
+        File::parse(s)
     }
 }
 
-impl DigFile {
+impl File {
     /// Parse the input string as dig file
-    pub fn parse(input: &str) -> anyhow::Result<DigFile> {
+    pub fn parse(input: &str) -> anyhow::Result<File> {
         let doc = roxmltree::Document::parse(input)?;
 
         let output_signals = visual_elements(&doc, &["Out"])
@@ -179,7 +179,7 @@ impl DigFile {
             sig.dir = SignalDirection::Bidirectional { default };
         }
 
-        Ok(DigFile {
+        Ok(File {
             signals,
             test_cases,
         })
@@ -195,7 +195,7 @@ mod test {
         let input =
             std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/74779.dig"))
                 .unwrap();
-        let dig: DigFile = input.parse().unwrap();
+        let dig: File = input.parse().unwrap();
         dbg!(dig.signals);
     }
 }
