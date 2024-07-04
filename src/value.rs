@@ -17,12 +17,6 @@ pub enum OutputValue {
     X,
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub enum Value {
-    InputValue(InputValue),
-    OutputValue(OutputValue),
-}
-
 impl OutputValue {
     pub fn is_x(&self) -> bool {
         matches!(self, OutputValue::X)
@@ -68,15 +62,6 @@ impl Display for OutputValue {
             OutputValue::Value(n) => write!(f, "{n}"),
             OutputValue::Z => write!(f, "Z"),
             OutputValue::X => write!(f, "X"),
-        }
-    }
-}
-
-impl Display for Value {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Value::InputValue(v) => write!(f, "{v}"),
-            Value::OutputValue(v) => write!(f, "{v}"),
         }
     }
 }

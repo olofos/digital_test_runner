@@ -12,7 +12,7 @@ mod parser;
 mod stmt;
 mod value;
 
-pub use crate::value::{InputValue, OutputValue, Value};
+pub use crate::value::{InputValue, OutputValue};
 
 use crate::check::TestCheck;
 use crate::dig::DigFile;
