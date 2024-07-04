@@ -12,7 +12,7 @@ mod parser;
 mod stmt;
 mod value;
 
-pub use crate::value::{InputValue, OutputValue};
+pub use crate::value::{ExpectedValue, InputValue, OutputValue};
 
 use crate::check::TestCheck;
 use crate::dig::DigFile;
@@ -95,7 +95,7 @@ pub struct TestCaseIterator<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataRow<'a> {
     pub inputs: Vec<InputEntry<'a>>,
-    pub outputs: Vec<OutputEntry<'a>>,
+    pub outputs: Vec<ExpectedEntry<'a>>,
     update_output: bool,
 }
 
@@ -109,12 +109,17 @@ pub struct InputEntry<'a> {
 }
 
 /// An output value read from a specific signal
-///
-/// Also used to represent the expected outcome of the test
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutputEntry<'a> {
     pub signal: &'a Signal,
     pub value: OutputValue,
+}
+
+/// Represents the expected output value from a specific signal
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExpectedEntry<'a> {
+    pub signal: &'a Signal,
+    pub value: ExpectedValue,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,10 +164,10 @@ impl<'a> DataRow<'a> {
         self.inputs.iter().filter(|entry| entry.changed)
     }
 
-    pub fn checked_outputs(&self) -> impl Iterator<Item = &OutputEntry<'_>> {
+    pub fn checked_outputs(&self) -> impl Iterator<Item = &ExpectedEntry<'_>> {
         self.outputs
             .iter()
-            .filter(|entry| !matches!(entry.value, OutputValue::X))
+            .filter(|entry| !matches!(entry.value, ExpectedValue::X))
     }
 }
 
@@ -279,7 +284,7 @@ impl<'a> TestCaseIterator<'a> {
         inputs
     }
 
-    fn generate_output_entries(&self, stmt_entries: &[DataEntry]) -> Vec<OutputEntry<'a>> {
+    fn generate_output_entries(&self, stmt_entries: &[DataEntry]) -> Vec<ExpectedEntry<'a>> {
         let mut outputs = Vec::with_capacity(self.output_indices.len());
 
         for index in self.output_indices {
@@ -290,18 +295,18 @@ impl<'a> TestCaseIterator<'a> {
                 } => {
                     let signal = &self.signals[*signal_index];
                     let value = match &stmt_entries[*entry_index] {
-                        DataEntry::Number(n) => OutputValue::Value(n & ((1 << signal.bits) - 1)),
-                        DataEntry::Z => OutputValue::Z,
-                        DataEntry::X => OutputValue::X,
+                        DataEntry::Number(n) => ExpectedValue::Value(n & ((1 << signal.bits) - 1)),
+                        DataEntry::Z => ExpectedValue::Z,
+                        DataEntry::X => ExpectedValue::X,
                         _ => unreachable!(),
                     };
-                    OutputEntry { signal, value }
+                    ExpectedEntry { signal, value }
                 }
                 EntryIndex::Default { signal_index } => {
                     let signal = &self.signals[*signal_index];
-                    OutputEntry {
+                    ExpectedEntry {
                         signal,
-                        value: OutputValue::X,
+                        value: ExpectedValue::X,
                     }
                 }
             };
@@ -716,10 +721,10 @@ Z 1";
         assert_eq!(result[1].outputs[0].signal.name, "A");
 
         assert_eq!(result[0].inputs[0].value, InputValue::Value(1));
-        assert_eq!(result[0].outputs[0].value, OutputValue::X);
+        assert_eq!(result[0].outputs[0].value, ExpectedValue::X);
 
         assert_eq!(result[1].inputs[0].value, InputValue::Z);
-        assert_eq!(result[1].outputs[0].value, OutputValue::Value(1));
+        assert_eq!(result[1].outputs[0].value, ExpectedValue::Value(1));
 
         Ok(())
     }
