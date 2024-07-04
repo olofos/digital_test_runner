@@ -497,7 +497,8 @@ impl<'a> TestCase<'a> {
     pub fn try_iter(&self) -> anyhow::Result<TestCaseIterator<'_>> {
         if self
             .stmts
-            .check(&self.signals, &self.input_indices, &self.output_indices)?
+            .check(&self.signals, &self.input_indices, &self.output_indices)
+            .unwrap()
         {
             Ok(TestCaseIterator {
                 iter: StmtIterator::new(&self.stmts),
