@@ -452,7 +452,7 @@ impl DigFile {
                 self.test_cases.len()
             );
         }
-        ParsedTestCase::from_str(&self.test_cases[n].test_data)?.with_signals(&self.signals)
+        ParsedTestCase::from_str(&self.test_cases[n].source)?.with_signals(&self.signals)
     }
 
     pub fn load_test_by_name(&self, name: &str) -> anyhow::Result<TestCase<'_>> {

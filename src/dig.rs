@@ -8,7 +8,7 @@ pub struct TestCaseDescription {
     /// The name of the test case
     pub name: String,
     /// The source code of the test
-    pub test_data: String,
+    pub source: String,
 }
 
 /// A parsed dig file
@@ -127,16 +127,16 @@ pub fn parse(input: &str) -> anyhow::Result<DigFile> {
             if data_string_node.tag_name().name() != "dataString" {
                 return None;
             }
-            let test_data = data_string_node.text()?.to_string();
+            let source = data_string_node.text()?.to_string();
 
-            Some(TestCaseDescription { name, test_data })
+            Some(TestCaseDescription { name, source })
         })
         .collect::<Vec<_>>();
 
     let mut test_signal_names: HashSet<String> = HashSet::new();
     let mut bidirectional: HashSet<String> = HashSet::new();
     for test_case in &test_cases {
-        for name in HeaderParser::new(&test_case.test_data).parse()? {
+        for name in HeaderParser::new(&test_case.source).parse()? {
             if let Some(stripped_name) = name.strip_suffix("_out") {
                 let stripped_name = stripped_name.to_string();
                 bidirectional.insert(stripped_name);
