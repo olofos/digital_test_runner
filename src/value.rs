@@ -1,11 +1,15 @@
 use std::fmt::{Binary, Display};
 
+/// Represent a single input value
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum InputValue {
+    /// A driven signal
     Value(i64),
+    /// A high-Z value
     Z,
 }
 
+/// Represent a single output value
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum OutputValue {
     Value(i64),

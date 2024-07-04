@@ -1,4 +1,8 @@
+#![deny(missing_debug_implementations, nonstandard_style)]
+#![warn(missing_docs, unreachable_pub, rust_2018_idioms)]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"),"/README.md"))]
 mod check;
+/// Load tests from a dig file
 pub mod dig;
 mod eval_context;
 mod expr;
@@ -16,19 +20,31 @@ use crate::eval_context::EvalContext;
 use crate::stmt::{DataEntry, Stmt, StmtIterator};
 use std::{fmt::Display, str::FromStr};
 
+/// Communicate with the device under test
 pub trait TestDriver {
+    /// Error returned by the driver
     type Error;
 
+    /// Write `input` to the device under test and return the resulting output values
     fn write_input_and_read_output(
         &mut self,
         inputs: &[InputEntry<'_>],
     ) -> Result<Vec<OutputEntry<'_>>, Self::Error>;
 
+    /// Write `input` to the device under test
+    ///
+    /// By default this simply calls `self.write_input_and_read_output` and ignores the output.
+    /// An optimised driver can directly implement this method to avoid reading the output which might be costly.
     fn write_input(&mut self, inputs: &[InputEntry<'_>]) -> Result<(), Self::Error> {
         self.write_input_and_read_output(inputs).map(|_| ())
     }
 }
 
+/// Represents the direction of a signal
+///
+/// The direction is specified relative to the device under test, which means that an `Input` signal is an output from the test
+/// which is sent to an input port of the DUT. `Input` and `Bidirectional` signals specify a default value which is used if the
+/// test itself does not override it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SignalDirection {
     Input { default: InputValue },
@@ -36,6 +52,7 @@ pub enum SignalDirection {
     Bidirectional { default: InputValue },
 }
 
+/// Represent a input or output signal of the device under test
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Signal {
     pub name: String,
@@ -43,12 +60,17 @@ pub struct Signal {
     pub dir: SignalDirection,
 }
 
+/// Represents a test case as obtained directly from the test source code
+///
+/// To get a full runnable [TestCase], the input and output signals have to be specified using
+/// the `with_signals` method.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedTestCase {
     stmts: Vec<Stmt>,
     pub signals: Vec<String>,
 }
 
+/// Represents a fully specified test case
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TestCase<'a> {
     stmts: Vec<Stmt>,
@@ -57,17 +79,7 @@ pub struct TestCase<'a> {
     output_indices: Vec<EntryIndex>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum EntryIndex {
-    Entry {
-        entry_index: usize,
-        signal_index: usize,
-    },
-    Default {
-        signal_index: usize,
-    },
-}
-
+/// An iterator over the data rows of a static test case
 #[derive(Debug)]
 pub struct TestCaseIterator<'a> {
     iter: StmtIterator<'a>,
@@ -79,6 +91,7 @@ pub struct TestCaseIterator<'a> {
     cache: Vec<(Vec<DataEntry>, Option<bool>)>,
 }
 
+/// A single row of input values and expected output values
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataRow<'a> {
     pub inputs: Vec<InputEntry<'a>>,
@@ -86,17 +99,33 @@ pub struct DataRow<'a> {
     update_output: bool,
 }
 
+/// An input value sent to a specific signal
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputEntry<'a> {
     pub signal: &'a Signal,
     pub value: InputValue,
+    /// Did this input value change since the last row?
     pub changed: bool,
 }
 
+/// An output value read from a specific signal
+///
+/// Also used to represent the expected outcome of the test
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutputEntry<'a> {
     pub signal: &'a Signal,
     pub value: OutputValue,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum EntryIndex {
+    Entry {
+        entry_index: usize,
+        signal_index: usize,
+    },
+    Default {
+        signal_index: usize,
+    },
 }
 
 impl EntryIndex {
@@ -518,6 +547,7 @@ impl FromStr for ParsedTestCase {
 }
 
 impl Signal {
+    /// Construct an `Output` signal
     pub fn output(name: impl Into<String>, bits: usize) -> Self {
         Self {
             name: name.into(),
@@ -526,6 +556,7 @@ impl Signal {
         }
     }
 
+    /// Construct an `Input` signal
     pub fn input(name: impl Into<String>, bits: usize, default: InputValue) -> Self {
         Self {
             name: name.into(),
@@ -534,10 +565,12 @@ impl Signal {
         }
     }
 
+    /// Is this signal bidirectional?
     pub fn is_bidirectional(&self) -> bool {
         matches!(self.dir, SignalDirection::Bidirectional { default: _ })
     }
 
+    /// Is this test an input (including bidirectional signals)?
     pub fn is_input(&self) -> bool {
         matches!(
             self.dir,
@@ -545,6 +578,7 @@ impl Signal {
         )
     }
 
+    /// Is this test an output (including bidirectional signals)?
     pub fn is_output(&self) -> bool {
         matches!(
             self.dir,
@@ -552,6 +586,9 @@ impl Signal {
         )
     }
 
+    /// Extract the default value of an `Input` or `Bidirectional` signal.
+    ///
+    /// Returns `None` if the signal is an `Output`
     pub fn default_value(&self) -> Option<InputValue> {
         match self.dir {
             SignalDirection::Input { default } | SignalDirection::Bidirectional { default } => {
