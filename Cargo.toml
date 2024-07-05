@@ -11,6 +11,7 @@ getrandom = "0.2.12"
 logos = "0.14.0"
 rand = "0.8.5"
 roxmltree = "0.20.0"
+thiserror = "1.0.61"
 
 [dev-dependencies]
 rstest = "0.21.0"

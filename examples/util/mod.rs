@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, ErrorKind, Read};
 use std::{path::PathBuf, process::Command};
 
 use digital_test_runner::OutputValue;
@@ -45,12 +45,12 @@ impl<T: Read> Cursor<T> {
         }
     }
 
-    pub fn grab(&mut self, len: impl Into<usize>) -> anyhow::Result<OutputValue> {
+    pub fn grab(&mut self, len: impl Into<usize>) -> Result<OutputValue, std::io::Error> {
         if self.index >= self.line.len() {
             loop {
                 self.line.clear();
                 if self.reader.read_line(&mut self.line)? == 0 {
-                    anyhow::bail!("Unexpected end of file")
+                    return Err(std::io::Error::from(ErrorKind::UnexpectedEof));
                 };
                 if self.line.starts_with("> ") {
                     if self.line.ends_with('\n') {
@@ -63,7 +63,10 @@ impl<T: Read> Cursor<T> {
         }
         let len = len.into();
         if self.line.len() < self.index + len {
-            Err(anyhow::anyhow!("Not enough data in line"))
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidInput,
+                "Not enough data in line",
+            ));
         } else {
             let s = &self.line[self.index..(self.index + len)];
             self.index += len;
@@ -73,7 +76,9 @@ impl<T: Read> Cursor<T> {
             } else if s.contains('z') {
                 Ok(OutputValue::Z)
             } else {
-                Ok(OutputValue::Value(i64::from_str_radix(s, 2)?))
+                Ok(OutputValue::Value(i64::from_str_radix(s, 2).map_err(
+                    |e| std::io::Error::new(ErrorKind::InvalidData, e),
+                )?))
             }
         }
     }

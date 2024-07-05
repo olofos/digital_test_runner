@@ -1,9 +1,13 @@
 #![deny(missing_debug_implementations, nonstandard_style)]
 #![warn(missing_docs, unreachable_pub, rust_2018_idioms)]
 #![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"),"/README.md"))]
-mod check;
+
 /// Load tests from a dig file
 pub mod dig;
+/// Error types
+pub mod errors;
+
+mod check;
 mod eval_context;
 mod expr;
 mod framed_map;
@@ -15,6 +19,7 @@ mod value;
 pub use crate::value::{ExpectedValue, InputValue, OutputValue};
 
 use crate::check::TestCheck;
+use crate::errors::{FailedTestAssertion, FailedTestAssertions, RunError};
 use crate::eval_context::EvalContext;
 use crate::stmt::{DataEntry, Stmt, StmtIterator};
 use std::{fmt::Display, str::FromStr};
@@ -488,7 +493,7 @@ impl dig::File {
 
 impl<'a> TestCase<'a> {
     /// Run the test using `driver` to handle input to and output from the device under test.
-    pub fn run<T: TestDriver>(&self, driver: &mut T) -> Result<(), T::Error> {
+    pub fn run<T: TestDriver>(&self, driver: &mut T) -> Result<(), RunError<T::Error>> {
         let mut iter = TestCaseIterator {
             iter: StmtIterator::new(&self.stmts),
             ctx: EvalContext::new(),
@@ -499,23 +504,42 @@ impl<'a> TestCase<'a> {
             cache: vec![],
         };
 
+        let mut errors = vec![];
+
         while let Some(row) = iter.next() {
             if row.update_output {
                 let outputs = driver.write_input_and_read_output(&row.inputs)?;
                 let expected: Vec<_> = row.outputs.iter().map(|entry| entry.value).collect();
 
-                expected.iter().zip(&outputs).for_each(|(e, o)| {
-                    if !e.check(o.value) {
-                        eprintln!("Error: {} != {}", o.value, e);
-                    }
-                });
+                let row_errors = expected
+                    .iter()
+                    .zip(&outputs)
+                    .filter_map(|(e, o)| {
+                        if e.check(o.value) {
+                            None
+                        } else {
+                            Some(FailedTestAssertion {
+                                expected: *e,
+                                found: o.value,
+                                signal: o.signal.clone(),
+                            })
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                if !row_errors.is_empty() {
+                    errors.push(FailedTestAssertions { errors: row_errors });
+                }
 
                 iter.ctx.set_outputs(outputs);
             } else {
                 driver.write_input(&row.inputs)?;
             }
         }
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(RunError::AssertionError(errors))
+        }
     }
 
     /// Get an iterator over the data rows of the test

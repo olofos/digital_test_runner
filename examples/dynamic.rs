@@ -13,7 +13,7 @@ struct Driver {
 }
 
 impl TestDriver for Driver {
-    type Error = anyhow::Error;
+    type Error = std::io::Error;
 
     fn write_input_and_read_output(
         &mut self,
