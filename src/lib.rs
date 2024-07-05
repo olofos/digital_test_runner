@@ -112,6 +112,8 @@ pub struct DataRow<'a> {
     pub inputs: Vec<InputEntry<'a>>,
     /// List of expected output values
     pub outputs: Vec<ExpectedEntry<'a>>,
+    /// Line number of the test source code
+    pub line: usize,
     update_output: bool,
 }
 
@@ -376,6 +378,7 @@ impl<'a> Iterator for TestCaseIterator<'a> {
         Some(DataRow {
             inputs,
             outputs,
+            line: row_result.line,
             update_output: update_output.unwrap(),
         })
     }
@@ -594,6 +597,7 @@ impl<'a> TestCase<'a> {
         DataRow {
             inputs,
             outputs,
+            line: 0,
             update_output: true,
         }
     }
