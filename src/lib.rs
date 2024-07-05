@@ -536,7 +536,10 @@ impl<'a> TestCase<'a> {
                     })
                     .collect::<Vec<_>>();
                 if !row_errors.is_empty() {
-                    errors.push(FailedTestAssertions { errors: row_errors });
+                    errors.push(FailedTestAssertions {
+                        errors: row_errors,
+                        line: row.line,
+                    });
                 }
 
                 iter.ctx.set_outputs(outputs);

@@ -31,4 +31,6 @@ pub struct FailedTestAssertion {
 pub struct FailedTestAssertions {
     /// List of errors
     pub errors: Vec<FailedTestAssertion>,
+    /// Line number in test source code
+    pub line: usize,
 }
