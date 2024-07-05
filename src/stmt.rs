@@ -38,6 +38,7 @@ pub(crate) enum DataEntry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RowResult {
     pub(crate) entries: Vec<DataEntry>,
+    pub(crate) line: usize,
 }
 
 #[derive(Debug)]
@@ -113,9 +114,10 @@ impl<'a> StmtIterator<'a> {
             match &mut self.inner_state {
                 StmtIteratorState::Iterate => match self.stmt_iter.next()? {
                     Stmt::Let { name, expr } => ctx.set(name, expr.eval(ctx).unwrap()),
-                    Stmt::DataRow { data, line: _ } => {
+                    Stmt::DataRow { data, line } => {
                         return Some(RowResult {
                             entries: data.iter().flat_map(|entry| entry.eval(ctx)).collect(),
+                            line: *line,
                         })
                     }
                     Stmt::Loop {
@@ -325,9 +327,7 @@ A B
 
         let expectation = vec![[0, 0], [0, 1], [1, 0], [1, 1]]
             .into_iter()
-            .map(|v| RowResult {
-                entries: v.into_iter().map(DataEntry::Number).collect::<Vec<_>>(),
-            })
+            .map(|v| v.into_iter().map(DataEntry::Number).collect::<Vec<_>>())
             .collect::<Vec<_>>();
 
         let testcase: ParsedTestCase = input.parse().unwrap();
@@ -336,7 +336,7 @@ A B
         let mut result = vec![];
         let mut iter = StmtIterator::new(&testcase.stmts);
         while let Some(row) = iter.next_with_context(&mut ctx) {
-            result.push(row);
+            result.push(row.entries);
         }
         assert_eq!(result, expectation)
     }
@@ -361,9 +361,7 @@ end loop
             [1, 1, 1],
         ]
         .into_iter()
-        .map(|v| RowResult {
-            entries: v.into_iter().map(DataEntry::Number).collect::<Vec<_>>(),
-        })
+        .map(|v| v.into_iter().map(DataEntry::Number).collect::<Vec<_>>())
         .collect::<Vec<_>>();
 
         let testcase: ParsedTestCase = input.parse().unwrap();
@@ -372,7 +370,7 @@ end loop
         let mut result = vec![];
         let mut iter = StmtIterator::new(&testcase.stmts);
         while let Some(row) = iter.next_with_context(&mut ctx) {
-            result.push(row);
+            result.push(row.entries);
         }
         assert_eq!(result, expectation)
     }
@@ -391,9 +389,7 @@ bits(2,n)
 
         let expectation = vec![[1, 0], [0, 0], [0, 1], [1, 0], [1, 1], [1, 0]]
             .into_iter()
-            .map(|v| RowResult {
-                entries: v.into_iter().map(DataEntry::Number).collect::<Vec<_>>(),
-            })
+            .map(|v| v.into_iter().map(DataEntry::Number).collect::<Vec<_>>())
             .collect::<Vec<_>>();
 
         let testcase: ParsedTestCase = input.parse().unwrap();
@@ -402,7 +398,7 @@ bits(2,n)
         let mut result = vec![];
         let mut iter = StmtIterator::new(&testcase.stmts);
         while let Some(row) = iter.next_with_context(&mut ctx) {
-            result.push(row);
+            result.push(row.entries);
         }
         assert_eq!(result, expectation)
     }
@@ -420,9 +416,7 @@ end while
 
         let expectation = vec![[0, 0], [0, 1], [1, 0], [1, 1]]
             .into_iter()
-            .map(|v| RowResult {
-                entries: v.into_iter().map(DataEntry::Number).collect::<Vec<_>>(),
-            })
+            .map(|v| v.into_iter().map(DataEntry::Number).collect::<Vec<_>>())
             .collect::<Vec<_>>();
 
         let testcase: ParsedTestCase = input.parse().unwrap();
@@ -431,7 +425,7 @@ end while
         let mut result = vec![];
         let mut iter = StmtIterator::new(&testcase.stmts);
         while let Some(row) = iter.next_with_context(&mut ctx) {
-            result.push(row);
+            result.push(row.entries);
         }
         assert_eq!(result, expectation)
     }
