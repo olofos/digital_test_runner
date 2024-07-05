@@ -35,6 +35,11 @@ pub(crate) enum DataEntry {
     C,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RowResult {
+    pub(crate) entries: Vec<DataEntry>,
+}
+
 #[derive(Debug)]
 struct LoopState<'a> {
     variable: &'a str,
@@ -103,13 +108,15 @@ impl<'a> StmtIterator<'a> {
             inner_state: StmtIteratorState::Iterate,
         }
     }
-    pub(crate) fn next_with_context(&mut self, ctx: &mut EvalContext) -> Option<Vec<DataEntry>> {
+    pub(crate) fn next_with_context(&mut self, ctx: &mut EvalContext) -> Option<RowResult> {
         loop {
             match &mut self.inner_state {
                 StmtIteratorState::Iterate => match self.stmt_iter.next()? {
                     Stmt::Let { name, expr } => ctx.set(name, expr.eval(ctx).unwrap()),
                     Stmt::DataRow { data, line: _ } => {
-                        return Some(data.iter().flat_map(|entry| entry.eval(ctx)).collect())
+                        return Some(RowResult {
+                            entries: data.iter().flat_map(|entry| entry.eval(ctx)).collect(),
+                        })
                     }
                     Stmt::Loop {
                         variable,
@@ -318,7 +325,9 @@ A B
 
         let expectation = vec![[0, 0], [0, 1], [1, 0], [1, 1]]
             .into_iter()
-            .map(|v| v.into_iter().map(DataEntry::Number).collect::<Vec<_>>())
+            .map(|v| RowResult {
+                entries: v.into_iter().map(DataEntry::Number).collect::<Vec<_>>(),
+            })
             .collect::<Vec<_>>();
 
         let testcase: ParsedTestCase = input.parse().unwrap();
@@ -352,7 +361,9 @@ end loop
             [1, 1, 1],
         ]
         .into_iter()
-        .map(|v| v.into_iter().map(DataEntry::Number).collect::<Vec<_>>())
+        .map(|v| RowResult {
+            entries: v.into_iter().map(DataEntry::Number).collect::<Vec<_>>(),
+        })
         .collect::<Vec<_>>();
 
         let testcase: ParsedTestCase = input.parse().unwrap();
@@ -380,7 +391,9 @@ bits(2,n)
 
         let expectation = vec![[1, 0], [0, 0], [0, 1], [1, 0], [1, 1], [1, 0]]
             .into_iter()
-            .map(|v| v.into_iter().map(DataEntry::Number).collect::<Vec<_>>())
+            .map(|v| RowResult {
+                entries: v.into_iter().map(DataEntry::Number).collect::<Vec<_>>(),
+            })
             .collect::<Vec<_>>();
 
         let testcase: ParsedTestCase = input.parse().unwrap();
@@ -407,7 +420,9 @@ end while
 
         let expectation = vec![[0, 0], [0, 1], [1, 0], [1, 1]]
             .into_iter()
-            .map(|v| v.into_iter().map(DataEntry::Number).collect::<Vec<_>>())
+            .map(|v| RowResult {
+                entries: v.into_iter().map(DataEntry::Number).collect::<Vec<_>>(),
+            })
             .collect::<Vec<_>>();
 
         let testcase: ParsedTestCase = input.parse().unwrap();

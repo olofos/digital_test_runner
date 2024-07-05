@@ -16,6 +16,8 @@ mod parser;
 mod stmt;
 mod value;
 
+use stmt::RowResult;
+
 pub use crate::value::{ExpectedValue, InputValue, OutputValue};
 
 use crate::check::TestCheck;
@@ -100,7 +102,7 @@ pub struct TestCaseIterator<'a> {
     input_indices: &'a [EntryIndex],
     output_indices: &'a [EntryIndex],
     prev: Option<Vec<DataEntry>>,
-    cache: Vec<(Vec<DataEntry>, Option<bool>)>,
+    cache: Vec<(RowResult, Option<bool>)>,
 }
 
 /// A single row of input values and expected output values
@@ -199,33 +201,37 @@ impl<'a> TestCaseIterator<'a> {
 
     fn expand_x(&mut self) {
         loop {
-            let (stmt_entries, _) = self.cache.last().unwrap();
-            let Some(x_index) = stmt_entries
-                .iter()
-                .enumerate()
-                .rev()
-                .find_map(|(i, entry)| {
-                    if entry == &DataEntry::X && self.entry_is_input(i) {
-                        Some(i)
-                    } else {
-                        None
-                    }
-                })
+            let (row_result, _) = self.cache.last().unwrap();
+
+            let Some(x_index) =
+                row_result
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .find_map(|(i, entry)| {
+                        if entry == &DataEntry::X && self.entry_is_input(i) {
+                            Some(i)
+                        } else {
+                            None
+                        }
+                    })
             else {
                 break;
             };
-            let (mut stmt_entries, _) = self.cache.pop().unwrap();
-            stmt_entries[x_index] = DataEntry::Number(1);
-            self.cache.push((stmt_entries.clone(), None));
-            stmt_entries[x_index] = DataEntry::Number(0);
-            self.cache.push((stmt_entries, None));
+            let (mut row_result, _) = self.cache.pop().unwrap();
+            row_result.entries[x_index] = DataEntry::Number(1);
+            self.cache.push((row_result.clone(), None));
+            row_result.entries[x_index] = DataEntry::Number(0);
+            self.cache.push((row_result, None));
         }
     }
 
     fn expand_c(&mut self) {
-        let (mut stmt_entries, _) = self.cache.pop().unwrap();
+        let (mut row_result, _) = self.cache.pop().unwrap();
 
-        let c_indices = stmt_entries
+        let c_indices = row_result
+            .entries
             .iter()
             .enumerate()
             .filter_map(|(i, entry)| {
@@ -238,29 +244,29 @@ impl<'a> TestCaseIterator<'a> {
             .collect::<Vec<_>>();
 
         if c_indices.is_empty() {
-            self.cache.push((stmt_entries, Some(true)));
+            self.cache.push((row_result, Some(true)));
         } else {
             for &i in &c_indices {
-                stmt_entries[i] = DataEntry::Number(0);
+                row_result.entries[i] = DataEntry::Number(0);
             }
-            self.cache.push((stmt_entries.clone(), Some(true)));
+            self.cache.push((row_result.clone(), Some(true)));
             for entry_index in self.output_indices {
                 match entry_index {
                     EntryIndex::Entry {
                         entry_index,
                         signal_index: _,
-                    } => stmt_entries[*entry_index] = DataEntry::X,
+                    } => row_result.entries[*entry_index] = DataEntry::X,
                     EntryIndex::Default { signal_index: _ } => continue,
                 }
             }
             for &i in &c_indices {
-                stmt_entries[i] = DataEntry::Number(1);
+                row_result.entries[i] = DataEntry::Number(1);
             }
-            self.cache.push((stmt_entries.clone(), Some(false)));
+            self.cache.push((row_result.clone(), Some(false)));
             for &i in &c_indices {
-                stmt_entries[i] = DataEntry::Number(0);
+                row_result.entries[i] = DataEntry::Number(0);
             }
-            self.cache.push((stmt_entries.clone(), Some(false)));
+            self.cache.push((row_result.clone(), Some(false)));
         }
     }
 
@@ -352,20 +358,20 @@ impl<'a> Iterator for TestCaseIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.cache.is_empty() {
-            let stmt_entries = self.iter.next_with_context(&mut self.ctx)?;
-            self.cache.push((stmt_entries, None));
+            let row_result = self.iter.next_with_context(&mut self.ctx)?;
+            self.cache.push((row_result, None));
         }
 
         self.expand_x();
         self.expand_c();
 
-        let (stmt_entries, update_output) = self.cache.pop().unwrap();
+        let (row_result, update_output) = self.cache.pop().unwrap();
 
-        let changed = self.check_changed_entries(&stmt_entries);
-        self.prev = Some(stmt_entries.clone());
+        let changed = self.check_changed_entries(&row_result.entries);
+        self.prev = Some(row_result.entries.clone());
 
-        let inputs = self.generate_input_entries(&stmt_entries, &changed);
-        let outputs = self.generate_output_entries(&stmt_entries);
+        let inputs = self.generate_input_entries(&row_result.entries, &changed);
+        let outputs = self.generate_output_entries(&row_result.entries);
 
         Some(DataRow {
             inputs,
