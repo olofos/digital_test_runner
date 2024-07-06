@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use thiserror::Error;
 
 use crate::{ExpectedValue, OutputValue, Signal};
@@ -33,4 +35,6 @@ pub struct FailedTestAssertions {
     pub errors: Vec<FailedTestAssertion>,
     /// Line number in test source code
     pub line: usize,
+    /// Current value of all variables
+    pub vars: HashMap<String, i64>,
 }

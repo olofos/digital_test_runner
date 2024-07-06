@@ -68,6 +68,10 @@ impl EvalContext {
     ) -> i64 {
         self.rng.borrow_mut().gen_range(range)
     }
+
+    pub(crate) fn vars(&self) -> HashMap<String, i64> {
+        self.vars.flatten()
+    }
 }
 
 impl Default for EvalContext {

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct FramedMap<K, V> {
     values: Vec<(K, V)>,
@@ -24,6 +26,20 @@ impl<K, V> FramedMap<K, V> {
     pub(crate) fn pop_frame(&mut self) {
         let len = self.frame_stack.pop().unwrap_or(0);
         self.values.truncate(len);
+    }
+}
+
+impl<K: std::hash::Hash + Eq + Clone, V: Copy> FramedMap<K, V> {
+    pub(crate) fn flatten(&self) -> HashMap<K, V> {
+        let mut values = HashMap::new();
+
+        for (key, value) in self.values.iter().rev() {
+            if !values.contains_key(key) {
+                values.insert(key.clone(), *value);
+            }
+        }
+
+        values
     }
 }
 

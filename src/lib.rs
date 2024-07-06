@@ -535,10 +535,12 @@ impl<'a> TestCase<'a> {
                         }
                     })
                     .collect::<Vec<_>>();
+
                 if !row_errors.is_empty() {
                     errors.push(FailedTestAssertions {
                         errors: row_errors,
                         line: row.line,
+                        vars: iter.ctx.vars(),
                     });
                 }
 
