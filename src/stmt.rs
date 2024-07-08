@@ -36,7 +36,7 @@ pub(crate) enum DataEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RowResult {
+pub(crate) struct DataEntries {
     pub(crate) entries: Vec<DataEntry>,
     pub(crate) line: usize,
 }
@@ -109,13 +109,13 @@ impl<'a> StmtIterator<'a> {
             inner_state: StmtIteratorState::Iterate,
         }
     }
-    pub(crate) fn next_with_context(&mut self, ctx: &mut EvalContext) -> Option<RowResult> {
+    pub(crate) fn next_with_context(&mut self, ctx: &mut EvalContext) -> Option<DataEntries> {
         loop {
             match &mut self.inner_state {
                 StmtIteratorState::Iterate => match self.stmt_iter.next()? {
                     Stmt::Let { name, expr } => ctx.set(name, expr.eval(ctx).unwrap()),
                     Stmt::DataRow { data, line } => {
-                        return Some(RowResult {
+                        return Some(DataEntries {
                             entries: data.iter().flat_map(|entry| entry.eval(ctx)).collect(),
                             line: *line,
                         })

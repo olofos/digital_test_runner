@@ -16,7 +16,7 @@ mod parser;
 mod stmt;
 mod value;
 
-use stmt::RowResult;
+use stmt::DataEntries;
 
 pub use crate::value::{ExpectedValue, InputValue, OutputValue};
 
@@ -102,7 +102,7 @@ pub struct TestCaseIterator<'a> {
     input_indices: &'a [EntryIndex],
     output_indices: &'a [EntryIndex],
     prev: Option<Vec<DataEntry>>,
-    cache: Vec<(RowResult, Option<bool>)>,
+    cache: Vec<(DataEntries, Option<bool>)>,
 }
 
 /// A single row of input values and expected output values
