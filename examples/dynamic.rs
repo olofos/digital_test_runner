@@ -8,7 +8,6 @@ struct Driver {
     child: std::process::Child,
     stdin: std::process::ChildStdin,
     cursor: Cursor<std::process::ChildStdout>,
-    error_count: usize,
     output_signals: Vec<Signal>,
 }
 
@@ -60,7 +59,6 @@ impl Driver {
             child,
             stdin,
             cursor,
-            error_count: 0,
             output_signals,
         })
     }
@@ -99,12 +97,9 @@ fn main() -> anyhow::Result<()> {
             )?;
             let mut driver = Driver::try_new(prog_path, &test_case.signals)?;
 
-            test_case.run(&mut driver)?;
-
-            if driver.error_count == 0 {
-                println!("Test passed");
-            } else {
-                println!("Found {} failing assertions", driver.error_count);
+            match test_case.run(&mut driver) {
+                Ok(()) => eprintln!("All tests passed"),
+                Err(e) => eprintln!("{e:#}"),
             }
         }
         println!();

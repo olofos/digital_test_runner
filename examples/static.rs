@@ -54,8 +54,8 @@ fn main() -> anyhow::Result<()> {
                     let value = cursor.grab(output.signal.bits)?;
                     if !output.value.check(value) {
                         println!(
-                            "Expected {} but got {} for {}",
-                            output.value, value, output.signal.name
+                            "Line {}: Expected {} but got {} for {}",
+                            row.line, output.value, value, output.signal.name
                         );
                         error_count += 1;
                     }

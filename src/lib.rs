@@ -21,7 +21,7 @@ use stmt::RowResult;
 pub use crate::value::{ExpectedValue, InputValue, OutputValue};
 
 use crate::check::TestCheck;
-use crate::errors::{FailedTestAssertion, FailedTestAssertions, RunError};
+use crate::errors::{FailedRowAssertions, FailedTestAssertion, RunError};
 use crate::eval_context::EvalContext;
 use crate::stmt::{DataEntry, Stmt, StmtIterator};
 use std::{fmt::Display, str::FromStr};
@@ -537,7 +537,7 @@ impl<'a> TestCase<'a> {
                     .collect::<Vec<_>>();
 
                 if !row_errors.is_empty() {
-                    errors.push(FailedTestAssertions {
+                    errors.push(FailedRowAssertions {
                         errors: row_errors,
                         line: row.line,
                         vars: iter.ctx.vars(),
@@ -552,7 +552,7 @@ impl<'a> TestCase<'a> {
         if errors.is_empty() {
             Ok(())
         } else {
-            Err(RunError::AssertionError(errors))
+            Err(RunError::assertion(errors))
         }
     }
 
