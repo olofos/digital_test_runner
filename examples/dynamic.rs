@@ -97,9 +97,19 @@ fn main() -> anyhow::Result<()> {
             )?;
             let mut driver = Driver::try_new(prog_path, &test_case.signals)?;
 
-            match test_case.run(&mut driver) {
-                Ok(()) => eprintln!("All tests passed"),
-                Err(e) => eprintln!("{e:#}"),
+            let it = test_case.run_iter(&mut driver);
+
+            for row in it {
+                let row = row?;
+                print!("{:2}: ", row.line);
+                for input in row.inputs {
+                    print!("{} ", input.value);
+                }
+                print!("| ");
+                for output in row.outputs {
+                    print!("{}/{} ", output.output, output.expected);
+                }
+                println!();
             }
         }
         println!();

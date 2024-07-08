@@ -36,7 +36,7 @@ fn main() -> anyhow::Result<()> {
             let mut cursor = util::Cursor::new(child.stdout.take().unwrap());
 
             let mut error_count = 0;
-            let iter = match test_case.try_iter() {
+            let iter = match test_case.try_static_iter() {
                 Ok(iter) => iter,
                 Err(err) => {
                     eprintln!("{err}");

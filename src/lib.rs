@@ -117,6 +117,16 @@ pub struct DataRow<'a> {
     update_output: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RowResult<'a> {
+    /// List of input values
+    pub inputs: Vec<InputEntry<'a>>,
+    /// List of expected output values
+    pub outputs: Vec<OutputResultEntry<'a>>,
+    /// Line number of the test source code
+    pub line: usize,
+}
+
 /// An input value sent to a specific signal
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(missing_docs)]
@@ -141,6 +151,15 @@ pub struct OutputEntry<'a> {
 pub struct ExpectedEntry<'a> {
     pub signal: &'a Signal,
     pub value: ExpectedValue,
+}
+
+/// An output value read from a specific signal and the expected value
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(missing_docs)]
+pub struct OutputResultEntry<'a> {
+    pub signal: &'a Signal,
+    pub output: OutputValue,
+    pub expected: ExpectedValue,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -500,7 +519,67 @@ impl dig::File {
     }
 }
 
+#[derive(Debug)]
+pub struct RunnerIterator<'a, 'b, T> {
+    iter: TestCaseIterator<'a>,
+    driver: &'b mut T,
+}
+
+impl<'a, 'b, T: TestDriver> Iterator for RunnerIterator<'a, 'b, T> {
+    type Item = Result<RowResult<'a>, T::Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let row = self.iter.next()?;
+
+        let outputs = if row.update_output {
+            let outputs = match self.driver.write_input_and_read_output(&row.inputs) {
+                Ok(o) => o,
+                Err(e) => return Some(Err(e)),
+            };
+            // let expected: Vec<_> = row.outputs.iter().map(|entry| entry.value).collect();
+
+            let row_outputs = row
+                .outputs
+                .iter()
+                .zip(&outputs)
+                .map(|(e, o)| OutputResultEntry {
+                    expected: e.value,
+                    output: o.value,
+                    signal: e.signal,
+                })
+                .collect::<Vec<_>>();
+
+            self.iter.ctx.set_outputs(outputs);
+
+            row_outputs
+        } else {
+            match self.driver.write_input(&row.inputs) {
+                Ok(_) => vec![],
+                Err(e) => return Some(Err(e)),
+            }
+        };
+        Some(Ok(RowResult {
+            inputs: row.inputs,
+            outputs,
+            line: row.line,
+        }))
+    }
+}
+
 impl<'a> TestCase<'a> {
+    pub fn run_iter<'b, T>(&'a self, driver: &'b mut T) -> RunnerIterator<'a, 'b, T> {
+        let iter = TestCaseIterator {
+            iter: StmtIterator::new(&self.stmts),
+            ctx: EvalContext::new(),
+            signals: &self.signals,
+            input_indices: &self.input_indices,
+            output_indices: &self.output_indices,
+            prev: None,
+            cache: vec![],
+        };
+        RunnerIterator { iter, driver }
+    }
+
     /// Run the test using `driver` to handle input to and output from the device under test.
     pub fn run<T: TestDriver>(&self, driver: &mut T) -> Result<(), RunError<T::Error>> {
         let mut iter = TestCaseIterator {
@@ -560,7 +639,7 @@ impl<'a> TestCase<'a> {
     ///
     /// This is only possible if the test is *static*, which means that the test does no depend on the output produced by the device under test.
     /// For a more general *dynamic* test the [TestCase::run] function should be used in combination with a driver implementing the [TestDriver] trait.
-    pub fn try_iter(&self) -> anyhow::Result<TestCaseIterator<'_>> {
+    pub fn try_static_iter(&self) -> anyhow::Result<TestCaseIterator<'_>> {
         if self
             .stmts
             .check(&self.signals, &self.input_indices, &self.output_indices)
@@ -745,7 +824,7 @@ end loop
             });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
-        for row in testcase.try_iter()? {
+        for row in testcase.try_static_iter()? {
             for input in row.inputs {
                 print!("{} ", input.value);
             }
@@ -776,7 +855,7 @@ Z 1";
         let known_signals = Vec::from_iter(known_inputs);
         let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
 
-        let result: Vec<DataRow<'_>> = testcase.try_iter()?.collect();
+        let result: Vec<DataRow<'_>> = testcase.try_static_iter()?.collect();
 
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].inputs[0].signal.name, "A");
@@ -824,14 +903,19 @@ Z 1";
         let expanded_testcase =
             ParsedTestCase::from_str(expanded_input)?.with_signals(&known_signals)?;
 
-        let input_rows: Vec<_> = testcase.try_iter()?.map(|r| r.inputs).collect();
-        let input_expanded_rows: Vec<_> = expanded_testcase.try_iter()?.map(|r| r.inputs).collect();
+        let input_rows: Vec<_> = testcase.try_static_iter()?.map(|r| r.inputs).collect();
+        let input_expanded_rows: Vec<_> = expanded_testcase
+            .try_static_iter()?
+            .map(|r| r.inputs)
+            .collect();
 
         assert_eq!(input_rows, input_expanded_rows);
 
-        let output_rows: Vec<_> = testcase.try_iter()?.map(|r| r.outputs).collect();
-        let output_expanded_rows: Vec<_> =
-            expanded_testcase.try_iter()?.map(|r| r.outputs).collect();
+        let output_rows: Vec<_> = testcase.try_static_iter()?.map(|r| r.outputs).collect();
+        let output_expanded_rows: Vec<_> = expanded_testcase
+            .try_static_iter()?
+            .map(|r| r.outputs)
+            .collect();
 
         assert_eq!(output_rows, output_expanded_rows);
 
@@ -870,14 +954,19 @@ Z 1";
         let expanded_testcase =
             ParsedTestCase::from_str(expanded_input)?.with_signals(&known_signals)?;
 
-        let input_rows: Vec<_> = testcase.try_iter()?.map(|r| r.inputs).collect();
-        let input_expanded_rows: Vec<_> = expanded_testcase.try_iter()?.map(|r| r.inputs).collect();
+        let input_rows: Vec<_> = testcase.try_static_iter()?.map(|r| r.inputs).collect();
+        let input_expanded_rows: Vec<_> = expanded_testcase
+            .try_static_iter()?
+            .map(|r| r.inputs)
+            .collect();
 
         assert_eq!(input_rows, input_expanded_rows);
 
-        let output_rows: Vec<_> = testcase.try_iter()?.map(|r| r.outputs).collect();
-        let output_expanded_rows: Vec<_> =
-            expanded_testcase.try_iter()?.map(|r| r.outputs).collect();
+        let output_rows: Vec<_> = testcase.try_static_iter()?.map(|r| r.outputs).collect();
+        let output_expanded_rows: Vec<_> = expanded_testcase
+            .try_static_iter()?
+            .map(|r| r.outputs)
+            .collect();
 
         assert_eq!(output_rows, output_expanded_rows);
 
@@ -918,14 +1007,19 @@ Z 1";
         let expanded_testcase =
             ParsedTestCase::from_str(expanded_input)?.with_signals(&known_signals)?;
 
-        let input_rows: Vec<_> = testcase.try_iter()?.map(|r| r.inputs).collect();
-        let input_expanded_rows: Vec<_> = expanded_testcase.try_iter()?.map(|r| r.inputs).collect();
+        let input_rows: Vec<_> = testcase.try_static_iter()?.map(|r| r.inputs).collect();
+        let input_expanded_rows: Vec<_> = expanded_testcase
+            .try_static_iter()?
+            .map(|r| r.inputs)
+            .collect();
 
         assert_eq!(input_rows, input_expanded_rows);
 
-        let output_rows: Vec<_> = testcase.try_iter()?.map(|r| r.outputs).collect();
-        let output_expanded_rows: Vec<_> =
-            expanded_testcase.try_iter()?.map(|r| r.outputs).collect();
+        let output_rows: Vec<_> = testcase.try_static_iter()?.map(|r| r.outputs).collect();
+        let output_expanded_rows: Vec<_> = expanded_testcase
+            .try_static_iter()?
+            .map(|r| r.outputs)
+            .collect();
 
         assert_eq!(output_rows, output_expanded_rows);
 
