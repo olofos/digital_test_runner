@@ -97,7 +97,7 @@ impl Display for ExpectedValue {
 impl Binary for InputValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            InputValue::Value(n) => std::fmt::Binary::fmt(&n, f),
+            InputValue::Value(n) => Binary::fmt(&n, f),
             InputValue::Z => {
                 if let Some(width) = f.width() {
                     write!(f, "{}", "z".repeat(width))

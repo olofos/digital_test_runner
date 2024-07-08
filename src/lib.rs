@@ -1,5 +1,5 @@
 #![deny(missing_debug_implementations, nonstandard_style)]
-#![warn(missing_docs, unreachable_pub, rust_2018_idioms)]
+#![warn(missing_docs, unreachable_pub, rust_2018_idioms, unused_qualifications)]
 #![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"),"/README.md"))]
 
 /// Load tests from a dig file
@@ -612,7 +612,7 @@ impl FromStr for ParsedTestCase {
     type Err = anyhow::Error;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
-        crate::parser::parse_testcase(input)
+        parser::parse_testcase(input)
     }
 }
 
