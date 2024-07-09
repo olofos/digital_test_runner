@@ -52,9 +52,9 @@ fn main() -> anyhow::Result<()> {
                 }
                 writeln!(stdin)?;
 
-                if !row.outputs.is_empty() {
+                if !row.expected.is_empty() {
                     print!(" =>  ");
-                    for expected in &row.outputs {
+                    for expected in &row.expected {
                         let output = cursor.grab(expected.signal.bits)?;
                         let color = match (
                             expected.value != ExpectedValue::X,

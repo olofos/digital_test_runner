@@ -8,7 +8,7 @@ pub(crate) struct CheckContext<'a> {
     vars: FramedSet<String>,
     signals: &'a [Signal],
     input_indices: &'a [EntryIndex],
-    output_indices: &'a [EntryIndex],
+    expected_indices: &'a [EntryIndex],
     pub(crate) is_static: bool,
 }
 
@@ -17,7 +17,7 @@ pub(crate) trait TestCheck<'a> {
         &self,
         signals: &'a [Signal],
         input_indices: &'a [EntryIndex],
-        output_indices: &'a [EntryIndex],
+        expected_indices: &'a [EntryIndex],
     ) -> anyhow::Result<bool>;
 }
 
@@ -26,9 +26,9 @@ impl<'a> TestCheck<'a> for Vec<Stmt> {
         &self,
         signals: &'a [Signal],
         input_indices: &'a [EntryIndex],
-        output_indices: &'a [EntryIndex],
+        expected_indices: &'a [EntryIndex],
     ) -> anyhow::Result<bool> {
-        let mut ctx = CheckContext::new(signals, input_indices, output_indices);
+        let mut ctx = CheckContext::new(signals, input_indices, expected_indices);
         for stmt in self {
             stmt.check(&mut ctx)?;
         }
@@ -40,13 +40,13 @@ impl<'a> CheckContext<'a> {
     pub(crate) fn new(
         signals: &'a [Signal],
         input_indices: &'a [EntryIndex],
-        output_indices: &'a [EntryIndex],
+        expected_indices: &'a [EntryIndex],
     ) -> Self {
         Self {
             vars: FramedSet::new(),
             signals,
             input_indices,
-            output_indices,
+            expected_indices: expected_indices,
             is_static: true,
         }
     }
@@ -58,7 +58,7 @@ impl<'a> CheckContext<'a> {
     fn check_var(&mut self, name: &String) -> anyhow::Result<()> {
         if !self.vars.contains(name) {
             if self
-                .output_indices
+                .expected_indices
                 .iter()
                 .any(|index| self.signals[index.signal_index()].name == *name)
             {
@@ -76,7 +76,7 @@ impl Stmt {
         let expected_length = ctx
             .input_indices
             .iter()
-            .chain(ctx.output_indices)
+            .chain(ctx.expected_indices)
             .filter(|entry| entry.is_entry())
             .count();
         match self {
@@ -96,7 +96,7 @@ impl Stmt {
                                 .any(|entry| entry.indexes(entry_index))
                             {
                                 let signal_index = ctx
-                                    .output_indices
+                                    .expected_indices
                                     .iter()
                                     .find(|entry| entry.indexes(entry_index))
                                     .unwrap()
@@ -223,21 +223,21 @@ mod tests {
 
     fn make_entry_indices(signals: &[Signal]) -> (Vec<EntryIndex>, Vec<EntryIndex>) {
         let mut input_indices = vec![];
-        let mut output_indices = vec![];
+        let mut expected_indices = vec![];
         for (index, signal) in signals.iter().enumerate() {
             match signal.dir {
                 crate::SignalDirection::Input { .. } => input_indices.push(EntryIndex::Entry {
                     entry_index: index,
                     signal_index: index,
                 }),
-                crate::SignalDirection::Output => output_indices.push(EntryIndex::Entry {
+                crate::SignalDirection::Output => expected_indices.push(EntryIndex::Entry {
                     entry_index: index,
                     signal_index: index,
                 }),
                 crate::SignalDirection::Bidirectional { .. } => unimplemented!(),
             }
         }
-        (input_indices, output_indices)
+        (input_indices, expected_indices)
     }
 
     #[rstest]
@@ -257,8 +257,8 @@ mod tests {
             input_signal("A", 1, InputValue::Value(1)),
             output_signal("B", 1),
         ];
-        let (input_indices, output_indices) = make_entry_indices(&signals);
-        let mut ctx = CheckContext::new(&signals, &input_indices, &output_indices);
+        let (input_indices, expected_indices) = make_entry_indices(&signals);
+        let mut ctx = CheckContext::new(&signals, &input_indices, &expected_indices);
         let result: anyhow::Result<Vec<_>> = testcase
             .stmts
             .into_iter()
@@ -287,8 +287,8 @@ mod tests {
             output_signal("B", 1),
         ];
 
-        let (input_indices, output_indices) = make_entry_indices(&signals);
-        let mut ctx = CheckContext::new(&signals, &input_indices, &output_indices);
+        let (input_indices, expected_indices) = make_entry_indices(&signals);
+        let mut ctx = CheckContext::new(&signals, &input_indices, &expected_indices);
         for stmt in testcase.stmts {
             stmt.check(&mut ctx).unwrap();
         }
@@ -308,8 +308,8 @@ mod tests {
             output_signal("B", 1),
         ];
 
-        let (input_indices, output_indices) = make_entry_indices(&signals);
-        let mut ctx = CheckContext::new(&signals, &input_indices, &output_indices);
+        let (input_indices, expected_indices) = make_entry_indices(&signals);
+        let mut ctx = CheckContext::new(&signals, &input_indices, &expected_indices);
         for stmt in testcase.stmts {
             stmt.check(&mut ctx).unwrap();
         }
@@ -331,8 +331,8 @@ mod tests {
             output_signal("B", 1),
         ];
 
-        let (input_indices, output_indices) = make_entry_indices(&signals);
-        let mut ctx = CheckContext::new(&signals, &input_indices, &output_indices);
+        let (input_indices, expected_indices) = make_entry_indices(&signals);
+        let mut ctx = CheckContext::new(&signals, &input_indices, &expected_indices);
         for stmt in testcase.stmts {
             stmt.check(&mut ctx).unwrap();
         }

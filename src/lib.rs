@@ -90,7 +90,7 @@ pub struct TestCase<'a> {
     /// Not all signals are necessarily involved in the test
     pub signals: &'a [Signal],
     input_indices: Vec<EntryIndex>,
-    output_indices: Vec<EntryIndex>,
+    expected_indices: Vec<EntryIndex>,
 }
 
 /// An iterator over the data rows of a static test case
@@ -100,7 +100,7 @@ pub struct DataRowIterator<'a> {
     ctx: EvalContext,
     signals: &'a [Signal],
     input_indices: &'a [EntryIndex],
-    output_indices: &'a [EntryIndex],
+    expected_indices: &'a [EntryIndex],
     prev: Option<Vec<DataEntry>>,
     cache: Vec<(DataEntries, bool)>,
 }
@@ -111,7 +111,7 @@ pub struct DataRow<'a> {
     /// List of input values
     pub inputs: Vec<InputEntry<'a>>,
     /// List of expected output values
-    pub outputs: Vec<ExpectedEntry<'a>>,
+    pub expected: Vec<ExpectedEntry<'a>>,
     /// Line number of the test source code
     pub line: usize,
     update_output: bool,
@@ -224,7 +224,7 @@ impl<'a> DataRow<'a> {
 
     /// Iterator over the non-trivial expected outputs
     pub fn checked_outputs(&self) -> impl Iterator<Item = &ExpectedEntry<'_>> {
-        self.outputs
+        self.expected
             .iter()
             .filter(|entry| !matches!(entry.value, ExpectedValue::X))
     }
@@ -289,7 +289,7 @@ impl<'a> DataRowIterator<'a> {
                 row_result.entries[i] = DataEntry::Number(0);
             }
             self.cache.push((row_result.clone(), true));
-            for entry_index in self.output_indices {
+            for entry_index in self.expected_indices {
                 match entry_index {
                     EntryIndex::Entry {
                         entry_index,
@@ -348,10 +348,10 @@ impl<'a> DataRowIterator<'a> {
         inputs
     }
 
-    fn generate_output_entries(&self, stmt_entries: &[DataEntry]) -> Vec<ExpectedEntry<'a>> {
-        let mut outputs = Vec::with_capacity(self.output_indices.len());
+    fn generate_expected_entries(&self, stmt_entries: &[DataEntry]) -> Vec<ExpectedEntry<'a>> {
+        let mut expected = Vec::with_capacity(self.expected_indices.len());
 
-        for index in self.output_indices {
+        for index in self.expected_indices {
             let entry = match index {
                 EntryIndex::Entry {
                     entry_index,
@@ -374,9 +374,9 @@ impl<'a> DataRowIterator<'a> {
                     }
                 }
             };
-            outputs.push(entry);
+            expected.push(entry);
         }
-        outputs
+        expected
     }
 
     fn check_changed_entries(&self, stmt_entries: &[DataEntry]) -> Vec<bool> {
@@ -410,11 +410,11 @@ impl<'a> Iterator for DataRowIterator<'a> {
         self.prev = Some(row_result.entries.clone());
 
         let inputs = self.generate_input_entries(&row_result.entries, &changed);
-        let outputs = self.generate_output_entries(&row_result.entries);
+        let expected = self.generate_expected_entries(&row_result.entries);
 
         Some(DataRow {
             inputs,
-            outputs,
+            expected,
             line: row_result.line,
             update_output,
         })
@@ -423,10 +423,10 @@ impl<'a> Iterator for DataRowIterator<'a> {
 
 impl ParsedTestCase {
     /// Construct a complete test case by supplying a description of the
-    /// input and output signals of the device under test
+    /// input and expected signals of the device under test
     pub fn with_signals(self, signals: &[Signal]) -> anyhow::Result<TestCase<'_>> {
         let mut input_indices = vec![];
-        let mut output_indices = vec![];
+        let mut expected_indices = vec![];
 
         for (signal_index, signal) in signals.iter().enumerate() {
             let index = self
@@ -455,7 +455,7 @@ impl ParsedTestCase {
             match signal.dir {
                 SignalDirection::Input { .. } => {}
                 SignalDirection::Bidirectional { .. } => {
-                    output_indices.push(match &index_out {
+                    expected_indices.push(match &index_out {
                         Some(entry_index) => EntryIndex::Entry {
                             entry_index: *entry_index,
                             signal_index,
@@ -464,7 +464,7 @@ impl ParsedTestCase {
                     });
                 }
                 SignalDirection::Output => {
-                    output_indices.push(match &index {
+                    expected_indices.push(match &index {
                         Some(entry_index) => EntryIndex::Entry {
                             entry_index: *entry_index,
                             signal_index,
@@ -482,7 +482,7 @@ impl ParsedTestCase {
             .filter_map(|(entry_index, signal_name)| {
                 if !input_indices
                     .iter()
-                    .chain(&output_indices)
+                    .chain(&expected_indices)
                     .any(|entry| entry.indexes(entry_index))
                 {
                     Some(signal_name.to_owned())
@@ -500,13 +500,13 @@ impl ParsedTestCase {
         }
 
         self.stmts
-            .check(&signals, &input_indices, &output_indices)?;
+            .check(&signals, &input_indices, &expected_indices)?;
 
         Ok(TestCase {
             stmts: self.stmts,
             signals,
             input_indices,
-            output_indices,
+            expected_indices,
         })
     }
 }
@@ -550,7 +550,7 @@ impl<'a, 'b, T: TestDriver> DataRowResultIterator<'a, 'b, T> {
             let outputs = self.driver.write_input_and_read_output(&row.inputs)?;
             self.iter.ctx.set_outputs(&outputs);
 
-            row.outputs
+            row.expected
                 .into_iter()
                 .zip(outputs)
                 .map(|(e, o)| OutputResultEntry {
@@ -602,7 +602,7 @@ impl<'a> TestCase<'a> {
             ctx: EvalContext::new(),
             signals: &self.signals,
             input_indices: &self.input_indices,
-            output_indices: &self.output_indices,
+            expected_indices: &self.expected_indices,
             prev: None,
             cache: vec![],
         };
@@ -616,7 +616,7 @@ impl<'a> TestCase<'a> {
     pub fn try_static_iter(&self) -> anyhow::Result<DataRowIterator<'_>> {
         if self
             .stmts
-            .check(&self.signals, &self.input_indices, &self.output_indices)
+            .check(&self.signals, &self.input_indices, &self.expected_indices)
             .unwrap()
         {
             Ok(DataRowIterator {
@@ -624,7 +624,7 @@ impl<'a> TestCase<'a> {
                 ctx: EvalContext::new(),
                 signals: &self.signals,
                 input_indices: &self.input_indices,
-                output_indices: &self.output_indices,
+                expected_indices: &self.expected_indices,
                 prev: None,
                 cache: vec![],
             })
@@ -650,11 +650,11 @@ impl<'a> TestCase<'a> {
                 })
                 .collect::<Vec<_>>();
 
-        let outputs = vec![];
+        let expected = vec![];
 
         DataRow {
             inputs,
-            outputs,
+            expected,
             line: 0,
             update_output: true,
         }
@@ -803,7 +803,7 @@ end loop
                 print!("{} ", input.value);
             }
             print!("| ");
-            for output in row.outputs {
+            for output in row.expected {
                 print!("{} ", output.value);
             }
             println!()
@@ -833,15 +833,15 @@ Z 1";
 
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].inputs[0].signal.name, "A");
-        assert_eq!(result[0].outputs[0].signal.name, "A");
+        assert_eq!(result[0].expected[0].signal.name, "A");
         assert_eq!(result[1].inputs[0].signal.name, "A");
-        assert_eq!(result[1].outputs[0].signal.name, "A");
+        assert_eq!(result[1].expected[0].signal.name, "A");
 
         assert_eq!(result[0].inputs[0].value, InputValue::Value(1));
-        assert_eq!(result[0].outputs[0].value, ExpectedValue::X);
+        assert_eq!(result[0].expected[0].value, ExpectedValue::X);
 
         assert_eq!(result[1].inputs[0].value, InputValue::Z);
-        assert_eq!(result[1].outputs[0].value, ExpectedValue::Value(1));
+        assert_eq!(result[1].expected[0].value, ExpectedValue::Value(1));
 
         Ok(())
     }
@@ -885,10 +885,10 @@ Z 1";
 
         assert_eq!(input_rows, input_expanded_rows);
 
-        let output_rows: Vec<_> = testcase.try_static_iter()?.map(|r| r.outputs).collect();
+        let output_rows: Vec<_> = testcase.try_static_iter()?.map(|r| r.expected).collect();
         let output_expanded_rows: Vec<_> = expanded_testcase
             .try_static_iter()?
-            .map(|r| r.outputs)
+            .map(|r| r.expected)
             .collect();
 
         assert_eq!(output_rows, output_expanded_rows);
@@ -936,10 +936,10 @@ Z 1";
 
         assert_eq!(input_rows, input_expanded_rows);
 
-        let output_rows: Vec<_> = testcase.try_static_iter()?.map(|r| r.outputs).collect();
+        let output_rows: Vec<_> = testcase.try_static_iter()?.map(|r| r.expected).collect();
         let output_expanded_rows: Vec<_> = expanded_testcase
             .try_static_iter()?
-            .map(|r| r.outputs)
+            .map(|r| r.expected)
             .collect();
 
         assert_eq!(output_rows, output_expanded_rows);
@@ -989,10 +989,10 @@ Z 1";
 
         assert_eq!(input_rows, input_expanded_rows);
 
-        let output_rows: Vec<_> = testcase.try_static_iter()?.map(|r| r.outputs).collect();
+        let output_rows: Vec<_> = testcase.try_static_iter()?.map(|r| r.expected).collect();
         let output_expanded_rows: Vec<_> = expanded_testcase
             .try_static_iter()?
-            .map(|r| r.outputs)
+            .map(|r| r.expected)
             .collect();
 
         assert_eq!(output_rows, output_expanded_rows);
