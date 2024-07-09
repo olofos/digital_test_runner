@@ -23,6 +23,7 @@ pub use crate::value::{ExpectedValue, InputValue, OutputValue};
 use crate::check::TestCheck;
 use crate::eval_context::EvalContext;
 use crate::stmt::{DataEntry, Stmt, StmtIterator};
+use std::collections::HashMap;
 use std::{fmt::Display, str::FromStr};
 
 /// Communicate with the device under test
@@ -556,6 +557,10 @@ impl<'a, 'b, T: TestDriver> DataRowResultIterator<'a, 'b, T> {
             outputs,
             line: row.line,
         })
+    }
+
+    pub fn vars(&self) -> HashMap<String, i64> {
+        self.iter.ctx.vars()
     }
 }
 
