@@ -117,11 +117,12 @@ pub struct DataRow<'a> {
     update_output: bool,
 }
 
+/// A single row of output values and expected values
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataRowResult<'a> {
     /// List of input values
     pub inputs: Vec<InputEntry<'a>>,
-    /// List of expected output values
+    /// List of output values together with the expected value
     pub outputs: Vec<OutputResultEntry<'a>>,
     /// Line number of the test source code
     pub line: usize,
@@ -533,6 +534,7 @@ impl dig::File {
 }
 
 #[derive(Debug)]
+/// An iterator over the test results for a dynamic test
 pub struct DataRowResultIterator<'a, 'b, T> {
     iter: DataRowIterator<'a>,
     driver: &'b mut T,
@@ -564,6 +566,7 @@ impl<'a, 'b, T: TestDriver> DataRowResultIterator<'a, 'b, T> {
         })
     }
 
+    /// The current value of all variables
     pub fn vars(&self) -> HashMap<String, i64> {
         self.iter.ctx.vars()
     }
@@ -579,12 +582,16 @@ impl<'a, 'b, T: TestDriver> Iterator for DataRowResultIterator<'a, 'b, T> {
 }
 
 impl<'a> DataRowResult<'a> {
+    /// Returns an iterator over data entries that fail their tests
     pub fn failing_outputs(&'a self) -> impl Iterator<Item = &'a OutputResultEntry<'a>> {
         self.outputs.iter().filter(|res| !res.check())
     }
 }
 
 impl<'a> TestCase<'a> {
+    /// Run the test dynamically using `driver` for commnicating with the device under test
+    ///
+    /// This function returns an iterator over the resulting data rows
     pub fn run_iter<'b, T>(&'a self, driver: &'b mut T) -> DataRowResultIterator<'a, 'b, T> {
         let iter = DataRowIterator {
             iter: StmtIterator::new(&self.stmts),
