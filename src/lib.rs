@@ -94,7 +94,7 @@ pub struct TestCase<'a> {
 
 /// An iterator over the data rows of a static test case
 #[derive(Debug)]
-pub struct TestCaseIterator<'a> {
+pub struct DataRowIterator<'a> {
     iter: StmtIterator<'a>,
     ctx: EvalContext,
     signals: &'a [Signal],
@@ -117,7 +117,7 @@ pub struct DataRow<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RowResult<'a> {
+pub struct DataRowResult<'a> {
     /// List of input values
     pub inputs: Vec<InputEntry<'a>>,
     /// List of expected output values
@@ -212,7 +212,7 @@ impl<'a> DataRow<'a> {
     }
 }
 
-impl<'a> TestCaseIterator<'a> {
+impl<'a> DataRowIterator<'a> {
     fn entry_is_input(&self, entry_index: usize) -> bool {
         self.input_indices
             .iter()
@@ -373,7 +373,7 @@ impl<'a> TestCaseIterator<'a> {
     }
 }
 
-impl<'a> Iterator for TestCaseIterator<'a> {
+impl<'a> Iterator for DataRowIterator<'a> {
     type Item = DataRow<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -519,13 +519,13 @@ impl dig::File {
 }
 
 #[derive(Debug)]
-pub struct RunnerIterator<'a, 'b, T> {
-    iter: TestCaseIterator<'a>,
+pub struct DataRowResultIterator<'a, 'b, T> {
+    iter: DataRowIterator<'a>,
     driver: &'b mut T,
 }
 
-impl<'a, 'b, T: TestDriver> Iterator for RunnerIterator<'a, 'b, T> {
-    type Item = Result<RowResult<'a>, T::Error>;
+impl<'a, 'b, T: TestDriver> Iterator for DataRowResultIterator<'a, 'b, T> {
+    type Item = Result<DataRowResult<'a>, T::Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let row = self.iter.next()?;
@@ -556,7 +556,7 @@ impl<'a, 'b, T: TestDriver> Iterator for RunnerIterator<'a, 'b, T> {
                 Err(e) => return Some(Err(e)),
             }
         };
-        Some(Ok(RowResult {
+        Some(Ok(DataRowResult {
             inputs: row.inputs,
             outputs,
             line: row.line,
@@ -565,8 +565,8 @@ impl<'a, 'b, T: TestDriver> Iterator for RunnerIterator<'a, 'b, T> {
 }
 
 impl<'a> TestCase<'a> {
-    pub fn run_iter<'b, T>(&'a self, driver: &'b mut T) -> RunnerIterator<'a, 'b, T> {
-        let iter = TestCaseIterator {
+    pub fn run_iter<'b, T>(&'a self, driver: &'b mut T) -> DataRowResultIterator<'a, 'b, T> {
+        let iter = DataRowIterator {
             iter: StmtIterator::new(&self.stmts),
             ctx: EvalContext::new(),
             signals: &self.signals,
@@ -575,20 +575,20 @@ impl<'a> TestCase<'a> {
             prev: None,
             cache: vec![],
         };
-        RunnerIterator { iter, driver }
+        DataRowResultIterator { iter, driver }
     }
 
     /// Get an iterator over the data rows of the test
     ///
     /// This is only possible if the test is *static*, which means that the test does no depend on the output produced by the device under test.
     /// For a more general *dynamic* test the [TestCase::run] function should be used in combination with a driver implementing the [TestDriver] trait.
-    pub fn try_static_iter(&self) -> anyhow::Result<TestCaseIterator<'_>> {
+    pub fn try_static_iter(&self) -> anyhow::Result<DataRowIterator<'_>> {
         if self
             .stmts
             .check(&self.signals, &self.input_indices, &self.output_indices)
             .unwrap()
         {
-            Ok(TestCaseIterator {
+            Ok(DataRowIterator {
                 iter: StmtIterator::new(&self.stmts),
                 ctx: EvalContext::new(),
                 signals: &self.signals,
