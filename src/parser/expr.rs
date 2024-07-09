@@ -4,7 +4,6 @@ use crate::{
     parser::binoptree::BinOpTree,
     parser::Parser,
 };
-use anyhow::Result;
 
 impl From<TokenKind> for UnaryOp {
     fn from(value: TokenKind) -> Self {
@@ -68,7 +67,7 @@ impl From<TokenKind> for BinOp {
 }
 
 impl<'a> Parser<'a> {
-    pub(crate) fn parse_expr(&mut self) -> Result<Expr> {
+    pub(crate) fn parse_expr(&mut self) -> anyhow::Result<Expr> {
         let first = self.parse_factor()?;
         let mut tree = BinOpTree::Atom(first);
 
@@ -81,7 +80,7 @@ impl<'a> Parser<'a> {
         Ok(tree.into())
     }
 
-    pub(crate) fn parse_number(&mut self) -> Result<i64> {
+    pub(crate) fn parse_number(&mut self) -> anyhow::Result<i64> {
         let tok = self.get()?;
         let literal = self.text(&tok);
         let (literal, radix) = match &tok.kind {
@@ -95,7 +94,7 @@ impl<'a> Parser<'a> {
         Ok(n)
     }
 
-    fn parse_factor(&mut self) -> Result<Expr> {
+    fn parse_factor(&mut self) -> anyhow::Result<Expr> {
         match self.peek() {
             TokenKind::DecInt | TokenKind::HexInt | TokenKind::OctInt | TokenKind::BinInt => {
                 let n = self.parse_number()?;
