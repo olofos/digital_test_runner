@@ -117,7 +117,11 @@ pub struct DataRow<'a> {
     update_output: bool,
 }
 
-/// A single row of output values and expected values
+/// A single row of input values, output values and expected values
+///
+/// If the test does not check the output at this line (which happens
+/// in the middle of a clock cycle denoted by a `C` in the test source),
+/// the `outputs` list will be empty.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataRowResult<'a> {
     /// List of input values
