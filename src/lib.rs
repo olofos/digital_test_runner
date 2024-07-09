@@ -21,7 +21,6 @@ use stmt::DataEntries;
 pub use crate::value::{ExpectedValue, InputValue, OutputValue};
 
 use crate::check::TestCheck;
-use crate::errors::{FailedRowAssertions, FailedTestAssertion, RunError};
 use crate::eval_context::EvalContext;
 use crate::stmt::{DataEntry, Stmt, StmtIterator};
 use std::{fmt::Display, str::FromStr};
@@ -536,7 +535,6 @@ impl<'a, 'b, T: TestDriver> Iterator for RunnerIterator<'a, 'b, T> {
                 Ok(o) => o,
                 Err(e) => return Some(Err(e)),
             };
-            // let expected: Vec<_> = row.outputs.iter().map(|entry| entry.value).collect();
 
             let row_outputs = row
                 .outputs
@@ -578,61 +576,6 @@ impl<'a> TestCase<'a> {
             cache: vec![],
         };
         RunnerIterator { iter, driver }
-    }
-
-    /// Run the test using `driver` to handle input to and output from the device under test.
-    pub fn run<T: TestDriver>(&self, driver: &mut T) -> Result<(), RunError<T::Error>> {
-        let mut iter = TestCaseIterator {
-            iter: StmtIterator::new(&self.stmts),
-            ctx: EvalContext::new(),
-            signals: &self.signals,
-            input_indices: &self.input_indices,
-            output_indices: &self.output_indices,
-            prev: None,
-            cache: vec![],
-        };
-
-        let mut errors = vec![];
-
-        while let Some(row) = iter.next() {
-            if row.update_output {
-                let outputs = driver.write_input_and_read_output(&row.inputs)?;
-                let expected: Vec<_> = row.outputs.iter().map(|entry| entry.value).collect();
-
-                let row_errors = expected
-                    .iter()
-                    .zip(&outputs)
-                    .filter_map(|(e, o)| {
-                        if e.check(o.value) {
-                            None
-                        } else {
-                            Some(FailedTestAssertion {
-                                expected: *e,
-                                found: o.value,
-                                signal: o.signal.clone(),
-                            })
-                        }
-                    })
-                    .collect::<Vec<_>>();
-
-                if !row_errors.is_empty() {
-                    errors.push(FailedRowAssertions {
-                        errors: row_errors,
-                        line: row.line,
-                        vars: iter.ctx.vars(),
-                    });
-                }
-
-                iter.ctx.set_outputs(outputs);
-            } else {
-                driver.write_input(&row.inputs)?;
-            }
-        }
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(RunError::assertion(errors))
-        }
     }
 
     /// Get an iterator over the data rows of the test
