@@ -1,4 +1,5 @@
-use digital_test_runner::dig;
+use colored::{Color, Colorize};
+use digital_test_runner::{dig, ExpectedValue};
 use std::io::Write;
 
 mod util;
@@ -35,39 +36,41 @@ fn main() -> anyhow::Result<()> {
             let mut stdin = child.stdin.take().unwrap();
             let mut cursor = util::Cursor::new(child.stdout.take().unwrap());
 
-            let mut error_count = 0;
             let iter = match test_case.try_static_iter() {
                 Ok(iter) => iter,
                 Err(err) => {
-                    eprintln!("{err}");
+                    println!("{err}");
+                    println!();
                     continue;
                 }
             };
 
             for row in iter {
                 for input in &row.inputs {
+                    print!("{} ", input.value);
                     write!(stdin, "{:01$b}", input.value, input.signal.bits)?;
                 }
                 writeln!(stdin)?;
 
-                for output in &row.outputs {
-                    let value = cursor.grab(output.signal.bits)?;
-                    if !output.value.check(value) {
-                        println!(
-                            "Line {}: Expected {} but got {} for {}",
-                            row.line, output.value, value, output.signal.name
-                        );
-                        error_count += 1;
+                if !row.outputs.is_empty() {
+                    print!(" =>  ");
+                    for expected in &row.outputs {
+                        let output = cursor.grab(expected.signal.bits)?;
+                        let color = match (
+                            expected.value != ExpectedValue::X,
+                            expected.value.check(output),
+                        ) {
+                            (true, true) => Color::Green,
+                            (true, false) => Color::Red,
+                            (false, _) => Color::BrightBlack,
+                        };
+                        print!("{} ", format!("{}/{}", output, expected.value).color(color));
                     }
                 }
+                println!();
             }
-            if error_count == 0 {
-                println!("Test passed");
-            } else {
-                println!("Found {error_count} failing assertions");
-            }
+            println!();
         }
-        println!();
     }
 
     Ok(())
