@@ -532,43 +532,39 @@ pub struct DataRowResultIterator<'a, 'b, T> {
     driver: &'b mut T,
 }
 
-impl<'a, 'b, T: TestDriver> Iterator for DataRowResultIterator<'a, 'b, T> {
-    type Item = Result<DataRowResult<'a>, T::Error>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let row = self.iter.next()?;
-
+impl<'a, 'b, T: TestDriver> DataRowResultIterator<'a, 'b, T> {
+    fn next_row(&mut self, row: DataRow<'a>) -> Result<DataRowResult<'a>, T::Error> {
         let outputs = if row.update_output {
-            let outputs = match self.driver.write_input_and_read_output(&row.inputs) {
-                Ok(o) => o,
-                Err(e) => return Some(Err(e)),
-            };
+            let outputs = self.driver.write_input_and_read_output(&row.inputs)?;
+            self.iter.ctx.set_outputs(&outputs);
 
-            let row_outputs = row
-                .outputs
-                .iter()
-                .zip(&outputs)
+            row.outputs
+                .into_iter()
+                .zip(outputs)
                 .map(|(e, o)| OutputResultEntry {
                     expected: e.value,
                     output: o.value,
                     signal: e.signal,
                 })
-                .collect::<Vec<_>>();
-
-            self.iter.ctx.set_outputs(outputs);
-
-            row_outputs
+                .collect()
         } else {
-            match self.driver.write_input(&row.inputs) {
-                Ok(_) => vec![],
-                Err(e) => return Some(Err(e)),
-            }
+            self.driver.write_input(&row.inputs)?;
+            vec![]
         };
-        Some(Ok(DataRowResult {
+        Ok(DataRowResult {
             inputs: row.inputs,
             outputs,
             line: row.line,
-        }))
+        })
+    }
+}
+
+impl<'a, 'b, T: TestDriver> Iterator for DataRowResultIterator<'a, 'b, T> {
+    type Item = Result<DataRowResult<'a>, T::Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let row = self.iter.next()?;
+        Some(self.next_row(row))
     }
 }
 
