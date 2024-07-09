@@ -178,6 +178,11 @@ impl<'a> OutputResultEntry<'a> {
     pub fn check(&self) -> bool {
         self.expected.check(self.output)
     }
+
+    /// Is the expected value non-trivial?
+    pub fn is_checked(&self) -> bool {
+        self.expected != ExpectedValue::X
+    }
 }
 
 impl EntryIndex {
