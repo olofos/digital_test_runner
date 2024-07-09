@@ -1,7 +1,5 @@
 use colored::{Color, Colorize};
-use digital_test_runner::{
-    dig, ExpectedValue, InputEntry, OutputEntry, OutputValue, Signal, SignalDirection, TestDriver,
-};
+use digital_test_runner::{dig, InputEntry, OutputEntry, Signal, SignalDirection, TestDriver};
 use std::{ffi::OsStr, io::Write};
 use util::Cursor;
 
@@ -105,19 +103,15 @@ fn main() -> anyhow::Result<()> {
             while let Some(row) = it.next() {
                 let row = row?;
                 print!("{:2}: ", row.line);
-                for input in row.inputs {
+                for input in &row.inputs {
                     print!("{} ", input.value);
                 }
                 if !row.outputs.is_empty() {
                     print!(" =>  ");
-                    let mut found_row_errors = false;
-                    for output in row.outputs {
+                    for output in &row.outputs {
                         let color = match (output.is_checked(), output.check()) {
                             (true, true) => Color::Green,
-                            (true, false) => {
-                                found_row_errors = true;
-                                Color::Red
-                            }
+                            (true, false) => Color::Red,
                             (false, _) => Color::BrightBlack,
                         };
                         print!(
@@ -125,7 +119,7 @@ fn main() -> anyhow::Result<()> {
                             format!("{}/{}", output.output, output.expected).color(color)
                         );
                     }
-                    if found_row_errors {
+                    if row.failing_outputs().count() > 0 {
                         print!(
                             " [{}]",
                             it.vars()

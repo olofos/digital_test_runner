@@ -578,6 +578,12 @@ impl<'a, 'b, T: TestDriver> Iterator for DataRowResultIterator<'a, 'b, T> {
     }
 }
 
+impl<'a> DataRowResult<'a> {
+    pub fn failing_outputs(&'a self) -> impl Iterator<Item = &'a OutputResultEntry<'a>> {
+        self.outputs.iter().filter(|res| !res.check())
+    }
+}
+
 impl<'a> TestCase<'a> {
     pub fn run_iter<'b, T>(&'a self, driver: &'b mut T) -> DataRowResultIterator<'a, 'b, T> {
         let iter = DataRowIterator {
