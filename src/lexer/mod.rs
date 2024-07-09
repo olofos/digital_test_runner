@@ -78,4 +78,23 @@ mod test {
         );
         assert_eq!(iter.next(), None);
     }
+
+    #[test]
+    fn token_iter_generates_error_token() {
+        let input = "let $ = 1;";
+        let iter = TokenKind::lexer(input).spanned();
+        let iter = TokenIter { iter, eof: false };
+        let expected = [
+            (TokenKind::Let, "let"),
+            (TokenKind::Error, "$"),
+            (TokenKind::Equal, "="),
+            (TokenKind::DecInt, "1"),
+            (TokenKind::Semi, ";"),
+            (TokenKind::Eof, ""),
+        ];
+        for (Token { kind, span }, (expected_kind, expected_slice)) in iter.zip(expected) {
+            assert_eq!(kind, expected_kind);
+            assert_eq!(&input[span], expected_slice);
+        }
+    }
 }
