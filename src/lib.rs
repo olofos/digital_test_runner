@@ -101,7 +101,7 @@ pub struct DataRowIterator<'a> {
     input_indices: &'a [EntryIndex],
     output_indices: &'a [EntryIndex],
     prev: Option<Vec<DataEntry>>,
-    cache: Vec<(DataEntries, Option<bool>)>,
+    cache: Vec<(DataEntries, bool)>,
 }
 
 /// A single row of input values and expected output values
@@ -221,7 +221,8 @@ impl<'a> DataRowIterator<'a> {
 
     fn expand_x(&mut self) {
         loop {
-            let (row_result, _) = self.cache.last().unwrap();
+            let (row_result, check_output) = self.cache.last().unwrap();
+            let check_output = check_output.clone();
 
             let Some(x_index) =
                 row_result
@@ -241,14 +242,14 @@ impl<'a> DataRowIterator<'a> {
             };
             let (mut row_result, _) = self.cache.pop().unwrap();
             row_result.entries[x_index] = DataEntry::Number(1);
-            self.cache.push((row_result.clone(), None));
+            self.cache.push((row_result.clone(), check_output));
             row_result.entries[x_index] = DataEntry::Number(0);
-            self.cache.push((row_result, None));
+            self.cache.push((row_result, check_output));
         }
     }
 
     fn expand_c(&mut self) {
-        let (mut row_result, _) = self.cache.pop().unwrap();
+        let (mut row_result, check_output) = self.cache.pop().unwrap();
 
         let c_indices = row_result
             .entries
@@ -264,12 +265,12 @@ impl<'a> DataRowIterator<'a> {
             .collect::<Vec<_>>();
 
         if c_indices.is_empty() {
-            self.cache.push((row_result, Some(true)));
+            self.cache.push((row_result, check_output));
         } else {
             for &i in &c_indices {
                 row_result.entries[i] = DataEntry::Number(0);
             }
-            self.cache.push((row_result.clone(), Some(true)));
+            self.cache.push((row_result.clone(), true));
             for entry_index in self.output_indices {
                 match entry_index {
                     EntryIndex::Entry {
@@ -282,11 +283,11 @@ impl<'a> DataRowIterator<'a> {
             for &i in &c_indices {
                 row_result.entries[i] = DataEntry::Number(1);
             }
-            self.cache.push((row_result.clone(), Some(false)));
+            self.cache.push((row_result.clone(), false));
             for &i in &c_indices {
                 row_result.entries[i] = DataEntry::Number(0);
             }
-            self.cache.push((row_result.clone(), Some(false)));
+            self.cache.push((row_result.clone(), false));
         }
     }
 
@@ -379,7 +380,7 @@ impl<'a> Iterator for DataRowIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if self.cache.is_empty() {
             let row_result = self.iter.next_with_context(&mut self.ctx)?;
-            self.cache.push((row_result, None));
+            self.cache.push((row_result, true));
         }
 
         self.expand_x();
@@ -397,7 +398,7 @@ impl<'a> Iterator for DataRowIterator<'a> {
             inputs,
             outputs,
             line: row_result.line,
-            update_output: update_output.unwrap(),
+            update_output,
         })
     }
 }
