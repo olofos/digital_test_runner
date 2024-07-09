@@ -172,6 +172,13 @@ enum EntryIndex {
     },
 }
 
+impl<'a> OutputResultEntry<'a> {
+    /// Does the output value match the expected value?
+    pub fn check(&self) -> bool {
+        self.expected.check(self.output)
+    }
+}
+
 impl EntryIndex {
     pub(crate) fn signal_index(&self) -> usize {
         match self {
