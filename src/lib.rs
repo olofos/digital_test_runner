@@ -397,7 +397,7 @@ impl<'a> Iterator for DataRowIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.cache.is_empty() {
-            let row_result = self.iter.next_with_context(&mut self.ctx)?;
+            let row_result = self.iter.next_with_context(&mut self.ctx).unwrap()?;
             self.cache.push((row_result, true));
         }
 
