@@ -156,4 +156,15 @@ end loop
         };
         assert_eq!(*line, 9);
     }
+
+    #[test]
+    fn test_error() -> anyhow::Result<()> {
+        let input = r"
+A B
+
+a 1
+";
+        assert!(parse_testcase(input).is_err());
+        Ok(())
+    }
 }

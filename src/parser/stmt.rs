@@ -112,7 +112,10 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 TokenKind::Eol => {}
-                _ => todo!(),
+                _ => {
+                    let t = self.get()?;
+                    anyhow::bail!("Unexpected {:?} token \"{}\"", t.kind, self.text(&t))
+                }
             }
             if self.at(TokenKind::Eof) {
                 break;
