@@ -243,7 +243,7 @@ impl<'a> DataRowIterator<'a> {
                 .cache
                 .last()
                 .expect("cache should be refilled before calling expand_x");
-            let check_output = check_output.clone();
+            let check_output = *check_output;
 
             let Some(x_index) =
                 row_result
@@ -506,7 +506,7 @@ impl ParsedTestCase {
         }
 
         self.stmts
-            .check(&signals, &input_indices, &expected_indices)?;
+            .check(signals, &input_indices, &expected_indices)?;
 
         Ok(TestCase {
             stmts: self.stmts,
@@ -606,7 +606,7 @@ impl<'a> TestCase<'a> {
         let iter = DataRowIterator {
             iter: StmtIterator::new(&self.stmts),
             ctx: EvalContext::new(),
-            signals: &self.signals,
+            signals: self.signals,
             input_indices: &self.input_indices,
             expected_indices: &self.expected_indices,
             prev: None,
@@ -622,13 +622,13 @@ impl<'a> TestCase<'a> {
     pub fn try_static_iter(&self) -> anyhow::Result<DataRowIterator<'_>> {
         if self
             .stmts
-            .check(&self.signals, &self.input_indices, &self.expected_indices)
+            .check(self.signals, &self.input_indices, &self.expected_indices)
             .unwrap()
         {
             Ok(DataRowIterator {
                 iter: StmtIterator::new(&self.stmts),
                 ctx: EvalContext::new(),
-                signals: &self.signals,
+                signals: self.signals,
                 input_indices: &self.input_indices,
                 expected_indices: &self.expected_indices,
                 prev: None,

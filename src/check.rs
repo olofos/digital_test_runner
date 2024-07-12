@@ -46,7 +46,7 @@ impl<'a> CheckContext<'a> {
             vars: FramedSet::new(),
             signals,
             input_indices,
-            expected_indices: expected_indices,
+            expected_indices,
             is_static: true,
         }
     }

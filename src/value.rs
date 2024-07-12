@@ -49,10 +49,7 @@ impl ExpectedValue {
         let other = other.into();
 
         match self {
-            ExpectedValue::Value(n) => match other {
-                OutputValue::Value(m) if *n == m => true,
-                _ => false,
-            },
+            ExpectedValue::Value(n) => matches!(other, OutputValue::Value(m) if *n == m),
             ExpectedValue::Z => matches!(other, OutputValue::Z),
             ExpectedValue::X => true,
         }

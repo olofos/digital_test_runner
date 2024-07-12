@@ -53,7 +53,7 @@ impl EvalContext {
 
     pub(crate) fn set_outputs(&mut self, outputs: &[OutputEntry<'_>]) {
         self.outputs = outputs
-            .into_iter()
+            .iter()
             .map(|entry| (entry.signal.name.to_string(), entry.value))
             .collect();
     }
