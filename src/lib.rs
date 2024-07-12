@@ -239,7 +239,10 @@ impl<'a> DataRowIterator<'a> {
 
     fn expand_x(&mut self) {
         loop {
-            let (row_result, check_output) = self.cache.last().unwrap();
+            let (row_result, check_output) = self
+                .cache
+                .last()
+                .expect("cache should be refilled before calling expand_x");
             let check_output = check_output.clone();
 
             let Some(x_index) =
@@ -267,7 +270,10 @@ impl<'a> DataRowIterator<'a> {
     }
 
     fn expand_c(&mut self) {
-        let (mut row_result, check_output) = self.cache.pop().unwrap();
+        let (mut row_result, check_output) = self
+            .cache
+            .pop()
+            .expect("cache should be refilled before calling expand_c");
 
         let c_indices = row_result
             .entries
@@ -380,10 +386,10 @@ impl<'a> DataRowIterator<'a> {
     }
 
     fn check_changed_entries(&self, stmt_entries: &[DataEntry]) -> Vec<bool> {
-        if self.prev.is_some() {
+        if let Some(prev) = &self.prev {
             stmt_entries
                 .iter()
-                .zip(self.prev.as_ref().unwrap())
+                .zip(prev)
                 .map(|(new, old)| new != old)
                 .collect()
         } else {
