@@ -93,9 +93,9 @@ pub struct TestCase<'a> {
     expected_indices: Vec<EntryIndex>,
 }
 
-/// An iterator over the data rows of a static test case
 #[derive(Debug)]
-pub struct DataRowIterator<'a> {
+/// An iterator over the test results for a dynamic test
+pub struct DataRowResultIterator<'a, 'b, T> {
     iter: StmtIterator<'a>,
     ctx: EvalContext,
     signals: &'a [Signal],
@@ -103,6 +103,7 @@ pub struct DataRowIterator<'a> {
     expected_indices: &'a [EntryIndex],
     prev: Option<Vec<DataEntry>>,
     cache: Vec<(DataEntries, bool)>,
+    driver: &'b mut T,
 }
 
 /// A single row of input values and expected output values
@@ -230,7 +231,7 @@ impl<'a> DataRow<'a> {
     }
 }
 
-impl<'a> DataRowIterator<'a> {
+impl<'a, 'b, T> DataRowResultIterator<'a, 'b, T> {
     fn entry_is_input(&self, entry_index: usize) -> bool {
         self.input_indices
             .iter()
@@ -398,34 +399,34 @@ impl<'a> DataRowIterator<'a> {
     }
 }
 
-impl<'a> Iterator for DataRowIterator<'a> {
-    type Item = DataRow<'a>;
+// impl<'a> Iterator for DataRowIterator<'a> {
+//     type Item = DataRow<'a>;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.cache.is_empty() {
-            let row_result = self.iter.next_with_context(&mut self.ctx).unwrap()?;
-            self.cache.push((row_result, true));
-        }
+//     fn next(&mut self) -> Option<Self::Item> {
+//         if self.cache.is_empty() {
+//             let row_result = self.iter.next_with_context(&mut self.ctx).unwrap()?;
+//             self.cache.push((row_result, true));
+//         }
 
-        self.expand_x();
-        self.expand_c();
+//         self.expand_x();
+//         self.expand_c();
 
-        let (row_result, update_output) = self.cache.pop().unwrap();
+//         let (row_result, update_output) = self.cache.pop().unwrap();
 
-        let changed = self.check_changed_entries(&row_result.entries);
-        self.prev = Some(row_result.entries.clone());
+//         let changed = self.check_changed_entries(&row_result.entries);
+//         self.prev = Some(row_result.entries.clone());
 
-        let inputs = self.generate_input_entries(&row_result.entries, &changed);
-        let expected = self.generate_expected_entries(&row_result.entries);
+//         let inputs = self.generate_input_entries(&row_result.entries, &changed);
+//         let expected = self.generate_expected_entries(&row_result.entries);
 
-        Some(DataRow {
-            inputs,
-            expected,
-            line: row_result.line,
-            update_output,
-        })
-    }
-}
+//         Some(DataRow {
+//             inputs,
+//             expected,
+//             line: row_result.line,
+//             update_output,
+//         })
+//     }
+// }
 
 impl ParsedTestCase {
     /// Construct a complete test case by supplying a description of the
@@ -543,18 +544,11 @@ impl dig::File {
     }
 }
 
-#[derive(Debug)]
-/// An iterator over the test results for a dynamic test
-pub struct DataRowResultIterator<'a, 'b, T> {
-    iter: DataRowIterator<'a>,
-    driver: &'b mut T,
-}
-
 impl<'a, 'b, T: TestDriver> DataRowResultIterator<'a, 'b, T> {
     fn next_row(&mut self, row: DataRow<'a>) -> Result<DataRowResult<'a>, T::Error> {
         let outputs = if row.update_output {
             let outputs = self.driver.write_input_and_read_output(&row.inputs)?;
-            self.iter.ctx.set_outputs(&outputs);
+            self.ctx.set_outputs(&outputs);
 
             row.expected
                 .into_iter()
@@ -578,7 +572,7 @@ impl<'a, 'b, T: TestDriver> DataRowResultIterator<'a, 'b, T> {
 
     /// The current value of all variables
     pub fn vars(&self) -> HashMap<String, i64> {
-        self.iter.ctx.vars()
+        self.ctx.vars()
     }
 }
 
@@ -586,7 +580,29 @@ impl<'a, 'b, T: TestDriver> Iterator for DataRowResultIterator<'a, 'b, T> {
     type Item = Result<DataRowResult<'a>, T::Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let row = self.iter.next()?;
+        if self.cache.is_empty() {
+            let row_result = self.iter.next_with_context(&mut self.ctx).unwrap()?;
+            self.cache.push((row_result, true));
+        }
+
+        self.expand_x();
+        self.expand_c();
+
+        let (row_result, update_output) = self.cache.pop().unwrap();
+
+        let changed = self.check_changed_entries(&row_result.entries);
+        self.prev = Some(row_result.entries.clone());
+
+        let inputs = self.generate_input_entries(&row_result.entries, &changed);
+        let expected = self.generate_expected_entries(&row_result.entries);
+
+        let row = DataRow {
+            inputs,
+            expected,
+            line: row_result.line,
+            update_output,
+        };
+
         Some(self.next_row(row))
     }
 }
@@ -603,7 +619,7 @@ impl<'a> TestCase<'a> {
     ///
     /// This function returns an iterator over the resulting data rows
     pub fn run_iter<'b, T>(&'a self, driver: &'b mut T) -> DataRowResultIterator<'a, 'b, T> {
-        let iter = DataRowIterator {
+        DataRowResultIterator {
             iter: StmtIterator::new(&self.stmts),
             ctx: EvalContext::new(),
             signals: self.signals,
@@ -611,31 +627,7 @@ impl<'a> TestCase<'a> {
             expected_indices: &self.expected_indices,
             prev: None,
             cache: vec![],
-        };
-        DataRowResultIterator { iter, driver }
-    }
-
-    /// Get an iterator over the data rows of the test
-    ///
-    /// This is only possible if the test is *static*, which means that the test does no depend on the output produced by the device under test.
-    /// For a more general *dynamic* test the [TestCase::run] function should be used in combination with a driver implementing the [TestDriver] trait.
-    pub fn try_static_iter(&self) -> anyhow::Result<DataRowIterator<'_>> {
-        if self
-            .stmts
-            .check(self.signals, &self.input_indices, &self.expected_indices)
-            .unwrap()
-        {
-            Ok(DataRowIterator {
-                iter: StmtIterator::new(&self.stmts),
-                ctx: EvalContext::new(),
-                signals: self.signals,
-                input_indices: &self.input_indices,
-                expected_indices: &self.expected_indices,
-                prev: None,
-                cache: vec![],
-            })
-        } else {
-            Err(anyhow::anyhow!("Not a static test"))
+            driver,
         }
     }
 
@@ -763,6 +755,27 @@ impl<'a> Display for TestCase<'a> {
 mod tests {
     use super::*;
 
+    struct Driver {
+        outputs: Vec<Signal>,
+    }
+    impl TestDriver for Driver {
+        type Error = ();
+
+        fn write_input_and_read_output(
+            &mut self,
+            _inputs: &[InputEntry<'_>],
+        ) -> Result<Vec<OutputEntry<'_>>, Self::Error> {
+            Ok(self
+                .outputs
+                .iter()
+                .map(|signal| OutputEntry {
+                    signal,
+                    value: OutputValue::X,
+                })
+                .collect())
+        }
+    }
+
     #[test]
     fn run_works() -> anyhow::Result<()> {
         let input = r"
@@ -801,16 +814,22 @@ end loop
                 name: String::from(name),
                 bits: 1,
                 dir: SignalDirection::Output,
-            });
-        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+            })
+            .collect::<Vec<_>>();
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs.clone()));
         let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
-        for row in testcase.try_static_iter()? {
+        let mut driver = Driver {
+            outputs: known_outputs,
+        };
+        let it = testcase.run_iter(&mut driver);
+        for row in it {
+            let row = row.unwrap();
             for input in row.inputs {
                 print!("{} ", input.value);
             }
             print!("| ");
-            for output in row.expected {
-                print!("{} ", output.value);
+            for output in row.outputs {
+                print!("{} ", output.expected);
             }
             println!()
         }
@@ -835,19 +854,23 @@ Z 1";
         let known_signals = Vec::from_iter(known_inputs);
         let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
 
-        let result: Vec<DataRow<'_>> = testcase.try_static_iter()?.collect();
+        let mut driver = Driver {
+            outputs: known_signals.clone(),
+        };
+        let it = testcase.run_iter(&mut driver);
+        let result: Vec<_> = it.collect::<Result<_, _>>().unwrap();
 
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].inputs[0].signal.name, "A");
-        assert_eq!(result[0].expected[0].signal.name, "A");
+        assert_eq!(result[0].outputs[0].signal.name, "A");
         assert_eq!(result[1].inputs[0].signal.name, "A");
-        assert_eq!(result[1].expected[0].signal.name, "A");
+        assert_eq!(result[1].outputs[0].signal.name, "A");
 
         assert_eq!(result[0].inputs[0].value, InputValue::Value(1));
-        assert_eq!(result[0].expected[0].value, ExpectedValue::X);
+        assert_eq!(result[0].outputs[0].expected, ExpectedValue::X);
 
         assert_eq!(result[1].inputs[0].value, InputValue::Z);
-        assert_eq!(result[1].expected[0].value, ExpectedValue::Value(1));
+        assert_eq!(result[1].outputs[0].expected, ExpectedValue::Value(1));
 
         Ok(())
     }
@@ -883,21 +906,25 @@ Z 1";
         let expanded_testcase =
             ParsedTestCase::from_str(expanded_input)?.with_signals(&known_signals)?;
 
-        let input_rows: Vec<_> = testcase.try_static_iter()?.map(|r| r.inputs).collect();
-        let input_expanded_rows: Vec<_> = expanded_testcase
-            .try_static_iter()?
-            .map(|r| r.inputs)
-            .collect();
+        let mut driver = Driver {
+            outputs: known_signals.clone(),
+        };
+        let rows = testcase
+            .run_iter(&mut driver)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
 
-        assert_eq!(input_rows, input_expanded_rows);
+        let expanded_rows: Vec<_> = expanded_testcase
+            .run_iter(&mut driver)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
 
-        let output_rows: Vec<_> = testcase.try_static_iter()?.map(|r| r.expected).collect();
-        let output_expanded_rows: Vec<_> = expanded_testcase
-            .try_static_iter()?
-            .map(|r| r.expected)
-            .collect();
-
-        assert_eq!(output_rows, output_expanded_rows);
+        for (row, expanded) in rows.into_iter().zip(expanded_rows) {
+            assert_eq!(row.inputs, expanded.inputs);
+            for (got, expected) in row.outputs.into_iter().zip(expanded.outputs) {
+                assert_eq!(got.expected, expected.expected);
+            }
+        }
 
         Ok(())
     }
@@ -934,22 +961,25 @@ Z 1";
         let expanded_testcase =
             ParsedTestCase::from_str(expanded_input)?.with_signals(&known_signals)?;
 
-        let input_rows: Vec<_> = testcase.try_static_iter()?.map(|r| r.inputs).collect();
-        let input_expanded_rows: Vec<_> = expanded_testcase
-            .try_static_iter()?
-            .map(|r| r.inputs)
-            .collect();
+        let mut driver = Driver {
+            outputs: known_signals.clone(),
+        };
+        let rows = testcase
+            .run_iter(&mut driver)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
 
-        assert_eq!(input_rows, input_expanded_rows);
+        let expanded_rows: Vec<_> = expanded_testcase
+            .run_iter(&mut driver)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
 
-        let output_rows: Vec<_> = testcase.try_static_iter()?.map(|r| r.expected).collect();
-        let output_expanded_rows: Vec<_> = expanded_testcase
-            .try_static_iter()?
-            .map(|r| r.expected)
-            .collect();
-
-        assert_eq!(output_rows, output_expanded_rows);
-
+        for (row, expanded) in rows.into_iter().zip(expanded_rows) {
+            assert_eq!(row.inputs, expanded.inputs);
+            for (got, expected) in row.outputs.into_iter().zip(expanded.outputs) {
+                assert_eq!(got.expected, expected.expected);
+            }
+        }
         Ok(())
     }
 
@@ -987,21 +1017,25 @@ Z 1";
         let expanded_testcase =
             ParsedTestCase::from_str(expanded_input)?.with_signals(&known_signals)?;
 
-        let input_rows: Vec<_> = testcase.try_static_iter()?.map(|r| r.inputs).collect();
-        let input_expanded_rows: Vec<_> = expanded_testcase
-            .try_static_iter()?
-            .map(|r| r.inputs)
-            .collect();
+        let mut driver = Driver {
+            outputs: known_signals.clone(),
+        };
+        let rows = testcase
+            .run_iter(&mut driver)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
 
-        assert_eq!(input_rows, input_expanded_rows);
+        let expanded_rows: Vec<_> = expanded_testcase
+            .run_iter(&mut driver)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
 
-        let output_rows: Vec<_> = testcase.try_static_iter()?.map(|r| r.expected).collect();
-        let output_expanded_rows: Vec<_> = expanded_testcase
-            .try_static_iter()?
-            .map(|r| r.expected)
-            .collect();
-
-        assert_eq!(output_rows, output_expanded_rows);
+        for (row, expanded) in rows.into_iter().zip(expanded_rows) {
+            assert_eq!(row.inputs, expanded.inputs);
+            for (got, expected) in row.outputs.into_iter().zip(expanded.outputs) {
+                assert_eq!(got.expected, expected.expected);
+            }
+        }
 
         Ok(())
     }
