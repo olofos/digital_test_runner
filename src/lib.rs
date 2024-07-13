@@ -373,35 +373,6 @@ impl<'a, 'b, T> DataRowIterator<'a, 'b, T> {
     }
 }
 
-// impl<'a> Iterator for DataRowIterator<'a> {
-//     type Item = DataRow<'a>;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         if self.cache.is_empty() {
-//             let row_result = self.iter.next_with_context(&mut self.ctx).unwrap()?;
-//             self.cache.push((row_result, true));
-//         }
-
-//         self.expand_x();
-//         self.expand_c();
-
-//         let (row_result, update_output) = self.cache.pop().unwrap();
-
-//         let changed = self.check_changed_entries(&row_result.entries);
-//         self.prev = Some(row_result.entries.clone());
-
-//         let inputs = self.generate_input_entries(&row_result.entries, &changed);
-//         let expected = self.generate_expected_entries(&row_result.entries);
-
-//         Some(DataRow {
-//             inputs,
-//             expected,
-//             line: row_result.line,
-//             update_output,
-//         })
-//     }
-// }
-
 impl ParsedTestCase {
     /// Construct a complete test case by supplying a description of the
     /// input and expected signals of the device under test
