@@ -106,18 +106,6 @@ pub struct DataRowIterator<'a, 'b, T> {
     driver: &'b mut T,
 }
 
-/// A single row of input values and expected output values
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct TestDataRow<'a> {
-    /// List of input values
-    inputs: Vec<InputEntry<'a>>,
-    /// List of expected output values
-    expected: Vec<ExpectedEntry<'a>>,
-    /// Line number of the test source code
-    line: usize,
-    update_output: bool,
-}
-
 /// A single row of input values, output values and expected values
 ///
 /// If the test does not check the output at this line (which happens
@@ -214,20 +202,6 @@ impl EntryIndex {
 
     pub(crate) fn is_entry(&self) -> bool {
         matches!(self, EntryIndex::Entry { .. })
-    }
-}
-
-impl<'a> TestDataRow<'a> {
-    /// Iterator over those inputs that changed compared to the previous row
-    pub fn changed_inputs(&self) -> impl Iterator<Item = &InputEntry<'_>> {
-        self.inputs.iter().filter(|entry| entry.changed)
-    }
-
-    /// Iterator over the non-trivial expected outputs
-    pub fn checked_outputs(&self) -> impl Iterator<Item = &ExpectedEntry<'_>> {
-        self.expected
-            .iter()
-            .filter(|entry| !matches!(entry.value, ExpectedValue::X))
     }
 }
 
@@ -545,12 +519,18 @@ impl dig::File {
 }
 
 impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
-    fn next_row(&mut self, row: TestDataRow<'a>) -> Result<DataRow<'a>, T::Error> {
-        let outputs = if row.update_output {
-            let outputs = self.driver.write_input_and_read_output(&row.inputs)?;
+    fn next_row(
+        &mut self,
+        inputs: Vec<InputEntry<'a>>,
+        expected: Vec<ExpectedEntry<'a>>,
+        line: usize,
+        update_output: bool,
+    ) -> Result<DataRow<'a>, T::Error> {
+        let outputs = if update_output {
+            let outputs = self.driver.write_input_and_read_output(&inputs)?;
             self.ctx.set_outputs(&outputs);
 
-            row.expected
+            expected
                 .into_iter()
                 .zip(outputs)
                 .map(|(e, o)| OutputResultEntry {
@@ -560,13 +540,13 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
                 })
                 .collect()
         } else {
-            self.driver.write_input(&row.inputs)?;
+            self.driver.write_input(&inputs)?;
             vec![]
         };
         Ok(DataRow {
-            inputs: row.inputs,
+            inputs,
             outputs,
-            line: row.line,
+            line,
         })
     }
 
@@ -596,14 +576,7 @@ impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
         let inputs = self.generate_input_entries(&row_result.entries, &changed);
         let expected = self.generate_expected_entries(&row_result.entries);
 
-        let row = TestDataRow {
-            inputs,
-            expected,
-            line: row_result.line,
-            update_output,
-        };
-
-        Some(self.next_row(row))
+        Some(self.next_row(inputs, expected, row_result.line, update_output))
     }
 }
 
@@ -628,33 +601,6 @@ impl<'a> TestCase<'a> {
             prev: None,
             cache: vec![],
             driver,
-        }
-    }
-
-    /// Return a `DataRow` where the input values all take their default values
-    /// and there are no expectations put on the outputs
-    pub fn default_row(&self) -> TestDataRow<'_> {
-        let inputs =
-            self.signals
-                .iter()
-                .filter_map(|signal| match signal.dir {
-                    SignalDirection::Input { default }
-                    | SignalDirection::Bidirectional { default } => Some(InputEntry {
-                        signal,
-                        value: default,
-                        changed: true,
-                    }),
-                    SignalDirection::Output => None,
-                })
-                .collect::<Vec<_>>();
-
-        let expected = vec![];
-
-        TestDataRow {
-            inputs,
-            expected,
-            line: 0,
-            update_output: true,
         }
     }
 }
