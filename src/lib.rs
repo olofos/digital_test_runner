@@ -108,13 +108,13 @@ pub struct DataRowIterator<'a, 'b, T> {
 
 /// A single row of input values and expected output values
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DataRow<'a> {
+struct TestDataRow<'a> {
     /// List of input values
-    pub inputs: Vec<InputEntry<'a>>,
+    inputs: Vec<InputEntry<'a>>,
     /// List of expected output values
-    pub expected: Vec<ExpectedEntry<'a>>,
+    expected: Vec<ExpectedEntry<'a>>,
     /// Line number of the test source code
-    pub line: usize,
+    line: usize,
     update_output: bool,
 }
 
@@ -124,7 +124,7 @@ pub struct DataRow<'a> {
 /// in the middle of a clock cycle denoted by a `C` in the test source),
 /// the `outputs` list will be empty.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DataRowResult<'a> {
+pub struct DataRow<'a> {
     /// List of input values
     pub inputs: Vec<InputEntry<'a>>,
     /// List of output values together with the expected value
@@ -217,7 +217,7 @@ impl EntryIndex {
     }
 }
 
-impl<'a> DataRow<'a> {
+impl<'a> TestDataRow<'a> {
     /// Iterator over those inputs that changed compared to the previous row
     pub fn changed_inputs(&self) -> impl Iterator<Item = &InputEntry<'_>> {
         self.inputs.iter().filter(|entry| entry.changed)
@@ -545,7 +545,7 @@ impl dig::File {
 }
 
 impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
-    fn next_row(&mut self, row: DataRow<'a>) -> Result<DataRowResult<'a>, T::Error> {
+    fn next_row(&mut self, row: TestDataRow<'a>) -> Result<DataRow<'a>, T::Error> {
         let outputs = if row.update_output {
             let outputs = self.driver.write_input_and_read_output(&row.inputs)?;
             self.ctx.set_outputs(&outputs);
@@ -563,7 +563,7 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
             self.driver.write_input(&row.inputs)?;
             vec![]
         };
-        Ok(DataRowResult {
+        Ok(DataRow {
             inputs: row.inputs,
             outputs,
             line: row.line,
@@ -577,7 +577,7 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
 }
 
 impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
-    type Item = Result<DataRowResult<'a>, T::Error>;
+    type Item = Result<DataRow<'a>, T::Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.cache.is_empty() {
@@ -596,7 +596,7 @@ impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
         let inputs = self.generate_input_entries(&row_result.entries, &changed);
         let expected = self.generate_expected_entries(&row_result.entries);
 
-        let row = DataRow {
+        let row = TestDataRow {
             inputs,
             expected,
             line: row_result.line,
@@ -607,7 +607,7 @@ impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
     }
 }
 
-impl<'a> DataRowResult<'a> {
+impl<'a> DataRow<'a> {
     /// Returns an iterator over data entries that fail their tests
     pub fn failing_outputs(&'a self) -> impl Iterator<Item = &'a OutputResultEntry<'a>> {
         self.outputs.iter().filter(|res| !res.check())
@@ -633,7 +633,7 @@ impl<'a> TestCase<'a> {
 
     /// Return a `DataRow` where the input values all take their default values
     /// and there are no expectations put on the outputs
-    pub fn default_row(&self) -> DataRow<'_> {
+    pub fn default_row(&self) -> TestDataRow<'_> {
         let inputs =
             self.signals
                 .iter()
@@ -650,7 +650,7 @@ impl<'a> TestCase<'a> {
 
         let expected = vec![];
 
-        DataRow {
+        TestDataRow {
             inputs,
             expected,
             line: 0,
