@@ -95,7 +95,7 @@ pub struct TestCase<'a> {
 
 #[derive(Debug)]
 /// An iterator over the test results for a dynamic test
-pub struct DataRowResultIterator<'a, 'b, T> {
+pub struct DataRowIterator<'a, 'b, T> {
     iter: StmtIterator<'a>,
     ctx: EvalContext,
     signals: &'a [Signal],
@@ -231,7 +231,7 @@ impl<'a> DataRow<'a> {
     }
 }
 
-impl<'a, 'b, T> DataRowResultIterator<'a, 'b, T> {
+impl<'a, 'b, T> DataRowIterator<'a, 'b, T> {
     fn entry_is_input(&self, entry_index: usize) -> bool {
         self.input_indices
             .iter()
@@ -544,7 +544,7 @@ impl dig::File {
     }
 }
 
-impl<'a, 'b, T: TestDriver> DataRowResultIterator<'a, 'b, T> {
+impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
     fn next_row(&mut self, row: DataRow<'a>) -> Result<DataRowResult<'a>, T::Error> {
         let outputs = if row.update_output {
             let outputs = self.driver.write_input_and_read_output(&row.inputs)?;
@@ -576,7 +576,7 @@ impl<'a, 'b, T: TestDriver> DataRowResultIterator<'a, 'b, T> {
     }
 }
 
-impl<'a, 'b, T: TestDriver> Iterator for DataRowResultIterator<'a, 'b, T> {
+impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
     type Item = Result<DataRowResult<'a>, T::Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -618,8 +618,8 @@ impl<'a> TestCase<'a> {
     /// Run the test dynamically using `driver` for commnicating with the device under test
     ///
     /// This function returns an iterator over the resulting data rows
-    pub fn run_iter<'b, T>(&'a self, driver: &'b mut T) -> DataRowResultIterator<'a, 'b, T> {
-        DataRowResultIterator {
+    pub fn run_iter<'b, T>(&'a self, driver: &'b mut T) -> DataRowIterator<'a, 'b, T> {
+        DataRowIterator {
             iter: StmtIterator::new(&self.stmts),
             ctx: EvalContext::new(),
             signals: self.signals,
