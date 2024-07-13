@@ -21,6 +21,7 @@ use stmt::DataEntries;
 pub use crate::value::{ExpectedValue, InputValue, OutputValue};
 
 use crate::check::TestCheck;
+use crate::errors::RunError;
 use crate::eval_context::EvalContext;
 use crate::stmt::{DataEntry, Stmt, StmtIterator};
 use std::collections::HashMap;
@@ -496,7 +497,7 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
         expected: Vec<ExpectedEntry<'a>>,
         line: usize,
         update_output: bool,
-    ) -> Result<DataRow<'a>, T::Error> {
+    ) -> Result<DataRow<'a>, RunError<T::Error>> {
         let outputs = if update_output {
             let outputs = self.driver.write_input_and_read_output(&inputs)?;
             self.ctx.set_outputs(&outputs);
@@ -528,11 +529,15 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
 }
 
 impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
-    type Item = Result<DataRow<'a>, T::Error>;
+    type Item = Result<DataRow<'a>, RunError<T::Error>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.cache.is_empty() {
-            let row_result = self.iter.next_with_context(&mut self.ctx).unwrap()?;
+            let row_result = match self.iter.next_with_context(&mut self.ctx) {
+                Ok(Some(entries)) => entries,
+                Ok(None) => return None,
+                Err(e) => return Some(Err(RunError::Runtime(e))),
+            };
             self.cache.push((row_result, true));
         }
 
