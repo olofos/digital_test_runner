@@ -527,20 +527,23 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
                 .into_iter()
                 .zip(&self.output_indices)
                 .map(|(expected, output_index)| {
-                    let output = match output_index {
-                        EntryIndex::Entry {
-                            entry_index,
-                            signal_index: _,
-                        } => outputs[*entry_index].value,
-                        EntryIndex::Default { signal_index: _ } => OutputValue::X,
+                    let output = if let EntryIndex::Entry { entry_index, .. } = output_index {
+                        if outputs[*entry_index].signal != expected.signal {
+                            return Err(RunError::Runtime(anyhow::anyhow!(
+                                "Output entries should be given in a fixed order"
+                            )));
+                        }
+                        outputs[*entry_index].value
+                    } else {
+                        OutputValue::X
                     };
-                    OutputResultEntry {
+                    Ok(OutputResultEntry {
                         expected: expected.value,
                         output,
                         signal: expected.signal,
-                    }
+                    })
                 })
-                .collect()
+                .collect::<Result<_, RunError<T::Error>>>()?
         } else {
             self.driver.write_input(&inputs)?;
             vec![]
@@ -708,10 +711,10 @@ impl<'a> Display for TestCase<'a> {
 mod tests {
     use super::*;
 
-    struct Driver {
-        outputs: Vec<Signal>,
+    struct SimpleDriver {
+        signals: Vec<Signal>,
     }
-    impl TestDriver for Driver {
+    impl TestDriver for SimpleDriver {
         type Error = ();
 
         fn write_input_and_read_output(
@@ -719,13 +722,27 @@ mod tests {
             _inputs: &[InputEntry<'_>],
         ) -> Result<Vec<OutputEntry<'_>>, Self::Error> {
             Ok(self
-                .outputs
+                .signals
                 .iter()
                 .map(|signal| OutputEntry {
                     signal,
                     value: OutputValue::X,
                 })
                 .collect())
+        }
+    }
+
+    struct TableDriver<'a> {
+        outputs: Vec<Vec<OutputEntry<'a>>>,
+    }
+    impl<'a> TestDriver for TableDriver<'a> {
+        type Error = ();
+
+        fn write_input_and_read_output(
+            &mut self,
+            _inputs: &[InputEntry<'_>],
+        ) -> Result<Vec<OutputEntry<'_>>, Self::Error> {
+            self.outputs.pop().ok_or(())
         }
     }
 
@@ -771,8 +788,8 @@ end loop
             .collect::<Vec<_>>();
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs.clone()));
         let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
-        let mut driver = Driver {
-            outputs: known_outputs,
+        let mut driver = SimpleDriver {
+            signals: known_outputs,
         };
         let it = testcase.run_iter(&mut driver);
         for row in it {
@@ -807,8 +824,8 @@ Z 1";
         let known_signals = Vec::from_iter(known_inputs);
         let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
 
-        let mut driver = Driver {
-            outputs: known_signals.clone(),
+        let mut driver = SimpleDriver {
+            signals: known_signals.clone(),
         };
         let it = testcase.run_iter(&mut driver);
         let result: Vec<_> = it.collect::<Result<_, _>>().unwrap();
@@ -859,8 +876,8 @@ Z 1";
         let expanded_testcase =
             ParsedTestCase::from_str(expanded_input)?.with_signals(&known_signals)?;
 
-        let mut driver = Driver {
-            outputs: known_signals.clone(),
+        let mut driver = SimpleDriver {
+            signals: known_signals.clone(),
         };
         let rows = testcase
             .run_iter(&mut driver)
@@ -914,8 +931,8 @@ Z 1";
         let expanded_testcase =
             ParsedTestCase::from_str(expanded_input)?.with_signals(&known_signals)?;
 
-        let mut driver = Driver {
-            outputs: known_signals.clone(),
+        let mut driver = SimpleDriver {
+            signals: known_signals.clone(),
         };
         let rows = testcase
             .run_iter(&mut driver)
@@ -970,8 +987,8 @@ Z 1";
         let expanded_testcase =
             ParsedTestCase::from_str(expanded_input)?.with_signals(&known_signals)?;
 
-        let mut driver = Driver {
-            outputs: known_signals.clone(),
+        let mut driver = SimpleDriver {
+            signals: known_signals.clone(),
         };
         let rows = testcase
             .run_iter(&mut driver)
@@ -1016,6 +1033,125 @@ Z 1";
         let testcase_result = ParsedTestCase::from_str(input)?.with_signals(&known_signals);
 
         assert!(testcase_result.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn works_if_not_all_outputs_are_given() -> anyhow::Result<()> {
+        let input = r"
+    A B C
+    0 0 0
+    0 0 0
+    ";
+
+        let known_inputs = ["A"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Input {
+                default: InputValue::Value(0),
+            },
+        });
+        let known_outputs = ["B", "C"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Output,
+        });
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
+
+        let signal = Signal {
+            name: String::from("B"),
+            bits: 1,
+            dir: SignalDirection::Output,
+        };
+        let signal = &signal;
+
+        let mut driver = TableDriver {
+            outputs: vec![
+                vec![OutputEntry {
+                    signal,
+                    value: OutputValue::Value(0),
+                }],
+                vec![OutputEntry {
+                    signal,
+                    value: OutputValue::Value(0),
+                }],
+            ],
+        };
+
+        for row in testcase.run_iter(&mut driver) {
+            let _ = row.unwrap();
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn gives_error_if_outputs_change_order() -> anyhow::Result<()> {
+        let input = r"
+    A B C
+    0 0 1
+    1 1 0
+    ";
+
+        let known_inputs = ["A"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Input {
+                default: InputValue::Value(0),
+            },
+        });
+        let known_outputs = ["B", "C"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Output,
+        });
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
+
+        let signal_b = Signal {
+            name: String::from("B"),
+            bits: 1,
+            dir: SignalDirection::Output,
+        };
+        let signal_b = &signal_b;
+
+        let signal_c = Signal {
+            name: String::from("C"),
+            bits: 1,
+            dir: SignalDirection::Output,
+        };
+        let signal_c = &signal_c;
+
+        let mut driver = TableDriver {
+            outputs: vec![
+                vec![
+                    OutputEntry {
+                        signal: signal_c,
+                        value: OutputValue::Value(0),
+                    },
+                    OutputEntry {
+                        signal: signal_b,
+                        value: OutputValue::Value(1),
+                    },
+                ],
+                vec![
+                    OutputEntry {
+                        signal: signal_b,
+                        value: OutputValue::Value(0),
+                    },
+                    OutputEntry {
+                        signal: signal_c,
+                        value: OutputValue::Value(1),
+                    },
+                ],
+            ],
+        };
+
+        let mut it = testcase.run_iter(&mut driver);
+        assert!(it.next().unwrap().is_ok());
+        assert!(it.next().unwrap().is_err());
 
         Ok(())
     }
