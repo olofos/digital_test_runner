@@ -492,7 +492,7 @@ impl dig::File {
 }
 
 impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
-    fn next_row(
+    fn handle_io(
         &mut self,
         inputs: Vec<InputEntry<'a>>,
         expected: Vec<ExpectedEntry<'a>>,
@@ -576,7 +576,7 @@ impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
         let inputs = self.generate_input_entries(&row_result.entries, &changed);
         let expected = self.generate_expected_entries(&row_result.entries);
 
-        Some(self.next_row(inputs, expected, row_result.line, update_output))
+        Some(self.handle_io(inputs, expected, row_result.line, update_output))
     }
 }
 
