@@ -102,6 +102,7 @@ pub struct DataRowIterator<'a, 'b, T> {
     signals: &'a [Signal],
     input_indices: &'a [EntryIndex],
     expected_indices: &'a [EntryIndex],
+    output_indices: Vec<EntryIndex>,
     prev: Option<Vec<DataEntry>>,
     cache: Vec<(DataEntries, bool)>,
     driver: &'b mut T,
@@ -502,13 +503,42 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
             let outputs = self.driver.write_input_and_read_output(&inputs)?;
             self.ctx.set_outputs(&outputs);
 
+            if self.output_indices.is_empty() && !self.expected_indices.is_empty() {
+                self.output_indices = Vec::with_capacity(self.expected_indices.len());
+
+                for expected_index in self.expected_indices {
+                    let signal_index = expected_index.signal_index();
+                    let signal = &self.signals[signal_index];
+                    let index = match outputs
+                        .iter()
+                        .position(|output| output.signal.name == signal.name)
+                    {
+                        Some(entry_index) => EntryIndex::Entry {
+                            entry_index,
+                            signal_index,
+                        },
+                        None => EntryIndex::Default { signal_index },
+                    };
+                    self.output_indices.push(index);
+                }
+            }
+
             expected
                 .into_iter()
-                .zip(outputs)
-                .map(|(e, o)| OutputResultEntry {
-                    expected: e.value,
-                    output: o.value,
-                    signal: e.signal,
+                .zip(&self.output_indices)
+                .map(|(expected, output_index)| {
+                    let output = match output_index {
+                        EntryIndex::Entry {
+                            entry_index,
+                            signal_index: _,
+                        } => outputs[*entry_index].value,
+                        EntryIndex::Default { signal_index: _ } => OutputValue::X,
+                    };
+                    OutputResultEntry {
+                        expected: expected.value,
+                        output,
+                        signal: expected.signal,
+                    }
                 })
                 .collect()
         } else {
@@ -574,6 +604,7 @@ impl<'a> TestCase<'a> {
             signals: self.signals,
             input_indices: &self.input_indices,
             expected_indices: &self.expected_indices,
+            output_indices: vec![],
             prev: None,
             cache: vec![],
             driver,
