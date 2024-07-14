@@ -102,7 +102,7 @@ pub struct DataRowIterator<'a, 'b, T> {
     signals: &'a [Signal],
     input_indices: &'a [EntryIndex],
     expected_indices: &'a [EntryIndex],
-    output_indices: Vec<EntryIndex>,
+    output_indices: Vec<Option<usize>>,
     prev: Option<Vec<DataEntry>>,
     cache: Vec<(DataEntries, bool)>,
     driver: &'b mut T,
@@ -504,30 +504,21 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
             self.ctx.set_outputs(&outputs);
 
             if self.output_indices.is_empty() && !self.expected_indices.is_empty() {
-                self.output_indices = Vec::with_capacity(self.expected_indices.len());
-
-                for expected_index in self.expected_indices {
-                    let signal_index = expected_index.signal_index();
-                    let signal = &self.signals[signal_index];
-                    let index = match outputs
-                        .iter()
-                        .position(|output| output.signal.name == signal.name)
-                    {
-                        Some(entry_index) => EntryIndex::Entry {
-                            entry_index,
-                            signal_index,
-                        },
-                        None => EntryIndex::Default { signal_index },
-                    };
-                    self.output_indices.push(index);
-                }
+                self.output_indices = self
+                    .expected_indices
+                    .iter()
+                    .map(|expected_index| {
+                        let signal = &self.signals[expected_index.signal_index()];
+                        outputs.iter().position(|output| output.signal == signal)
+                    })
+                    .collect();
             }
 
             expected
                 .into_iter()
                 .zip(&self.output_indices)
                 .map(|(expected, output_index)| {
-                    let output = if let EntryIndex::Entry { entry_index, .. } = output_index {
+                    let output = if let Some(entry_index) = output_index {
                         if outputs[*entry_index].signal != expected.signal {
                             return Err(RunError::Runtime(anyhow::anyhow!(
                                 "Output entries should be given in a fixed order"
@@ -543,7 +534,7 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
                         signal: expected.signal,
                     })
                 })
-                .collect::<Result<_, RunError<T::Error>>>()?
+                .collect::<Result<_, _>>()?
         } else {
             self.driver.write_input(&inputs)?;
             vec![]
