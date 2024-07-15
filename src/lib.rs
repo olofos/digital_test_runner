@@ -494,13 +494,11 @@ impl dig::File {
 impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
     fn handle_io(
         &mut self,
-        inputs: Vec<InputEntry<'a>>,
-        expected: Vec<ExpectedEntry<'a>>,
-        line: usize,
+        inputs: &[InputEntry<'a>],
         update_output: bool,
-    ) -> Result<DataRow<'a>, RunError<T::Error>> {
-        let outputs = if update_output {
-            let outputs = self.driver.write_input_and_read_output(&inputs)?;
+    ) -> Result<Vec<OutputValue>, RunError<T::Error>> {
+        if update_output {
+            let outputs = self.driver.write_input_and_read_output(inputs)?;
             self.ctx.set_outputs(&outputs);
 
             if self.output_indices.is_empty() && !self.expected_indices.is_empty() {
@@ -514,36 +512,29 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
                     .collect();
             }
 
-            expected
-                .into_iter()
+            self.expected_indices
+                .iter()
                 .zip(&self.output_indices)
-                .map(|(expected, output_index)| {
-                    let output = if let Some(entry_index) = output_index {
-                        if outputs[*entry_index].signal != expected.signal {
+                .map(|(expected_index, output_index)| {
+                    if let Some(output_entry_index) = output_index {
+                        let expected_signal = &self.signals[expected_index.signal_index()];
+                        let output_signal = outputs[*output_entry_index].signal;
+
+                        if expected_signal != output_signal {
                             return Err(RunError::Runtime(anyhow::anyhow!(
                                 "Output entries should be given in a fixed order"
                             )));
                         }
-                        outputs[*entry_index].value
+                        Ok(outputs[*output_entry_index].value)
                     } else {
-                        OutputValue::X
-                    };
-                    Ok(OutputResultEntry {
-                        expected: expected.value,
-                        output,
-                        signal: expected.signal,
-                    })
+                        Ok(OutputValue::X)
+                    }
                 })
-                .collect::<Result<_, _>>()?
+                .collect::<Result<Vec<_>, _>>()
         } else {
-            self.driver.write_input(&inputs)?;
-            vec![]
-        };
-        Ok(DataRow {
-            inputs,
-            outputs,
-            line,
-        })
+            self.driver.write_input(inputs)?;
+            Ok(vec![])
+        }
     }
 
     /// The current value of all variables
@@ -576,7 +567,24 @@ impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
         let inputs = self.generate_input_entries(&row_result.entries, &changed);
         let expected = self.generate_expected_entries(&row_result.entries);
 
-        Some(self.handle_io(inputs, expected, row_result.line, update_output))
+        let result = self.handle_io(&inputs, update_output).map(|outputs| {
+            let outputs = expected
+                .into_iter()
+                .zip(outputs)
+                .map(|(expected_entry, output_value)| OutputResultEntry {
+                    signal: expected_entry.signal,
+                    output: output_value,
+                    expected: expected_entry.value,
+                })
+                .collect();
+            DataRow {
+                inputs,
+                outputs,
+                line: row_result.line,
+            }
+        });
+
+        Some(result)
     }
 }
 
