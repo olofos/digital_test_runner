@@ -95,14 +95,19 @@ pub struct TestCase<'a> {
 }
 
 #[derive(Debug)]
-/// An iterator over the test results for a dynamic test
-pub struct DataRowIterator<'a, 'b, T> {
-    iter: StmtIterator<'a>,
-    ctx: EvalContext,
+struct DataRowIteratorTestData<'a> {
     signals: &'a [Signal],
     input_indices: &'a [EntryIndex],
     expected_indices: &'a [EntryIndex],
     output_indices: Vec<Option<usize>>,
+}
+
+#[derive(Debug)]
+/// An iterator over the test results for a dynamic test
+pub struct DataRowIterator<'a, 'b, T> {
+    iter: StmtIterator<'a>,
+    ctx: EvalContext,
+    test_data: DataRowIteratorTestData<'a>,
     prev: Option<Vec<DataEntry>>,
     cache: Vec<(DataEntries, bool)>,
     driver: &'b mut T,
@@ -209,7 +214,8 @@ impl EntryIndex {
 
 impl<'a, 'b, T> DataRowIterator<'a, 'b, T> {
     fn entry_is_input(&self, entry_index: usize) -> bool {
-        self.input_indices
+        self.test_data
+            .input_indices
             .iter()
             .any(|entry| entry.indexes(entry_index))
     }
@@ -272,7 +278,7 @@ impl<'a, 'b, T> DataRowIterator<'a, 'b, T> {
                 row_result.entries[i] = DataEntry::Number(0);
             }
             self.cache.push((row_result.clone(), true));
-            for entry_index in self.expected_indices {
+            for entry_index in self.test_data.expected_indices {
                 match entry_index {
                     EntryIndex::Entry {
                         entry_index,
@@ -297,14 +303,14 @@ impl<'a, 'b, T> DataRowIterator<'a, 'b, T> {
         stmt_entries: &[DataEntry],
         changed: &[bool],
     ) -> Vec<InputEntry<'a>> {
-        let mut inputs = Vec::with_capacity(self.input_indices.len());
-        for index in self.input_indices {
+        let mut inputs = Vec::with_capacity(self.test_data.input_indices.len());
+        for index in self.test_data.input_indices {
             let entry = match index {
                 EntryIndex::Entry {
                     entry_index,
                     signal_index,
                 } => {
-                    let signal = &self.signals[*signal_index];
+                    let signal = &self.test_data.signals[*signal_index];
                     let value = match &stmt_entries[*entry_index] {
                         DataEntry::Number(n) => InputValue::Value(n & ((1 << signal.bits) - 1)),
                         DataEntry::Z => InputValue::Z,
@@ -318,7 +324,7 @@ impl<'a, 'b, T> DataRowIterator<'a, 'b, T> {
                     }
                 }
                 EntryIndex::Default { signal_index } => {
-                    let signal = &self.signals[*signal_index];
+                    let signal = &self.test_data.signals[*signal_index];
                     InputEntry {
                         signal,
                         value: signal.default_value().unwrap(),
@@ -332,15 +338,15 @@ impl<'a, 'b, T> DataRowIterator<'a, 'b, T> {
     }
 
     fn generate_expected_entries(&self, stmt_entries: &[DataEntry]) -> Vec<ExpectedEntry<'a>> {
-        let mut expected = Vec::with_capacity(self.expected_indices.len());
+        let mut expected = Vec::with_capacity(self.test_data.expected_indices.len());
 
-        for index in self.expected_indices {
+        for index in self.test_data.expected_indices {
             let entry = match index {
                 EntryIndex::Entry {
                     entry_index,
                     signal_index,
                 } => {
-                    let signal = &self.signals[*signal_index];
+                    let signal = &self.test_data.signals[*signal_index];
                     let value = match &stmt_entries[*entry_index] {
                         DataEntry::Number(n) => ExpectedValue::Value(n & ((1 << signal.bits) - 1)),
                         DataEntry::Z => ExpectedValue::Z,
@@ -350,7 +356,7 @@ impl<'a, 'b, T> DataRowIterator<'a, 'b, T> {
                     ExpectedEntry { signal, value }
                 }
                 EntryIndex::Default { signal_index } => {
-                    let signal = &self.signals[*signal_index];
+                    let signal = &self.test_data.signals[*signal_index];
                     ExpectedEntry {
                         signal,
                         value: ExpectedValue::X,
@@ -491,7 +497,33 @@ impl dig::File {
     }
 }
 
+impl<'a> DataRowIteratorTestData<'a> {
+    fn build_output_indices(&self, outputs: &[OutputEntry<'_>]) -> Vec<Option<usize>> {
+        self.expected_indices
+            .iter()
+            .map(|expected_index| {
+                let signal = &self.signals[expected_index.signal_index()];
+                outputs.iter().position(|output| output.signal == signal)
+            })
+            .collect()
+    }
+}
+
 impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
+    // fn build_output_indices(
+    //     expected_indices: &[EntryIndex],
+    //     outputs: &[OutputEntry<'_>],
+    //     signals: &[Signal],
+    // ) -> Vec<Option<usize>> {
+    //     expected_indices
+    //         .iter()
+    //         .map(|expected_index| {
+    //             let signal = &signals[expected_index.signal_index()];
+    //             outputs.iter().position(|output| output.signal == signal)
+    //         })
+    //         .collect()
+    // }
+
     fn handle_io(
         &mut self,
         inputs: &[InputEntry<'a>],
@@ -501,36 +533,38 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
             let outputs = self.driver.write_input_and_read_output(inputs)?;
             self.ctx.set_outputs(&outputs);
 
-            if self.output_indices.is_empty() && !self.expected_indices.is_empty() {
-                self.output_indices = self
-                    .expected_indices
-                    .iter()
-                    .map(|expected_index| {
-                        let signal = &self.signals[expected_index.signal_index()];
-                        outputs.iter().position(|output| output.signal == signal)
-                    })
-                    .collect();
+            if self.test_data.output_indices.is_empty()
+                && !self.test_data.expected_indices.is_empty()
+            {
+                self.test_data.output_indices = self.test_data.build_output_indices(
+                    // &self.test_data.expected_indices,
+                    &outputs,
+                    // &self.test_data.signals,
+                );
             }
 
-            self.expected_indices
+            self.test_data
+                .expected_indices
                 .iter()
-                .zip(&self.output_indices)
+                .zip(&self.test_data.output_indices)
                 .map(|(expected_index, output_index)| {
                     if let Some(output_entry_index) = output_index {
-                        let expected_signal = &self.signals[expected_index.signal_index()];
+                        let expected_signal =
+                            &self.test_data.signals[expected_index.signal_index()];
                         let output_signal = outputs[*output_entry_index].signal;
 
-                        if expected_signal != output_signal {
-                            return Err(RunError::Runtime(anyhow::anyhow!(
+                        if expected_signal == output_signal {
+                            Ok(outputs[*output_entry_index].value)
+                        } else {
+                            Err(RunError::Runtime(anyhow::anyhow!(
                                 "Output entries should be given in a fixed order"
-                            )));
+                            )))
                         }
-                        Ok(outputs[*output_entry_index].value)
                     } else {
                         Ok(OutputValue::X)
                     }
                 })
-                .collect::<Result<Vec<_>, _>>()
+                .collect()
         } else {
             self.driver.write_input(inputs)?;
             Ok(vec![])
@@ -565,9 +599,9 @@ impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
         self.prev = Some(row_result.entries.clone());
 
         let inputs = self.generate_input_entries(&row_result.entries, &changed);
-        let expected = self.generate_expected_entries(&row_result.entries);
 
         let result = self.handle_io(&inputs, update_output).map(|outputs| {
+            let expected = self.generate_expected_entries(&row_result.entries);
             let outputs = expected
                 .into_iter()
                 .zip(outputs)
@@ -603,10 +637,12 @@ impl<'a> TestCase<'a> {
         DataRowIterator {
             iter: StmtIterator::new(&self.stmts),
             ctx: EvalContext::new(),
-            signals: self.signals,
-            input_indices: &self.input_indices,
-            expected_indices: &self.expected_indices,
-            output_indices: vec![],
+            test_data: DataRowIteratorTestData {
+                signals: self.signals,
+                input_indices: &self.input_indices,
+                expected_indices: &self.expected_indices,
+                output_indices: vec![],
+            },
             prev: None,
             cache: vec![],
             driver,
