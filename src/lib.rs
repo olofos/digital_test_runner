@@ -298,76 +298,6 @@ impl<'a, 'b, T> DataRowIterator<'a, 'b, T> {
         }
     }
 
-    fn generate_input_entries(
-        &self,
-        stmt_entries: &[DataEntry],
-        changed: &[bool],
-    ) -> Vec<InputEntry<'a>> {
-        let mut inputs = Vec::with_capacity(self.test_data.input_indices.len());
-        for index in self.test_data.input_indices {
-            let entry = match index {
-                EntryIndex::Entry {
-                    entry_index,
-                    signal_index,
-                } => {
-                    let signal = &self.test_data.signals[*signal_index];
-                    let value = match &stmt_entries[*entry_index] {
-                        DataEntry::Number(n) => InputValue::Value(n & ((1 << signal.bits) - 1)),
-                        DataEntry::Z => InputValue::Z,
-                        _ => unreachable!(),
-                    };
-                    let changed = changed[*entry_index];
-                    InputEntry {
-                        signal,
-                        value,
-                        changed,
-                    }
-                }
-                EntryIndex::Default { signal_index } => {
-                    let signal = &self.test_data.signals[*signal_index];
-                    InputEntry {
-                        signal,
-                        value: signal.default_value().unwrap(),
-                        changed: false,
-                    }
-                }
-            };
-            inputs.push(entry);
-        }
-        inputs
-    }
-
-    fn generate_expected_entries(&self, stmt_entries: &[DataEntry]) -> Vec<ExpectedEntry<'a>> {
-        let mut expected = Vec::with_capacity(self.test_data.expected_indices.len());
-
-        for index in self.test_data.expected_indices {
-            let entry = match index {
-                EntryIndex::Entry {
-                    entry_index,
-                    signal_index,
-                } => {
-                    let signal = &self.test_data.signals[*signal_index];
-                    let value = match &stmt_entries[*entry_index] {
-                        DataEntry::Number(n) => ExpectedValue::Value(n & ((1 << signal.bits) - 1)),
-                        DataEntry::Z => ExpectedValue::Z,
-                        DataEntry::X => ExpectedValue::X,
-                        _ => unreachable!(),
-                    };
-                    ExpectedEntry { signal, value }
-                }
-                EntryIndex::Default { signal_index } => {
-                    let signal = &self.test_data.signals[*signal_index];
-                    ExpectedEntry {
-                        signal,
-                        value: ExpectedValue::X,
-                    }
-                }
-            };
-            expected.push(entry);
-        }
-        expected
-    }
-
     fn check_changed_entries(&self, stmt_entries: &[DataEntry]) -> Vec<bool> {
         if let Some(prev) = &self.prev {
             stmt_entries
@@ -498,6 +428,71 @@ impl dig::File {
 }
 
 impl<'a> DataRowIteratorTestData<'a> {
+    fn generate_input_entries(
+        &self,
+        stmt_entries: &[DataEntry],
+        changed: &[bool],
+    ) -> Vec<InputEntry<'a>> {
+        self.input_indices
+            .iter()
+            .map(|index| match index {
+                EntryIndex::Entry {
+                    entry_index,
+                    signal_index,
+                } => {
+                    let signal = &self.signals[*signal_index];
+                    let value = match &stmt_entries[*entry_index] {
+                        DataEntry::Number(n) => InputValue::Value(n & ((1 << signal.bits) - 1)),
+                        DataEntry::Z => InputValue::Z,
+                        _ => unreachable!(),
+                    };
+                    let changed = changed[*entry_index];
+                    InputEntry {
+                        signal,
+                        value,
+                        changed,
+                    }
+                }
+                EntryIndex::Default { signal_index } => {
+                    let signal = &self.signals[*signal_index];
+                    InputEntry {
+                        signal,
+                        value: signal.default_value().unwrap(),
+                        changed: false,
+                    }
+                }
+            })
+            .collect()
+    }
+
+    fn generate_expected_entries(&self, stmt_entries: &[DataEntry]) -> Vec<ExpectedEntry<'a>> {
+        self.expected_indices
+            .iter()
+            .map(|index| match index {
+                EntryIndex::Entry {
+                    entry_index,
+                    signal_index,
+                } => {
+                    let signal = &self.signals[*signal_index];
+                    let value = match &stmt_entries[*entry_index] {
+                        DataEntry::Number(n) => ExpectedValue::Value(n & ((1 << signal.bits) - 1)),
+                        DataEntry::Z => ExpectedValue::Z,
+                        DataEntry::X => ExpectedValue::X,
+                        _ => unreachable!(),
+                    };
+                    ExpectedEntry { signal, value }
+                }
+                EntryIndex::Default { signal_index } => {
+                    let signal = &self.signals[*signal_index];
+                    ExpectedEntry {
+                        signal,
+                        value: ExpectedValue::X,
+                    }
+                }
+            })
+            .collect()
+    }
+
     fn build_output_indices(&self, outputs: &[OutputEntry<'_>]) -> Vec<Option<usize>> {
         self.expected_indices
             .iter()
@@ -510,20 +505,6 @@ impl<'a> DataRowIteratorTestData<'a> {
 }
 
 impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
-    // fn build_output_indices(
-    //     expected_indices: &[EntryIndex],
-    //     outputs: &[OutputEntry<'_>],
-    //     signals: &[Signal],
-    // ) -> Vec<Option<usize>> {
-    //     expected_indices
-    //         .iter()
-    //         .map(|expected_index| {
-    //             let signal = &signals[expected_index.signal_index()];
-    //             outputs.iter().position(|output| output.signal == signal)
-    //         })
-    //         .collect()
-    // }
-
     fn handle_io(
         &mut self,
         inputs: &[InputEntry<'a>],
@@ -598,10 +579,15 @@ impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
         let changed = self.check_changed_entries(&row_result.entries);
         self.prev = Some(row_result.entries.clone());
 
-        let inputs = self.generate_input_entries(&row_result.entries, &changed);
+        let inputs = self
+            .test_data
+            .generate_input_entries(&row_result.entries, &changed);
 
         let result = self.handle_io(&inputs, update_output).map(|outputs| {
-            let expected = self.generate_expected_entries(&row_result.entries);
+            let expected = self
+                .test_data
+                .generate_expected_entries(&row_result.entries);
+
             let outputs = expected
                 .into_iter()
                 .zip(outputs)
