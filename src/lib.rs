@@ -905,19 +905,22 @@ Z 1";
                 default: InputValue::Value(0),
             },
         });
-        let known_outputs = ["OUT"].into_iter().map(|name| Signal {
-            name: String::from(name),
-            bits: 1,
-            dir: SignalDirection::Output,
-        });
-        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+        let known_outputs = ["OUT"]
+            .into_iter()
+            .map(|name| Signal {
+                name: String::from(name),
+                bits: 1,
+                dir: SignalDirection::Output,
+            })
+            .collect::<Vec<_>>();
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs.clone()));
         let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
 
         let expanded_testcase =
             ParsedTestCase::from_str(expanded_input)?.with_signals(&known_signals)?;
 
         let mut driver = SimpleDriver {
-            signals: known_signals.clone(),
+            signals: known_outputs,
         };
         let rows = testcase
             .run_iter(&mut driver)
@@ -960,19 +963,22 @@ Z 1";
                 default: InputValue::Value(0),
             },
         });
-        let known_outputs = ["OUT"].into_iter().map(|name| Signal {
-            name: String::from(name),
-            bits: 1,
-            dir: SignalDirection::Output,
-        });
-        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+        let known_outputs = ["OUT"]
+            .into_iter()
+            .map(|name| Signal {
+                name: String::from(name),
+                bits: 1,
+                dir: SignalDirection::Output,
+            })
+            .collect::<Vec<_>>();
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs.clone()));
         let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
 
         let expanded_testcase =
             ParsedTestCase::from_str(expanded_input)?.with_signals(&known_signals)?;
 
         let mut driver = SimpleDriver {
-            signals: known_signals.clone(),
+            signals: known_outputs,
         };
         let rows = testcase
             .run_iter(&mut driver)
@@ -1016,19 +1022,22 @@ Z 1";
                 default: InputValue::Value(0),
             },
         });
-        let known_outputs = ["OUT"].into_iter().map(|name| Signal {
-            name: String::from(name),
-            bits: 1,
-            dir: SignalDirection::Output,
-        });
-        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+        let known_outputs = ["OUT"]
+            .into_iter()
+            .map(|name| Signal {
+                name: String::from(name),
+                bits: 1,
+                dir: SignalDirection::Output,
+            })
+            .collect::<Vec<_>>();
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs.clone()));
         let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
 
         let expanded_testcase =
             ParsedTestCase::from_str(expanded_input)?.with_signals(&known_signals)?;
 
         let mut driver = SimpleDriver {
-            signals: known_signals.clone(),
+            signals: known_outputs,
         };
         let rows = testcase
             .run_iter(&mut driver)
