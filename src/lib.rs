@@ -502,6 +502,10 @@ impl<'a> DataRowIteratorTestData<'a> {
             })
             .collect()
     }
+
+    fn num_outputs(&self) -> usize {
+        self.output_indices.iter().filter(|i| i.is_some()).count()
+    }
 }
 
 impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
@@ -517,11 +521,17 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
             if self.test_data.output_indices.is_empty()
                 && !self.test_data.expected_indices.is_empty()
             {
-                self.test_data.output_indices = self.test_data.build_output_indices(
-                    // &self.test_data.expected_indices,
-                    &outputs,
-                    // &self.test_data.signals,
-                );
+                self.test_data.output_indices = self.test_data.build_output_indices(&outputs);
+            }
+
+            let num_outputs = self.test_data.num_outputs();
+
+            if outputs.len() != num_outputs {
+                return Err(RunError::Runtime(anyhow::anyhow!(
+                    "Expected {} outputs but got {}",
+                    num_outputs,
+                    outputs.len()
+                )));
             }
 
             self.test_data
@@ -1166,6 +1176,100 @@ Z 1";
             vec![(signal_b, 0), (signal_c, 1)],
             vec![(signal_c, 0), (signal_b, 1)],
         ]);
+
+        let mut it = testcase.run_iter(&mut driver);
+        assert!(it.next().unwrap().is_ok());
+        assert!(it.next().unwrap().is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn gives_error_if_outputs_changes_length() -> anyhow::Result<()> {
+        let input = r"
+    A B C
+    0 0 1
+    1 1 0
+    ";
+
+        let known_inputs = ["A"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Input {
+                default: InputValue::Value(0),
+            },
+        });
+        let known_outputs = ["B", "C"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Output,
+        });
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
+
+        let signal_b = Signal {
+            name: String::from("B"),
+            bits: 1,
+            dir: SignalDirection::Output,
+        };
+        let signal_b = &signal_b;
+
+        let signal_c = Signal {
+            name: String::from("C"),
+            bits: 1,
+            dir: SignalDirection::Output,
+        };
+        let signal_c = &signal_c;
+
+        let mut driver =
+            TableDriver::new(&[vec![(signal_b, 0), (signal_c, 1)], vec![(signal_b, 0)]]);
+
+        let mut it = testcase.run_iter(&mut driver);
+        assert!(it.next().unwrap().is_ok());
+        assert!(it.next().unwrap().is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn gives_error_if_outputs_changes_length_2() -> anyhow::Result<()> {
+        let input = r"
+    A B C
+    0 0 1
+    1 1 0
+    ";
+
+        let known_inputs = ["A"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Input {
+                default: InputValue::Value(0),
+            },
+        });
+        let known_outputs = ["B", "C"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Output,
+        });
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
+
+        let signal_b = Signal {
+            name: String::from("B"),
+            bits: 1,
+            dir: SignalDirection::Output,
+        };
+        let signal_b = &signal_b;
+
+        let signal_c = Signal {
+            name: String::from("C"),
+            bits: 1,
+            dir: SignalDirection::Output,
+        };
+        let signal_c = &signal_c;
+
+        let mut driver =
+            TableDriver::new(&[vec![(signal_b, 0)], vec![(signal_b, 0), (signal_c, 1)]]);
 
         let mut it = testcase.run_iter(&mut driver);
         assert!(it.next().unwrap().is_ok());
