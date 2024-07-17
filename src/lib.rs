@@ -756,6 +756,7 @@ mod tests {
     struct TableDriver<'a> {
         outputs: Vec<Vec<OutputEntry<'a>>>,
     }
+
     impl<'a> TestDriver for TableDriver<'a> {
         type Error = ();
 
@@ -764,6 +765,24 @@ mod tests {
             _inputs: &[InputEntry<'_>],
         ) -> Result<Vec<OutputEntry<'_>>, Self::Error> {
             self.outputs.pop().ok_or(())
+        }
+    }
+
+    impl<'a> TableDriver<'a> {
+        fn new(data: &[Vec<(&'a Signal, i64)>]) -> Self {
+            let mut outputs: Vec<Vec<OutputEntry<'a>>> = data
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .map(|(signal, value)| OutputEntry {
+                            signal,
+                            value: OutputValue::Value(*value),
+                        })
+                        .collect()
+                })
+                .collect();
+            outputs.reverse();
+            Self { outputs }
         }
     }
 
@@ -1088,18 +1107,7 @@ Z 1";
         };
         let signal = &signal;
 
-        let mut driver = TableDriver {
-            outputs: vec![
-                vec![OutputEntry {
-                    signal,
-                    value: OutputValue::Value(0),
-                }],
-                vec![OutputEntry {
-                    signal,
-                    value: OutputValue::Value(0),
-                }],
-            ],
-        };
+        let mut driver = TableDriver::new(&[vec![(signal, 0)], vec![(signal, 0)]]);
 
         for row in testcase.run_iter(&mut driver) {
             let _ = row.unwrap();
@@ -1145,30 +1153,10 @@ Z 1";
         };
         let signal_c = &signal_c;
 
-        let mut driver = TableDriver {
-            outputs: vec![
-                vec![
-                    OutputEntry {
-                        signal: signal_c,
-                        value: OutputValue::Value(0),
-                    },
-                    OutputEntry {
-                        signal: signal_b,
-                        value: OutputValue::Value(1),
-                    },
-                ],
-                vec![
-                    OutputEntry {
-                        signal: signal_b,
-                        value: OutputValue::Value(0),
-                    },
-                    OutputEntry {
-                        signal: signal_c,
-                        value: OutputValue::Value(1),
-                    },
-                ],
-            ],
-        };
+        let mut driver = TableDriver::new(&[
+            vec![(signal_b, 0), (signal_c, 1)],
+            vec![(signal_c, 0), (signal_b, 1)],
+        ]);
 
         let mut it = testcase.run_iter(&mut driver);
         assert!(it.next().unwrap().is_ok());
