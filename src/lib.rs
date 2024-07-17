@@ -742,24 +742,15 @@ impl<'a> Display for TestCase<'a> {
 mod tests {
     use super::*;
 
-    struct SimpleDriver {
-        signals: Vec<Signal>,
-    }
-    impl TestDriver for SimpleDriver {
+    struct DummyDriver;
+    impl TestDriver for DummyDriver {
         type Error = ();
 
         fn write_input_and_read_output(
             &mut self,
             _inputs: &[InputEntry<'_>],
         ) -> Result<Vec<OutputEntry<'_>>, Self::Error> {
-            Ok(self
-                .signals
-                .iter()
-                .map(|signal| OutputEntry {
-                    signal,
-                    value: OutputValue::X,
-                })
-                .collect())
+            Ok(vec![])
         }
     }
 
@@ -838,9 +829,7 @@ end loop
             .collect::<Vec<_>>();
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs.clone()));
         let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
-        let mut driver = SimpleDriver {
-            signals: known_outputs,
-        };
+        let mut driver = DummyDriver;
         let it = testcase.run_iter(&mut driver);
         for row in it {
             let row = row.unwrap();
@@ -874,9 +863,7 @@ Z 1";
         let known_signals = Vec::from_iter(known_inputs);
         let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
 
-        let mut driver = SimpleDriver {
-            signals: known_signals.clone(),
-        };
+        let mut driver = DummyDriver;
         let it = testcase.run_iter(&mut driver);
         let result: Vec<_> = it.collect::<Result<_, _>>().unwrap();
 
@@ -929,9 +916,7 @@ Z 1";
         let expanded_testcase =
             ParsedTestCase::from_str(expanded_input)?.with_signals(&known_signals)?;
 
-        let mut driver = SimpleDriver {
-            signals: known_outputs,
-        };
+        let mut driver = DummyDriver;
         let rows = testcase
             .run_iter(&mut driver)
             .collect::<Result<Vec<_>, _>>()
@@ -987,9 +972,7 @@ Z 1";
         let expanded_testcase =
             ParsedTestCase::from_str(expanded_input)?.with_signals(&known_signals)?;
 
-        let mut driver = SimpleDriver {
-            signals: known_outputs,
-        };
+        let mut driver = DummyDriver;
         let rows = testcase
             .run_iter(&mut driver)
             .collect::<Result<Vec<_>, _>>()
@@ -1046,9 +1029,7 @@ Z 1";
         let expanded_testcase =
             ParsedTestCase::from_str(expanded_input)?.with_signals(&known_signals)?;
 
-        let mut driver = SimpleDriver {
-            signals: known_outputs,
-        };
+        let mut driver = DummyDriver;
         let rows = testcase
             .run_iter(&mut driver)
             .collect::<Result<Vec<_>, _>>()
