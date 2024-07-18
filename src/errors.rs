@@ -54,13 +54,3 @@ pub struct ParseError {
     #[label("here")]
     pub at: logos::Span,
 }
-
-pub fn test() -> ParseError {
-    ParseError {
-        kind: ParseErrorKind::NotExpectedToken {
-            expected_kind: TokenKind::And,
-            found_kind: TokenKind::Def,
-        },
-        at: 4..6,
-    }
-}
