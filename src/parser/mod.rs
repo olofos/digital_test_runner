@@ -140,7 +140,7 @@ impl<'a> Parser<'a> {
     }
 }
 
-pub(crate) fn parse_testcase(input: &str) -> anyhow::Result<ParsedTestCase> {
+pub(crate) fn parse_testcase(input: &str) -> Result<ParsedTestCase, ParseError> {
     let mut parser = HeaderParser::new(input);
     let signals = parser.parse()?;
 

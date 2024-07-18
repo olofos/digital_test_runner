@@ -647,7 +647,7 @@ impl<'a> TestCase<'a> {
 }
 
 impl FromStr for ParsedTestCase {
-    type Err = anyhow::Error;
+    type Err = errors::ParseError;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         parser::parse_testcase(input)
