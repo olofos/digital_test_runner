@@ -146,8 +146,8 @@ impl<'a> Parser<'a> {
                     self.expect(TokenKind::LParen)?;
                     let number = {
                         let n = self.parse_number()?;
-                        if n > 255 {
-                            anyhow::bail!("Number of bits cannot exceed 255");
+                        if n > 64 {
+                            anyhow::bail!("Number of bits cannot exceed 64");
                         }
                         n as u8
                     };
