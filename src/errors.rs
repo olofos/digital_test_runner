@@ -19,20 +19,28 @@ pub(crate) enum ParseErrorKind {
     #[error("Unexpected EOF")]
     UnexpectedEof,
     #[error("Unexpected token. Expected {expected_kind:?} but found {found_kind:?}")]
-    UnexpectedToken {
+    NotExpectedToken {
         expected_kind: TokenKind,
         found_kind: TokenKind,
     },
     #[error("Unexpected token in expression")]
-    UnexpectedTokenInExpr { kind: TokenKind },
+    UnexpectedToken { kind: TokenKind },
     #[error("Unknown token")]
     UnknownToken,
     #[error("Expected a signal name")]
     ExpectedSignalName,
     #[error("Expected a number but found a {kind:?} token")]
     ExpectedNumber { kind: TokenKind },
-    #[error("")]
+    #[error("Could not parse number")]
     NumberParseError(#[source] std::num::ParseIntError),
+    #[error("Number of bits cannot exceed 64")]
+    TooManyBits,
+    #[error("Expected a new line at the end of statement")]
+    ExpectedNewLine,
+    #[error("Expected C, X or Z but found {ident}")]
+    ExpectedCXZ { ident: String },
+    #[error("Unexpected End token at top level")]
+    UnexpectedEndAtTopLevel,
 }
 
 #[derive(Debug, Error, Diagnostic)]
@@ -49,7 +57,7 @@ pub struct ParseError {
 
 pub fn test() -> ParseError {
     ParseError {
-        kind: ParseErrorKind::UnexpectedToken {
+        kind: ParseErrorKind::NotExpectedToken {
             expected_kind: TokenKind::And,
             found_kind: TokenKind::Def,
         },

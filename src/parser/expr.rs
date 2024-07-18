@@ -139,7 +139,7 @@ impl<'a> Parser<'a> {
             }
             kind => {
                 let tok = self.get()?;
-                Err(tok.error(ParseErrorKind::UnexpectedTokenInExpr { kind }))
+                Err(tok.error(ParseErrorKind::UnexpectedToken { kind }))
             }
         }
     }

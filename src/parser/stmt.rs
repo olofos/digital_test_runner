@@ -1,5 +1,5 @@
 use crate::{
-    errors::ParseErrorKind,
+    errors::{ParseError, ParseErrorKind},
     lexer::TokenKind,
     parser::Parser,
     stmt::{DataEntry, Stmt},
@@ -9,7 +9,7 @@ impl<'a> Parser<'a> {
     pub(crate) fn parse_stmt_block(
         &mut self,
         end_token: Option<TokenKind>,
-    ) -> anyhow::Result<Vec<Stmt>> {
+    ) -> Result<Vec<Stmt>, ParseError> {
         let mut block = vec![];
 
         loop {
@@ -101,14 +101,15 @@ impl<'a> Parser<'a> {
                         self.expect(kind)?;
                         break;
                     } else {
-                        anyhow::bail!("Unexpected End token at top level");
+                        let tok = self.get()?;
+                        return Err(tok.error(ParseErrorKind::UnexpectedEndAtTopLevel));
                     }
                 }
 
                 TokenKind::Eof => {
-                    self.skip();
+                    let tok = self.get()?;
                     if end_token.is_some() {
-                        anyhow::bail!("Unexpected EOF in inner block");
+                        return Err(tok.error(ParseErrorKind::UnexpectedEof));
                     }
                     break;
                 }
@@ -122,16 +123,14 @@ impl<'a> Parser<'a> {
             } else if self.at(TokenKind::Eol) {
                 self.skip();
             } else {
-                anyhow::bail!(
-                    "Expected a new line at the end of statement on line {}",
-                    self.line
-                );
+                let tok = self.get()?;
+                return Err(tok.error(ParseErrorKind::ExpectedNewLine));
             }
         }
         Ok(block)
     }
 
-    fn parse_data_row(&mut self) -> anyhow::Result<Vec<DataEntry>> {
+    fn parse_data_row(&mut self) -> Result<Vec<DataEntry>, ParseError> {
         let mut data = vec![];
         loop {
             match self.peek() {
@@ -145,9 +144,13 @@ impl<'a> Parser<'a> {
                     self.skip();
                     self.expect(TokenKind::LParen)?;
                     let number = {
+                        let at = self.peek_span();
                         let n = self.parse_number()?;
                         if n > 64 {
-                            anyhow::bail!("Number of bits cannot exceed 64");
+                            return Err(ParseError {
+                                kind: ParseErrorKind::TooManyBits,
+                                at,
+                            });
                         }
                         n as u8
                     };
@@ -162,7 +165,11 @@ impl<'a> Parser<'a> {
                         "c" | "C" => data.push(DataEntry::C),
                         "x" | "X" => data.push(DataEntry::X),
                         "z" | "Z" => data.push(DataEntry::Z),
-                        ident => anyhow::bail!("Expected C, X or Z but found {ident}"),
+                        ident => {
+                            return Err(token.error(ParseErrorKind::ExpectedCXZ {
+                                ident: ident.to_string(),
+                            }))
+                        }
                     }
                 }
                 TokenKind::DecInt | TokenKind::HexInt | TokenKind::BinInt | TokenKind::OctInt => {
@@ -170,7 +177,10 @@ impl<'a> Parser<'a> {
                     data.push(DataEntry::Number(n));
                 }
                 TokenKind::Eol | TokenKind::Eof => break,
-                kind => anyhow::bail!("Unexpected token {kind:?} while parsing data"),
+                kind => {
+                    let tok = self.get()?;
+                    return Err(tok.error(ParseErrorKind::UnexpectedToken { kind }));
+                }
             }
         }
         Ok(data)

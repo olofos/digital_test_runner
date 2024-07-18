@@ -106,6 +106,14 @@ impl<'a> Parser<'a> {
             .kind
     }
 
+    pub(crate) fn peek_span(&mut self) -> std::ops::Range<usize> {
+        self.iter
+            .peek()
+            .expect("peek should not be called after EOF is found")
+            .span
+            .clone()
+    }
+
     pub(crate) fn at(&mut self, kind: TokenKind) -> bool {
         self.peek() == kind
     }
@@ -118,7 +126,7 @@ impl<'a> Parser<'a> {
     pub(crate) fn expect(&mut self, kind: TokenKind) -> Result<Token, ParseError> {
         let tok = self.get()?;
         if tok.kind != kind {
-            Err(tok.error(ParseErrorKind::UnexpectedToken {
+            Err(tok.error(ParseErrorKind::NotExpectedToken {
                 expected_kind: kind,
                 found_kind: tok.kind,
             }))
