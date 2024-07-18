@@ -92,8 +92,7 @@ impl<'a> Parser<'a> {
                 return Err(tok.error(ParseErrorKind::ExpectedNumber { kind }));
             }
         };
-        let n = i64::from_str_radix(literal, radix)
-            .map_err(|err| tok.error(ParseErrorKind::NumberParseError(err)))?;
+        let n = i64::from_str_radix(literal, radix).map_err(|err| tok.error(err.into()))?;
         Ok(n)
     }
 

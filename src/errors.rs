@@ -31,7 +31,7 @@ pub(crate) enum ParseErrorKind {
     #[error("Expected a number but found a {kind:?} token")]
     ExpectedNumber { kind: TokenKind },
     #[error("Could not parse number")]
-    NumberParseError(#[source] std::num::ParseIntError),
+    NumberParseError(#[from] std::num::ParseIntError),
     #[error("Number of bits cannot exceed 64")]
     TooManyBits,
     #[error("Expected a new line at the end of statement")]
