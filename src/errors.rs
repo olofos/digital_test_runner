@@ -27,8 +27,7 @@ pub(crate) enum ParseErrorKind {
     UnexpectedToken { kind: TokenKind },
     #[error("Unknown token")]
     UnknownToken,
-    #[error("Expected a signal name")]
-    ExpectedSignalName,
+
     #[error("Expected a number but found a {kind:?} token")]
     ExpectedNumber { kind: TokenKind },
     #[error("Could not parse number")]

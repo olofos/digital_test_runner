@@ -57,12 +57,7 @@ impl<'a> HeaderParser<'a> {
                     }
                 }
                 Some(Ok(HeaderTokenKind::WS)) => unreachable!(),
-                Some(Err(_)) => {
-                    return Err(ParseError {
-                        kind: ParseErrorKind::ExpectedSignalName,
-                        at: self.iter.span(),
-                    });
-                }
+                Some(Err(_)) => unreachable!(),
                 None => {
                     return Err(ParseError {
                         kind: ParseErrorKind::UnexpectedEof,
