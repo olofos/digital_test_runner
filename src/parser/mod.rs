@@ -3,6 +3,7 @@ mod expr;
 mod stmt;
 
 use crate::{
+    errors::{ParseError, ParseErrorKind},
     lexer::{HeaderTokenKind, Token, TokenIter, TokenKind},
     ParsedTestCase,
 };
@@ -21,6 +22,15 @@ struct Parser<'a> {
     line: usize,
 }
 
+impl Token {
+    pub(crate) fn error(&self, kind: ParseErrorKind) -> ParseError {
+        ParseError {
+            kind,
+            at: self.span.clone(),
+        }
+    }
+}
+
 impl<'a> From<HeaderParser<'a>> for Parser<'a> {
     fn from(HeaderParser { input, iter, line }: HeaderParser<'a>) -> Self {
         let iter = TokenIter::from(iter).peekable();
@@ -35,7 +45,7 @@ impl<'a> HeaderParser<'a> {
         Self { input, iter, line }
     }
 
-    pub(crate) fn parse(&mut self) -> anyhow::Result<Vec<String>> {
+    pub(crate) fn parse(&mut self) -> Result<Vec<String>, ParseError> {
         let mut signals: Vec<String> = vec![];
         loop {
             match self.iter.next() {
@@ -48,12 +58,17 @@ impl<'a> HeaderParser<'a> {
                 }
                 Some(Ok(HeaderTokenKind::WS)) => unreachable!(),
                 Some(Err(_)) => {
-                    anyhow::bail!(
-                        "Expected signal name, found {}",
-                        &self.input[self.iter.span()]
-                    )
+                    return Err(ParseError {
+                        kind: ParseErrorKind::ExpectedSignalName,
+                        at: self.iter.span(),
+                    });
                 }
-                None => anyhow::bail!("Unexpected EOF while parsing header"),
+                None => {
+                    return Err(ParseError {
+                        kind: ParseErrorKind::UnexpectedEof,
+                        at: self.iter.span(),
+                    })
+                }
             }
         }
     }
@@ -70,9 +85,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub(crate) fn get(&mut self) -> anyhow::Result<Token> {
+    pub(crate) fn get(&mut self) -> Result<Token, ParseError> {
         let Some(tok) = self.iter.next() else {
-            anyhow::bail!("Unexpected EOF on line {}", self.line);
+            let end = self.input.len();
+            return Err(ParseError {
+                kind: ParseErrorKind::UnexpectedEof,
+                at: end..end,
+            });
         };
         if tok.kind == TokenKind::Eol {
             self.line += 1;
@@ -96,13 +115,16 @@ impl<'a> Parser<'a> {
             .expect("skip should not be called after EOF is found");
     }
 
-    pub(crate) fn expect(&mut self, kind: TokenKind) -> anyhow::Result<Token> {
+    pub(crate) fn expect(&mut self, kind: TokenKind) -> Result<Token, ParseError> {
         let tok = self.get()?;
         if tok.kind != kind {
-            anyhow::bail!("Expected a {kind:?} token but found {:?}", tok.kind);
+            Err(tok.error(ParseErrorKind::UnexpectedToken {
+                expected_kind: kind,
+                found_kind: tok.kind,
+            }))
+        } else {
+            Ok(tok)
         }
-
-        Ok(tok)
     }
 
     pub(crate) fn text(&self, token: &Token) -> &'a str {
@@ -162,9 +184,14 @@ end loop
         let input = r"
 A B
 
-a 1
+let a ( 2;
+1 2
 ";
-        assert!(parse_testcase(input).is_err());
+        let Err(err) = parse_testcase(input) else {
+            panic!("Expected an error")
+        };
+        println!("{err:?}");
+        println!("{err}");
         Ok(())
     }
 }

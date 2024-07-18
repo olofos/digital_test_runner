@@ -1,4 +1,5 @@
 use crate::{
+    errors::ParseErrorKind,
     lexer::TokenKind,
     parser::Parser,
     stmt::{DataEntry, Stmt},
@@ -113,8 +114,7 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::Eol => {}
                 _ => {
-                    let t = self.get()?;
-                    anyhow::bail!("Unexpected {:?} token \"{}\"", t.kind, self.text(&t))
+                    Err(self.get()?.error(ParseErrorKind::UnknownToken))?;
                 }
             }
             if self.at(TokenKind::Eof) {

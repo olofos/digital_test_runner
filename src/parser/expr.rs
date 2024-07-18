@@ -1,8 +1,8 @@
 use crate::{
+    errors::{ParseError, ParseErrorKind},
     expr::{BinOp, Expr, UnaryOp},
     lexer::TokenKind,
-    parser::binoptree::BinOpTree,
-    parser::Parser,
+    parser::{binoptree::BinOpTree, Parser},
 };
 
 impl From<TokenKind> for UnaryOp {
@@ -67,7 +67,7 @@ impl From<TokenKind> for BinOp {
 }
 
 impl<'a> Parser<'a> {
-    pub(crate) fn parse_expr(&mut self) -> anyhow::Result<Expr> {
+    pub(crate) fn parse_expr(&mut self) -> Result<Expr, ParseError> {
         let first = self.parse_factor()?;
         let mut tree = BinOpTree::Atom(first);
 
@@ -80,7 +80,7 @@ impl<'a> Parser<'a> {
         Ok(tree.into())
     }
 
-    pub(crate) fn parse_number(&mut self) -> anyhow::Result<i64> {
+    pub(crate) fn parse_number(&mut self) -> Result<i64, ParseError> {
         let tok = self.get()?;
         let literal = self.text(&tok);
         let (literal, radix) = match &tok.kind {
@@ -88,13 +88,16 @@ impl<'a> Parser<'a> {
             TokenKind::HexInt => (&literal[2..], 16),
             TokenKind::OctInt => (literal, 8),
             TokenKind::BinInt => (&literal[2..], 2),
-            kind => anyhow::bail!("Expected a number but found {kind:?}"),
+            &kind => {
+                return Err(tok.error(ParseErrorKind::ExpectedNumber { kind }));
+            }
         };
-        let n = i64::from_str_radix(literal, radix).unwrap();
+        let n = i64::from_str_radix(literal, radix)
+            .map_err(|err| tok.error(ParseErrorKind::NumberParseError(err)))?;
         Ok(n)
     }
 
-    fn parse_factor(&mut self) -> anyhow::Result<Expr> {
+    fn parse_factor(&mut self) -> Result<Expr, ParseError> {
         match self.peek() {
             TokenKind::DecInt | TokenKind::HexInt | TokenKind::OctInt | TokenKind::BinInt => {
                 let n = self.parse_number()?;
@@ -134,9 +137,10 @@ impl<'a> Parser<'a> {
                 self.expect(TokenKind::RParen)?;
                 Ok(expr)
             }
-            kind => Err(anyhow::anyhow!(
-                "Unexpected token {kind:?} when parsing factor"
-            )),
+            kind => {
+                let tok = self.get()?;
+                Err(tok.error(ParseErrorKind::UnexpectedTokenInExpr { kind }))
+            }
         }
     }
 }
