@@ -23,7 +23,7 @@ pub(crate) enum ParseErrorKind {
         expected_kind: TokenKind,
         found_kind: TokenKind,
     },
-    #[error("Unexpected token in expression")]
+    #[error("Unexpected token {kind:?}")]
     UnexpectedToken { kind: TokenKind },
     #[error("Unknown token")]
     UnknownToken,
