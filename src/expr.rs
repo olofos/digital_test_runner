@@ -1,5 +1,5 @@
 use crate::eval_context::EvalContext;
-use std::{fmt::Display, str::FromStr};
+use std::fmt::Display;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BinOp {
@@ -19,32 +19,6 @@ pub(crate) enum BinOp {
     Times,
     Divide,
     Reminder,
-}
-
-impl FromStr for BinOp {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "=" => Ok(Self::Equal),
-            "!=" => Ok(Self::NotEqual),
-            ">" => Ok(Self::GreaterThan),
-            "<" => Ok(Self::LessThan),
-            ">=" => Ok(Self::GreaterThanOrEqual),
-            "<=" => Ok(Self::LessThanOrEqual),
-            "|" => Ok(Self::Or),
-            "^" => Ok(Self::Xor),
-            "&" => Ok(Self::And),
-            "<<" => Ok(Self::ShiftLeft),
-            ">>" => Ok(Self::ShiftRight),
-            "+" => Ok(Self::Plus),
-            "-" => Ok(Self::Minus),
-            "*" => Ok(Self::Times),
-            "/" => Ok(Self::Divide),
-            "%" => Ok(Self::Reminder),
-            _ => Err(anyhow::anyhow!("Unknown bin op {}", s)),
-        }
-    }
 }
 
 impl Display for BinOp {
