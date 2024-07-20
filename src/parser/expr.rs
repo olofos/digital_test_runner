@@ -80,7 +80,7 @@ impl<'a> Parser<'a> {
         Ok(tree.into())
     }
 
-    pub(crate) fn parse_number(&mut self) -> Result<i64, ParseError> {
+    pub(super) fn parse_number(&mut self) -> Result<i64, ParseError> {
         let tok = self.get()?;
         let literal = self.text(&tok);
         let (literal, radix) = match &tok.kind {

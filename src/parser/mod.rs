@@ -16,14 +16,14 @@ pub(crate) struct HeaderParser<'a> {
     line: usize,
 }
 
-struct Parser<'a> {
+pub(crate) struct Parser<'a> {
     input: &'a str,
     iter: Peekable<TokenIter<'a>>,
     line: usize,
 }
 
 impl Token {
-    pub(crate) fn error(&self, kind: ParseErrorKind) -> ParseError {
+    fn error(&self, kind: ParseErrorKind) -> ParseError {
         ParseError {
             kind,
             at: self.span.clone(),
@@ -80,7 +80,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub(crate) fn get(&mut self) -> Result<Token, ParseError> {
+    fn get(&mut self) -> Result<Token, ParseError> {
         let Some(tok) = self.iter.next() else {
             let end = self.input.len();
             return Err(ParseError {
@@ -94,14 +94,14 @@ impl<'a> Parser<'a> {
         Ok(tok)
     }
 
-    pub(crate) fn peek(&mut self) -> TokenKind {
+    fn peek(&mut self) -> TokenKind {
         self.iter
             .peek()
             .expect("peek should not be called after EOF is found")
             .kind
     }
 
-    pub(crate) fn peek_span(&mut self) -> std::ops::Range<usize> {
+    fn peek_span(&mut self) -> std::ops::Range<usize> {
         self.iter
             .peek()
             .expect("peek should not be called after EOF is found")
@@ -109,16 +109,16 @@ impl<'a> Parser<'a> {
             .clone()
     }
 
-    pub(crate) fn at(&mut self, kind: TokenKind) -> bool {
+    fn at(&mut self, kind: TokenKind) -> bool {
         self.peek() == kind
     }
 
-    pub(crate) fn skip(&mut self) {
+    fn skip(&mut self) {
         self.get()
             .expect("skip should not be called after EOF is found");
     }
 
-    pub(crate) fn expect(&mut self, kind: TokenKind) -> Result<Token, ParseError> {
+    fn expect(&mut self, kind: TokenKind) -> Result<Token, ParseError> {
         let tok = self.get()?;
         if tok.kind != kind {
             Err(tok.error(ParseErrorKind::NotExpectedToken {
@@ -130,7 +130,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub(crate) fn text(&self, token: &Token) -> &'a str {
+    fn text(&self, token: &Token) -> &'a str {
         &self.input[token.span.clone()]
     }
 }
