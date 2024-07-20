@@ -1,6 +1,10 @@
-use std::{collections::HashSet, str::FromStr};
+use std::{collections::HashSet, ops::Range, str::FromStr};
 
-use crate::{parser::HeaderParser, InputValue, Signal, SignalDirection};
+use crate::{
+    errors::{DigFileError, DigFileErrorKind},
+    parser::HeaderParser,
+    InputValue, Signal, SignalDirection,
+};
 
 /// Represent a test case in the dig file
 #[derive(Debug, Clone)]
@@ -84,17 +88,32 @@ fn extract_input_data(node: roxmltree::Node<'_, '_>) -> InputValue {
 }
 
 impl FromStr for File {
-    type Err = anyhow::Error;
+    type Err = DigFileError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         File::parse(s)
     }
 }
 
+fn text_pos_to_range(input: &str, pos: roxmltree::TextPos) -> Range<usize> {
+    let pos: usize = input
+        .lines()
+        .take(pos.row as usize - 1)
+        .map(|line| line.len() + 1)
+        .sum::<usize>()
+        + pos.col as usize
+        - 1;
+
+    pos..pos
+}
+
 impl File {
     /// Parse the input string as dig file
-    pub fn parse(input: &str) -> anyhow::Result<File> {
-        let doc = roxmltree::Document::parse(input)?;
+    pub fn parse(input: &str) -> Result<File, DigFileError> {
+        let doc = roxmltree::Document::parse(input).map_err(|err| {
+            let span = text_pos_to_range(input, err.pos());
+            DigFileErrorKind::XMLError(err, span)
+        })?;
 
         let output_signals = visual_elements(&doc, &["Out"])
             .filter_map(|node| extract_signal_data(node))
@@ -145,7 +164,10 @@ impl File {
         let mut test_signal_names: HashSet<String> = HashSet::new();
         let mut bidirectional: HashSet<String> = HashSet::new();
         for test_case in &test_cases {
-            for name in HeaderParser::new(&test_case.source).parse()? {
+            for name in HeaderParser::new(&test_case.source)
+                .parse()
+                .map_err(|_| DigFileErrorKind::EmptyTest)?
+            {
                 if let Some(stripped_name) = name.strip_suffix("_out") {
                     let stripped_name = stripped_name.to_string();
                     bidirectional.insert(stripped_name);
@@ -163,7 +185,7 @@ impl File {
                 .cloned()
                 .collect::<Vec<_>>()
                 .join(", ");
-            anyhow::bail!("Signals {missing} found in tests but not found in circuit");
+            return Err(DigFileErrorKind::MissingSignals(missing).into());
         }
 
         let mut signals = signals;
@@ -174,7 +196,9 @@ impl File {
                 .expect("We already checked that all test signals appear in the circuit");
             let dir = std::mem::replace(&mut sig.dir, SignalDirection::Output);
             let SignalDirection::Input { default } = dir else {
-                anyhow::bail!("");
+                unreachable!(
+                    "By definition we know that there will be an input signal called {name}"
+                );
             };
             sig.dir = SignalDirection::Bidirectional { default };
         }
@@ -188,7 +212,10 @@ impl File {
 
 #[cfg(test)]
 mod test {
+    use std::error::Error;
+
     use super::*;
+    use rstest::rstest;
 
     #[test]
     fn test() {
@@ -197,5 +224,39 @@ mod test {
                 .unwrap();
         let dig: File = input.parse().unwrap();
         dbg!(dig.signals);
+    }
+
+    #[rstest]
+    #[case(1, 1, "a")]
+    #[case(2, 1, "d")]
+    #[case(3, 1, "g")]
+    #[case(2, 3, "f")]
+    fn test_text_pos_to_range(#[case] row: u32, #[case] col: u32, #[case] expected: &str) {
+        let input = "abc\ndef\nghi";
+        let pos = roxmltree::TextPos::new(row, col);
+        let range = text_pos_to_range(input, pos);
+        assert_eq!(&input[range.start..(range.end + 1)], expected);
+    }
+
+    #[test]
+    fn test_error() {
+        let input = r#"<?xml version="1.0" encoding="utf-8"?>
+<circuit>
+  <version>1</version>
+  <attributes>
+    <entry>
+      <string>shapeType</string>
+      <shapeType>DIL</shapeType>
+    </entry>
+</circuit>
+"#;
+        let Err(err) = File::parse(input) else {
+            panic!("Expected an error")
+        };
+        println!("{err:?} {}", err.source().unwrap());
+        assert!(matches!(
+            err,
+            DigFileError(DigFileErrorKind::XMLError(_, _))
+        ))
     }
 }

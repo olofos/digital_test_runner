@@ -53,3 +53,20 @@ pub struct ParseError {
     #[label("here")]
     pub at: logos::Span,
 }
+
+#[derive(Debug, Error, Diagnostic)]
+#[diagnostic(transparent)]
+#[error(transparent)]
+/// Error while loading dig file
+pub struct DigFileError(#[from] pub(crate) DigFileErrorKind);
+
+#[derive(Debug, Error, Diagnostic)]
+#[diagnostic()]
+pub(crate) enum DigFileErrorKind {
+    #[error("XML parsing error")]
+    XMLError(#[source] roxmltree::Error, #[label("here")] logos::Span),
+    #[error("Could not parse empty test")]
+    EmptyTest,
+    #[error("Signals {0} found in tests but not found in circuit")]
+    MissingSignals(String),
+}
