@@ -241,7 +241,7 @@ mod tests {
         ctx.set("a", 1);
         ctx.set("b", 2);
         ctx.set("c", 3);
-        assert_eq!(expr.eval(&mut ctx).unwrap(), value);
+        assert_eq!(expr.eval(&mut ctx), value);
     }
 
     #[rstest]
@@ -265,7 +265,7 @@ mod tests {
         ctx.set("a", 1);
         ctx.set("b", 2);
         ctx.set("c", 3);
-        assert_eq!(expr.eval(&mut ctx).unwrap(), value);
+        assert_eq!(expr.eval(&mut ctx), value);
     }
 
     #[rstest]
@@ -279,7 +279,7 @@ mod tests {
         ctx.set("a", 1);
         ctx.set("b", 2);
         ctx.set("c", 3);
-        assert_eq!(expr.eval(&mut ctx).unwrap(), value);
+        assert_eq!(expr.eval(&mut ctx), value);
     }
 
     #[test]
@@ -287,9 +287,9 @@ mod tests {
         let mut parser = Parser::new("random(10)");
         let expr = parser.parse_expr().unwrap();
         let mut ctx = EvalContext::with_seed(0);
-        assert_eq!(expr.eval(&mut ctx).unwrap(), 1);
-        assert_eq!(expr.eval(&mut ctx).unwrap(), 6);
-        assert_eq!(expr.eval(&mut ctx).unwrap(), 3);
+        assert_eq!(expr.eval(&mut ctx), 1);
+        assert_eq!(expr.eval(&mut ctx), 6);
+        assert_eq!(expr.eval(&mut ctx), 3);
     }
 
     #[rstest]
@@ -299,6 +299,6 @@ mod tests {
         let mut parser = Parser::new(input);
         let expr = parser.parse_expr().unwrap();
         let mut ctx = EvalContext::new();
-        assert_eq!(expr.eval(&mut ctx).unwrap(), value);
+        assert_eq!(expr.eval(&mut ctx), value);
     }
 }

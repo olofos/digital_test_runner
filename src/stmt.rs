@@ -121,7 +121,7 @@ impl<'a> StmtIterator<'a> {
                     };
 
                     match next {
-                        Stmt::Let { name, expr } => ctx.set(name, expr.eval(ctx)?),
+                        Stmt::Let { name, expr } => ctx.set(name, expr.eval(ctx)),
                         Stmt::DataRow { data, line } => {
                             let mut entries = vec![];
                             for entry in data {
@@ -139,7 +139,7 @@ impl<'a> StmtIterator<'a> {
                         } => {
                             self.inner_state = StmtIteratorState::StartLoop(LoopState {
                                 variable,
-                                max: max.eval(ctx)?,
+                                max: max.eval(ctx),
                                 stmts: inner,
                             })
                         }
@@ -190,7 +190,7 @@ impl<'a> StmtIterator<'a> {
                     }
                 }
                 StmtIteratorState::StartWhile(while_state) => {
-                    let cond = while_state.condition.eval(ctx)?;
+                    let cond = while_state.condition.eval(ctx);
                     if cond == 0 {
                         self.inner_state = StmtIteratorState::Iterate;
                     } else {
@@ -222,9 +222,9 @@ impl<'a> StmtIterator<'a> {
 impl DataEntry {
     fn eval(&self, ctx: &mut EvalContext) -> anyhow::Result<Vec<DataEntry>> {
         match self {
-            Self::Expr(expr) => Ok(vec![Self::Number(expr.eval(ctx)?)]),
+            Self::Expr(expr) => Ok(vec![Self::Number(expr.eval(ctx))]),
             Self::Bits { number, expr } => {
-                let value = expr.eval(ctx)?;
+                let value = expr.eval(ctx);
                 let entries = (0..*number)
                     .rev()
                     .map(|n| Self::Number((value >> n) & 1))

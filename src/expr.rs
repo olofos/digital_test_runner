@@ -104,7 +104,7 @@ impl Display for Expr {
 pub(crate) struct FuncTableEntry {
     pub(crate) name: &'static str,
     pub(crate) number_of_args: usize,
-    f: fn(&EvalContext, &[Expr]) -> anyhow::Result<i64>,
+    f: fn(&EvalContext, &[Expr]) -> i64,
 }
 
 pub(crate) struct FuncTable {
@@ -137,68 +137,112 @@ pub(crate) const FUNC_TABLE: FuncTable = FuncTable {
     ],
 };
 
-fn func_random(ctx: &EvalContext, args: &[Expr]) -> anyhow::Result<i64> {
-    let max = args[0].eval(ctx)?;
-    Ok(ctx.random(1..max))
+fn func_random(ctx: &EvalContext, args: &[Expr]) -> i64 {
+    let max = args[0].eval(ctx);
+    ctx.random(1..max)
 }
 
-fn func_ite(ctx: &EvalContext, args: &[Expr]) -> anyhow::Result<i64> {
-    let test = args[0].eval(ctx)?;
+fn func_ite(ctx: &EvalContext, args: &[Expr]) -> i64 {
+    let test = args[0].eval(ctx);
     if test == 0 {
-        Ok(args[2].eval(ctx)?)
+        args[2].eval(ctx)
     } else {
-        Ok(args[1].eval(ctx)?)
+        args[1].eval(ctx)
     }
 }
 
-fn func_sign_ext(_ctx: &EvalContext, _args: &[Expr]) -> anyhow::Result<i64> {
+fn func_sign_ext(_ctx: &EvalContext, _args: &[Expr]) -> i64 {
     todo!("signExt")
 }
 
 impl Expr {
-    pub(crate) fn eval(&self, ctx: &EvalContext) -> anyhow::Result<i64> {
+    pub(crate) fn eval(&self, ctx: &EvalContext) -> i64 {
         match self {
-            Self::Number(n) => Ok(*n),
+            Self::Number(n) => *n,
             Self::Variable(name) => ctx
                 .get(name)
-                .ok_or(anyhow::anyhow!("Variable {name} not found")),
+                .expect("Variable {name} not found. This should have been found at parse time"),
             Self::UnaryOp { op, expr } => {
-                let val = expr.eval(ctx)?;
+                let val = expr.eval(ctx);
                 match op {
-                    UnaryOp::BinaryNot => Ok(!val),
-                    UnaryOp::LogicalNot => Ok(if val == 0 { 1 } else { 0 }),
-                    UnaryOp::Minus => Ok(-val),
+                    UnaryOp::BinaryNot => !val,
+                    UnaryOp::LogicalNot => {
+                        if val == 0 {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    UnaryOp::Minus => -val,
                 }
             }
             Self::BinOp { op, left, right } => {
-                let left = left.eval(ctx)?;
-                let right = right.eval(ctx)?;
+                let left = left.eval(ctx);
+                let right = right.eval(ctx);
                 match op {
-                    BinOp::Equal => Ok(if left == right { 1 } else { 0 }),
-                    BinOp::NotEqual => Ok(if left != right { 1 } else { 0 }),
-                    BinOp::GreaterThan => Ok(if left > right { 1 } else { 0 }),
-                    BinOp::LessThan => Ok(if left < right { 1 } else { 0 }),
-                    BinOp::GreaterThanOrEqual => Ok(if left >= right { 1 } else { 0 }),
-                    BinOp::LessThanOrEqual => Ok(if left <= right { 1 } else { 0 }),
-                    BinOp::Or => Ok(left | right),
-                    BinOp::Xor => Ok(left ^ right),
-                    BinOp::And => Ok(left & right),
-                    BinOp::ShiftLeft => Ok(left << right),
-                    BinOp::ShiftRight => Ok(left >> right),
-                    BinOp::Plus => Ok(left + right),
-                    BinOp::Minus => Ok(left - right),
-                    BinOp::Times => Ok(left * right),
-                    BinOp::Divide => Ok(left / right),
-                    BinOp::Reminder => Ok(left % right),
+                    BinOp::Equal => {
+                        if left == right {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    BinOp::NotEqual => {
+                        if left != right {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    BinOp::GreaterThan => {
+                        if left > right {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    BinOp::LessThan => {
+                        if left < right {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    BinOp::GreaterThanOrEqual => {
+                        if left >= right {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    BinOp::LessThanOrEqual => {
+                        if left <= right {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    BinOp::Or => left | right,
+                    BinOp::Xor => left ^ right,
+                    BinOp::And => left & right,
+                    BinOp::ShiftLeft => left << right,
+                    BinOp::ShiftRight => left >> right,
+                    BinOp::Plus => left + right,
+                    BinOp::Minus => left - right,
+                    BinOp::Times => left * right,
+                    BinOp::Divide => left / right,
+                    BinOp::Reminder => left % right,
                 }
             }
             Self::Func { name, args } => {
                 let Some(entry) = FUNC_TABLE.get(name) else {
-                    anyhow::bail!("Function '{name}' not found");
+                    panic!(
+                        "Function '{name}' not found. This should have been found at parse time"
+                    );
                 };
                 if entry.number_of_args != args.len() {
-                    anyhow::bail!(
-                        "The function '{name}' takes {} arguments, but {} were found",
+                    panic!(
+                        "The function '{name}' takes {} arguments, but {} were found. This should have been found at parse time",
                         entry.number_of_args,
                         args.len()
                     );
