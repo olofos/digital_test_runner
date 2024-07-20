@@ -178,9 +178,7 @@ impl<'a> StmtIterator<'a> {
                     };
                 }
                 StmtIteratorState::EndIterateInner(loop_state) => {
-                    let value = ctx.get(loop_state.variable).ok_or_else(|| {
-                        anyhow::anyhow!("Unknown variable {}", loop_state.variable)
-                    })? + 1;
+                    let value = ctx.get(loop_state.variable).unwrap() + 1;
                     if value < loop_state.max {
                         ctx.set(loop_state.variable, value);
                         self.inner_state = StmtIteratorState::StartIterateInner(loop_state.take());
