@@ -573,11 +573,7 @@ impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.cache.is_empty() {
-            let row_result = match self.iter.next_with_context(&mut self.ctx) {
-                Ok(Some(entries)) => entries,
-                Ok(None) => return None,
-                Err(e) => return Some(Err(RunError::Runtime(e))),
-            };
+            let row_result = self.iter.next_with_context(&mut self.ctx)?;
             self.cache.push((row_result, true));
         }
 

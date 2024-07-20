@@ -109,28 +109,23 @@ impl<'a> StmtIterator<'a> {
             inner_state: StmtIteratorState::Iterate,
         }
     }
-    pub(crate) fn next_with_context(
-        &mut self,
-        ctx: &mut EvalContext,
-    ) -> anyhow::Result<Option<DataEntries>> {
+    pub(crate) fn next_with_context(&mut self, ctx: &mut EvalContext) -> Option<DataEntries> {
         loop {
             match &mut self.inner_state {
                 StmtIteratorState::Iterate => {
-                    let Some(next) = self.stmt_iter.next() else {
-                        return Ok(None);
-                    };
+                    let next = self.stmt_iter.next()?;
 
                     match next {
                         Stmt::Let { name, expr } => ctx.set(name, expr.eval(ctx)),
                         Stmt::DataRow { data, line } => {
                             let mut entries = vec![];
                             for entry in data {
-                                entries.extend(entry.eval(ctx)?);
+                                entries.extend(entry.eval(ctx));
                             }
-                            return Ok(Some(DataEntries {
+                            return Some(DataEntries {
                                 entries,
                                 line: *line,
-                            }));
+                            });
                         }
                         Stmt::Loop {
                             variable,
@@ -156,8 +151,8 @@ impl<'a> StmtIterator<'a> {
                     inner_iterator,
                     loop_state,
                 } => {
-                    if let Some(result) = inner_iterator.next_with_context(ctx)? {
-                        return Ok(Some(result));
+                    if let Some(result) = inner_iterator.next_with_context(ctx) {
+                        return Some(result);
                     }
                     self.inner_state = StmtIteratorState::EndIterateInner(loop_state.take())
                 }
@@ -207,8 +202,8 @@ impl<'a> StmtIterator<'a> {
                     inner_iterator,
                     while_state,
                 } => {
-                    if let Some(result) = inner_iterator.next_with_context(ctx)? {
-                        return Ok(Some(result));
+                    if let Some(result) = inner_iterator.next_with_context(ctx) {
+                        return Some(result);
                     }
                     self.inner_state = StmtIteratorState::StartWhile(while_state.take())
                 }
@@ -218,18 +213,17 @@ impl<'a> StmtIterator<'a> {
 }
 
 impl DataEntry {
-    fn eval(&self, ctx: &mut EvalContext) -> anyhow::Result<Vec<DataEntry>> {
+    fn eval(&self, ctx: &mut EvalContext) -> Vec<DataEntry> {
         match self {
-            Self::Expr(expr) => Ok(vec![Self::Number(expr.eval(ctx))]),
+            Self::Expr(expr) => vec![Self::Number(expr.eval(ctx))],
             Self::Bits { number, expr } => {
                 let value = expr.eval(ctx);
-                let entries = (0..*number)
+                (0..*number)
                     .rev()
                     .map(|n| Self::Number((value >> n) & 1))
-                    .collect();
-                Ok(entries)
+                    .collect()
             }
-            Self::X | Self::Z | Self::C | Self::Number(_) => Ok(vec![self.clone()]),
+            Self::X | Self::Z | Self::C | Self::Number(_) => vec![self.clone()],
         }
     }
 }
@@ -349,7 +343,7 @@ A B
         let mut ctx = EvalContext::new();
         let mut result = vec![];
         let mut iter = StmtIterator::new(&testcase.stmts);
-        while let Some(row) = iter.next_with_context(&mut ctx).unwrap() {
+        while let Some(row) = iter.next_with_context(&mut ctx) {
             result.push(row.entries);
         }
         assert_eq!(result, expectation)
@@ -383,7 +377,7 @@ end loop
         let mut ctx = EvalContext::new();
         let mut result = vec![];
         let mut iter = StmtIterator::new(&testcase.stmts);
-        while let Some(row) = iter.next_with_context(&mut ctx).unwrap() {
+        while let Some(row) = iter.next_with_context(&mut ctx) {
             result.push(row.entries);
         }
         assert_eq!(result, expectation)
@@ -411,7 +405,7 @@ bits(2,n)
         let mut ctx = EvalContext::new();
         let mut result = vec![];
         let mut iter = StmtIterator::new(&testcase.stmts);
-        while let Some(row) = iter.next_with_context(&mut ctx).unwrap() {
+        while let Some(row) = iter.next_with_context(&mut ctx) {
             result.push(row.entries);
         }
         assert_eq!(result, expectation)
@@ -438,7 +432,7 @@ end while
         let mut ctx = EvalContext::new();
         let mut result = vec![];
         let mut iter = StmtIterator::new(&testcase.stmts);
-        while let Some(row) = iter.next_with_context(&mut ctx).unwrap() {
+        while let Some(row) = iter.next_with_context(&mut ctx) {
             result.push(row.entries);
         }
         assert_eq!(result, expectation)
