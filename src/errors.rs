@@ -5,13 +5,26 @@ use crate::lexer::TokenKind;
 
 #[derive(Debug, Error)]
 /// Error returned from DataRowIterator
-pub enum RunError<T> {
+pub enum RuntimeError<T> {
     /// Driver error
     #[error("Driver error")]
     Driver(#[from] T),
     /// Runtime error
     #[error("Runtime error")]
-    Runtime(anyhow::Error),
+    Runtime(#[source] RuntimeErrorKind),
+}
+
+/// Possible internal runtime errors
+#[derive(Debug, Error)]
+pub enum RuntimeErrorKind {
+    /// If the driver returns a non-empty [Vec] of outputs
+    /// it should always have the same number of elements.
+    #[error("Wrong number of outputs. Expected {0} but got {1}")]
+    WrongNumberOfOutputs(usize, usize),
+    /// If the driver returns a non-empty [Vec] of outputs
+    /// the signals should always appear in the same order
+    #[error("The order of the outputs must not change.")]
+    WrongOutputOrder,
 }
 
 #[derive(Debug, Error, Diagnostic)]

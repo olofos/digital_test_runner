@@ -21,7 +21,7 @@ use stmt::DataEntries;
 pub use crate::value::{ExpectedValue, InputValue, OutputValue};
 
 use crate::check::TestCheck;
-use crate::errors::RunError;
+use crate::errors::RuntimeError;
 use crate::eval_context::EvalContext;
 use crate::stmt::{DataEntry, Stmt, StmtIterator};
 use std::collections::HashMap;
@@ -513,7 +513,7 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
         &mut self,
         inputs: &[InputEntry<'a>],
         update_output: bool,
-    ) -> Result<Vec<OutputValue>, RunError<T::Error>> {
+    ) -> Result<Vec<OutputValue>, RuntimeError<T::Error>> {
         if update_output {
             let outputs = self.driver.write_input_and_read_output(inputs)?;
             self.ctx.set_outputs(&outputs);
@@ -527,11 +527,9 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
             let num_outputs = self.test_data.num_outputs();
 
             if outputs.len() != num_outputs {
-                return Err(RunError::Runtime(anyhow::anyhow!(
-                    "Expected {} outputs but got {}",
-                    num_outputs,
-                    outputs.len()
-                )));
+                return Err(RuntimeError::Runtime(
+                    errors::RuntimeErrorKind::WrongNumberOfOutputs(num_outputs, outputs.len()),
+                ));
             }
 
             self.test_data
@@ -547,9 +545,9 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
                         if expected_signal == output_signal {
                             Ok(outputs[*output_entry_index].value)
                         } else {
-                            Err(RunError::Runtime(anyhow::anyhow!(
-                                "Output entries should be given in a fixed order"
-                            )))
+                            Err(RuntimeError::Runtime(
+                                errors::RuntimeErrorKind::WrongOutputOrder,
+                            ))
                         }
                     } else {
                         Ok(OutputValue::X)
@@ -569,7 +567,7 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
 }
 
 impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
-    type Item = Result<DataRow<'a>, RunError<T::Error>>;
+    type Item = Result<DataRow<'a>, RuntimeError<T::Error>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.cache.is_empty() {
