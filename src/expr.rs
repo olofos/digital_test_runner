@@ -266,7 +266,8 @@ mod tests {
     #[case("1+2+3=2*3", 1)]
     #[case("1+2+3=b*c", 1)]
     fn eval_works(#[case] input: &str, #[case] value: i64) {
-        let mut parser = Parser::new(input, 1);
+        let signals = vec!["a".to_string()];
+        let mut parser = Parser::new(input, &signals);
         let expr = parser.parse_expr().unwrap();
         let mut ctx = EvalContext::new();
         ctx.set("a", 1);
@@ -290,7 +291,8 @@ mod tests {
     #[case("7/3", 2)]
     #[case("7%3", 1)]
     fn eval_works_for_binop(#[case] input: &str, #[case] value: i64) {
-        let mut parser = Parser::new(input, 1);
+        let signals = vec!["a".to_string()];
+        let mut parser = Parser::new(input, &signals);
         let expr = parser.parse_expr().unwrap();
         let mut ctx = EvalContext::new();
         ctx.set("a", 1);
@@ -304,7 +306,8 @@ mod tests {
     #[case("~3", !3)]
     #[case("!3", 0)]
     fn eval_works_for_unary_op(#[case] input: &str, #[case] value: i64) {
-        let mut parser = Parser::new(input, 1);
+        let signals = vec!["a".to_string()];
+        let mut parser = Parser::new(input, &signals);
         let expr = parser.parse_expr().unwrap();
         let mut ctx = EvalContext::new();
         ctx.set("a", 1);
@@ -315,7 +318,8 @@ mod tests {
 
     #[test]
     fn eval_random_works() {
-        let mut parser = Parser::new("random(10)", 1);
+        let signals = vec!["a".to_string()];
+        let mut parser = Parser::new("random(10)", &signals);
         let expr = parser.parse_expr().unwrap();
         let mut ctx = EvalContext::with_seed(0);
         assert_eq!(expr.eval(&mut ctx), 1);
@@ -327,7 +331,8 @@ mod tests {
     #[case("ite(0,2,3)", 3)]
     #[case("ite(1,2,3)", 2)]
     fn eval_ite_works(#[case] input: &str, #[case] value: i64) {
-        let mut parser = Parser::new(input, 1);
+        let signals = vec!["a".to_string()];
+        let mut parser = Parser::new(input, &signals);
         let expr = parser.parse_expr().unwrap();
         let mut ctx = EvalContext::new();
         assert_eq!(expr.eval(&mut ctx), value);

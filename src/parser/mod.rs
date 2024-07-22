@@ -20,7 +20,7 @@ pub(crate) struct Parser<'a> {
     input: &'a str,
     iter: Peekable<TokenIter<'a>>,
     line: usize,
-    num_signals: usize,
+    signals: &'a [String],
 }
 
 impl Token {
@@ -65,23 +65,23 @@ impl<'a> HeaderParser<'a> {
 
 impl<'a> Parser<'a> {
     #[cfg(test)]
-    pub(crate) fn new(input: &'a str, num_signals: usize) -> Self {
+    pub(crate) fn new(input: &'a str, signals: &'a [String]) -> Self {
         let iter = TokenIter::new(input);
         Self {
             iter: iter.peekable(),
             input,
             line: 1,
-            num_signals,
+            signals,
         }
     }
 
-    fn from(HeaderParser { input, iter, line }: HeaderParser<'a>, num_signals: usize) -> Self {
+    fn from(HeaderParser { input, iter, line }: HeaderParser<'a>, signals: &'a [String]) -> Self {
         let iter = TokenIter::from(iter).peekable();
         Parser {
             input,
             iter,
             line,
-            num_signals,
+            signals,
         }
     }
 
@@ -144,7 +144,7 @@ pub(crate) fn parse_testcase(input: &str) -> Result<ParsedTestCase, ParseError> 
     let mut parser = HeaderParser::new(input);
     let signals = parser.parse()?;
 
-    let mut parser = Parser::from(parser, signals.len());
+    let mut parser = Parser::from(parser, &signals);
     let stmts = parser.parse_stmt_block(None)?;
 
     let test_case = ParsedTestCase { stmts, signals };

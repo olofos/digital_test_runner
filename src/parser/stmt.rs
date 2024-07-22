@@ -5,16 +5,6 @@ use crate::{
     stmt::{DataEntry, Stmt},
 };
 
-fn num_data_row_entries(entries: &[DataEntry]) -> usize {
-    entries
-        .iter()
-        .map(|entry| match entry {
-            DataEntry::Bits { number, expr: _ } => *number as usize,
-            _ => 1,
-        })
-        .sum()
-}
-
 impl<'a> Parser<'a> {
     pub(crate) fn parse_stmt_block(
         &mut self,
@@ -31,20 +21,7 @@ impl<'a> Parser<'a> {
                 | TokenKind::HexInt
                 | TokenKind::BinInt
                 | TokenKind::OctInt => {
-                    let row_start = self.peek_span().start;
                     let data = self.parse_data_row()?;
-                    let num_signals = num_data_row_entries(&data);
-                    let row_end = self.peek_span().end;
-
-                    if num_signals != self.num_signals {
-                        return Err(ParseError {
-                            kind: ParseErrorKind::DataRowWithWrongNumberOfSignals {
-                                expected: self.num_signals,
-                                found: num_signals,
-                            },
-                            at: row_start..row_end,
-                        });
-                    }
 
                     block.push(Stmt::DataRow {
                         data,
@@ -156,13 +133,17 @@ impl<'a> Parser<'a> {
 
     fn parse_data_row(&mut self) -> Result<Vec<DataEntry>, ParseError> {
         let mut data = vec![];
+        let mut signal_index = 0;
+        let row_start = self.peek_span().start;
+
         loop {
             match self.peek() {
                 TokenKind::LParen => {
                     self.skip();
                     let expr = self.parse_expr()?;
                     self.expect(TokenKind::RParen)?;
-                    data.push(DataEntry::Expr(expr))
+                    data.push(DataEntry::Expr(expr));
+                    signal_index += 1;
                 }
                 TokenKind::Bits => {
                     self.skip();
@@ -181,7 +162,8 @@ impl<'a> Parser<'a> {
                     self.expect(TokenKind::Comma)?;
                     let expr = self.parse_expr()?;
                     self.expect(TokenKind::RParen)?;
-                    data.push(DataEntry::Bits { number, expr })
+                    data.push(DataEntry::Bits { number, expr });
+                    signal_index += number as usize;
                 }
                 TokenKind::Ident => {
                     let token = self.get()?;
@@ -195,10 +177,12 @@ impl<'a> Parser<'a> {
                             }))
                         }
                     }
+                    signal_index += 1;
                 }
                 TokenKind::DecInt | TokenKind::HexInt | TokenKind::BinInt | TokenKind::OctInt => {
                     let n = self.parse_number()?;
                     data.push(DataEntry::Number(n));
+                    signal_index += 1;
                 }
                 TokenKind::Eol | TokenKind::Eof => break,
                 kind => {
@@ -207,6 +191,18 @@ impl<'a> Parser<'a> {
                 }
             }
         }
+        let row_end = self.peek_span().start;
+
+        if signal_index != self.signals.len() {
+            return Err(ParseError {
+                kind: ParseErrorKind::DataRowWithWrongNumberOfSignals {
+                    expected: self.signals.len(),
+                    found: signal_index,
+                },
+                at: row_start..row_end,
+            });
+        }
+
         Ok(data)
     }
 }
@@ -220,7 +216,7 @@ mod test {
     #[test]
     fn can_parse_let_stmt() {
         let input = "let a = 1;\n";
-        let mut parser = Parser::new(input, 0);
+        let mut parser = Parser::new(input, &[]);
         let block = parser.parse_stmt_block(None).unwrap();
         assert_eq!(
             block,
@@ -234,14 +230,14 @@ mod test {
     #[test]
     fn can_parse_empty_line() {
         let input = "let a = 1;\n\nlet b = 2;\n";
-        let mut parser = Parser::new(input, 0);
+        let mut parser = Parser::new(input, &[]);
         parser.parse_stmt_block(None).unwrap();
     }
 
     #[test]
     fn can_parse_loop_stmt() {
         let input = "loop(n,3)\nlet a = 1;\nend loop\n";
-        let mut parser = Parser::new(input, 0);
+        let mut parser = Parser::new(input, &[]);
         let block = parser.parse_stmt_block(None).unwrap();
         let Stmt::Loop {
             variable,
@@ -264,7 +260,11 @@ mod test {
 
     #[test]
     fn can_parse_data_row() {
-        let mut parser = Parser::new("1 (a+b) X\tZ\t\tbits(1,3*7)", 25);
+        let signals = ["a", "b", "c", "d", "e", "f"]
+            .into_iter()
+            .map(String::from)
+            .collect::<Vec<_>>();
+        let mut parser = Parser::new("1 (a+b) X\tZ\t\tbits(1,3)", &signals);
         let data = parser.parse_data_row().unwrap();
         assert_eq!(data.len(), 5);
     }
@@ -288,13 +288,30 @@ repeat(3) 0 (ADD) (a)      (b)      0 1          0         (a+b)         X    X 
 end loop
 end loop
 "#;
-        let mut parser = Parser::new(input, 11);
+        let signals = [
+            "BUS-CLK",
+            "S",
+            "A",
+            "B",
+            "N",
+            "ALU-~RESET",
+            "ALU-AUX",
+            "OUT",
+            "FLAG",
+            "DLEN",
+            "DSUM",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect::<Vec<_>>();
+        let mut parser = Parser::new(input, &signals);
         parser.parse_stmt_block(None).unwrap();
     }
 
     #[test]
     fn gives_error_on_wrong_number_of_signals_in_data_row() {
-        let mut parser = Parser::new("1 1 1\n", 2);
+        let signals = vec!["a".to_string(), "b".to_string()];
+        let mut parser = Parser::new("1 1 1\n", &signals);
         let result = parser.parse_stmt_block(None);
         assert!(result.is_err());
     }
