@@ -168,7 +168,11 @@ impl<'a> Parser<'a> {
                 TokenKind::Ident => {
                     let token = self.get()?;
                     match self.text(&token) {
-                        "c" | "C" => data.push(DataEntry::C),
+                        "c" | "C" => {
+                            self.expected_signals
+                                .insert(super::SignalType::Input(&self.signals[signal_index]));
+                            data.push(DataEntry::C);
+                        }
                         "x" | "X" => data.push(DataEntry::X),
                         "z" | "Z" => data.push(DataEntry::Z),
                         ident => {
