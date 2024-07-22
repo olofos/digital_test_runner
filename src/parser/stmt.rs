@@ -5,6 +5,16 @@ use crate::{
     stmt::{DataEntry, Stmt},
 };
 
+fn num_data_row_entries(entries: &[DataEntry]) -> usize {
+    entries
+        .iter()
+        .map(|entry| match entry {
+            DataEntry::Bits { number, expr: _ } => *number as usize,
+            _ => 1,
+        })
+        .sum()
+}
+
 impl<'a> Parser<'a> {
     pub(crate) fn parse_stmt_block(
         &mut self,
@@ -21,7 +31,21 @@ impl<'a> Parser<'a> {
                 | TokenKind::HexInt
                 | TokenKind::BinInt
                 | TokenKind::OctInt => {
+                    let row_start = self.peek_span().start;
                     let data = self.parse_data_row()?;
+                    let num_signals = num_data_row_entries(&data);
+                    let row_end = self.peek_span().end;
+
+                    if num_signals != self.num_signals {
+                        return Err(ParseError {
+                            kind: ParseErrorKind::DataRowWithWrongNumberOfSignals {
+                                expected: self.num_signals,
+                                found: num_signals,
+                            },
+                            at: row_start..row_end,
+                        });
+                    }
+
                     block.push(Stmt::DataRow {
                         data,
                         line: self.line,
@@ -196,7 +220,7 @@ mod test {
     #[test]
     fn can_parse_let_stmt() {
         let input = "let a = 1;\n";
-        let mut parser = Parser::new(input);
+        let mut parser = Parser::new(input, 0);
         let block = parser.parse_stmt_block(None).unwrap();
         assert_eq!(
             block,
@@ -210,14 +234,14 @@ mod test {
     #[test]
     fn can_parse_empty_line() {
         let input = "let a = 1;\n\nlet b = 2;\n";
-        let mut parser = Parser::new(input);
+        let mut parser = Parser::new(input, 0);
         parser.parse_stmt_block(None).unwrap();
     }
 
     #[test]
     fn can_parse_loop_stmt() {
         let input = "loop(n,3)\nlet a = 1;\nend loop\n";
-        let mut parser = Parser::new(input);
+        let mut parser = Parser::new(input, 0);
         let block = parser.parse_stmt_block(None).unwrap();
         let Stmt::Loop {
             variable,
@@ -240,7 +264,7 @@ mod test {
 
     #[test]
     fn can_parse_data_row() {
-        let mut parser = Parser::new("1 (a+b) X\tZ\t\tbits(1,3*7)");
+        let mut parser = Parser::new("1 (a+b) X\tZ\t\tbits(1,3*7)", 25);
         let data = parser.parse_data_row().unwrap();
         assert_eq!(data.len(), 5);
     }
@@ -264,7 +288,14 @@ repeat(3) 0 (ADD) (a)      (b)      0 1          0         (a+b)         X    X 
 end loop
 end loop
 "#;
-        let mut parser = Parser::new(input);
+        let mut parser = Parser::new(input, 11);
         parser.parse_stmt_block(None).unwrap();
+    }
+
+    #[test]
+    fn gives_error_on_wrong_number_of_signals_in_data_row() {
+        let mut parser = Parser::new("1 1 1\n", 2);
+        let result = parser.parse_stmt_block(None);
+        assert!(result.is_err());
     }
 }

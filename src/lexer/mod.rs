@@ -32,6 +32,7 @@ impl<'a> Iterator for TokenIter<'a> {
 }
 
 impl<'a> TokenIter<'a> {
+    #[cfg(test)]
     pub(crate) fn new(input: &'a str) -> Self {
         Self {
             iter: TokenKind::lexer(input).spanned(),

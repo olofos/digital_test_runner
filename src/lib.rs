@@ -206,10 +206,6 @@ impl EntryIndex {
             EntryIndex::Default { signal_index: _ } => false,
         }
     }
-
-    pub(crate) fn is_entry(&self) -> bool {
-        matches!(self, EntryIndex::Entry { .. })
-    }
 }
 
 impl<'a, 'b, T> DataRowIterator<'a, 'b, T> {

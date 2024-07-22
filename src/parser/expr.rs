@@ -159,7 +159,7 @@ mod tests {
     #[case("0b1010", 10)]
     #[case("0B1010", 10)]
     fn number_works(#[case] input: &str, #[case] num: i64) {
-        let mut parser = Parser::new(input);
+        let mut parser = Parser::new(input, 1);
         let expr = parser.parse_factor().unwrap();
         assert_eq!(expr, Expr::Number(num));
         assert_eq!(parser.peek(), TokenKind::Eof);
@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn unary_minus_works() {
         let input = "-2";
-        let mut parser = Parser::new(input);
+        let mut parser = Parser::new(input, 1);
         let expr = parser.parse_factor().unwrap();
         assert_eq!(
             expr,
@@ -188,7 +188,7 @@ mod tests {
     #[case("f(1)", Expr::Func { name: "f".into(), args: vec![Expr::Number(1)] })]
     #[case("f(1,a)", Expr::Func { name: "f".into(), args: vec![Expr::Number(1),Expr::Variable("a".into())] })]
     fn identifier_works(#[case] input: &str, #[case] expected: Expr) {
-        let mut parser = Parser::new(input);
+        let mut parser = Parser::new(input, 1);
         let expr = parser.parse_factor().unwrap();
         assert_eq!(expr, expected);
         assert_eq!(parser.peek(), TokenKind::Eof);
@@ -221,7 +221,7 @@ mod tests {
     #[case("1/2", "(1 / 2)")]
     #[case("1%2", "(1 % 2)")]
     fn expr_works(#[case] input: &str, #[case] result: &str) {
-        let mut parser = Parser::new(input);
+        let mut parser = Parser::new(input, 1);
         let expr = parser.parse_expr().unwrap();
         assert_eq!(format!("{expr}"), result);
     }

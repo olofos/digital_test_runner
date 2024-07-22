@@ -20,6 +20,7 @@ pub(crate) struct Parser<'a> {
     input: &'a str,
     iter: Peekable<TokenIter<'a>>,
     line: usize,
+    num_signals: usize,
 }
 
 impl Token {
@@ -28,13 +29,6 @@ impl Token {
             kind,
             at: self.span.clone(),
         }
-    }
-}
-
-impl<'a> From<HeaderParser<'a>> for Parser<'a> {
-    fn from(HeaderParser { input, iter, line }: HeaderParser<'a>) -> Self {
-        let iter = TokenIter::from(iter).peekable();
-        Parser { input, iter, line }
     }
 }
 
@@ -70,13 +64,24 @@ impl<'a> HeaderParser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    #[allow(dead_code)]
-    pub(crate) fn new(input: &'a str) -> Self {
+    #[cfg(test)]
+    pub(crate) fn new(input: &'a str, num_signals: usize) -> Self {
         let iter = TokenIter::new(input);
         Self {
             iter: iter.peekable(),
             input,
             line: 1,
+            num_signals,
+        }
+    }
+
+    fn from(HeaderParser { input, iter, line }: HeaderParser<'a>, num_signals: usize) -> Self {
+        let iter = TokenIter::from(iter).peekable();
+        Parser {
+            input,
+            iter,
+            line,
+            num_signals,
         }
     }
 
@@ -139,7 +144,7 @@ pub(crate) fn parse_testcase(input: &str) -> Result<ParsedTestCase, ParseError> 
     let mut parser = HeaderParser::new(input);
     let signals = parser.parse()?;
 
-    let mut parser = Parser::from(parser);
+    let mut parser = Parser::from(parser, signals.len());
     let stmts = parser.parse_stmt_block(None)?;
 
     let test_case = ParsedTestCase { stmts, signals };

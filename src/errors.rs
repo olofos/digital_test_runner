@@ -28,7 +28,7 @@ pub enum RuntimeErrorKind {
 }
 
 #[derive(Debug, Error, Diagnostic)]
-pub(crate) enum ParseErrorKind {
+pub(super) enum ParseErrorKind {
     #[error("Unexpected EOF")]
     UnexpectedEof,
     #[error("Unexpected token. Expected {expected_kind:?} but found {found_kind:?}")]
@@ -53,6 +53,8 @@ pub(crate) enum ParseErrorKind {
     ExpectedCXZ { ident: String },
     #[error("Unexpected End token at top level")]
     UnexpectedEndAtTopLevel,
+    #[error("Wrong number of entries in data row. Expected {expected} but found {found}")]
+    DataRowWithWrongNumberOfSignals { expected: usize, found: usize },
 }
 
 #[derive(Debug, Error, Diagnostic)]

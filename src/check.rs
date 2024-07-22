@@ -73,12 +73,6 @@ impl<'a> CheckContext<'a> {
 
 impl Stmt {
     pub(crate) fn check(&self, ctx: &mut CheckContext<'_>) -> anyhow::Result<()> {
-        let expected_length = ctx
-            .input_indices
-            .iter()
-            .chain(ctx.expected_indices)
-            .filter(|entry| entry.is_entry())
-            .count();
         match self {
             Stmt::Let { name, expr } => {
                 expr.check(ctx)?;
@@ -117,12 +111,6 @@ impl Stmt {
                             *number as usize
                         }
                     }
-                }
-                if entry_index != expected_length {
-                    anyhow::bail!(
-                        "Error on line {line}: expected {} entries but found {entry_index}",
-                        expected_length
-                    );
                 }
             }
             Stmt::Loop {
@@ -241,8 +229,6 @@ mod tests {
     }
 
     #[rstest]
-    #[case("A B\n1 1 1\n")]
-    #[case("A B\nbits(2,11) 1\n")]
     #[case("A B\n(1+f(1)) 1\n")]
     #[case("A B\n(C) 1\n")]
     #[case("A B\n(A) 1\n")]
