@@ -169,8 +169,9 @@ impl<'a> Parser<'a> {
                     let token = self.get()?;
                     match self.text(&token) {
                         "c" | "C" => {
-                            self.expected_signals
-                                .insert(super::SignalType::Input(&self.signals[signal_index]));
+                            self.expected_inputs
+                                .entry(&self.signals[signal_index])
+                                .or_insert(token.span);
                             data.push(DataEntry::C);
                         }
                         "x" | "X" => data.push(DataEntry::X),

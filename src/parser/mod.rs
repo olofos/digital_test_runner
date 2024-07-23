@@ -8,7 +8,7 @@ use crate::{
     ParsedTestCase,
 };
 use logos::{Lexer, Logos};
-use std::{collections::HashSet, iter::Peekable};
+use std::{collections::HashMap, iter::Peekable};
 
 pub(crate) struct HeaderParser<'a> {
     input: &'a str,
@@ -16,18 +16,12 @@ pub(crate) struct HeaderParser<'a> {
     line: usize,
 }
 
-#[derive(Hash, PartialEq, Eq)]
-enum SignalType<'a> {
-    Input(&'a str),
-    Output(&'a str),
-}
-
 pub(crate) struct Parser<'a> {
     input: &'a str,
     iter: Peekable<TokenIter<'a>>,
     line: usize,
     signals: &'a [String],
-    expected_signals: HashSet<SignalType<'a>>,
+    expected_inputs: HashMap<&'a str, logos::Span>,
 }
 
 impl Token {
@@ -79,7 +73,7 @@ impl<'a> Parser<'a> {
             input,
             line: 1,
             signals,
-            expected_signals: HashSet::new(),
+            expected_inputs: HashMap::new(),
         }
     }
 
@@ -90,7 +84,7 @@ impl<'a> Parser<'a> {
             iter,
             line,
             signals,
-            expected_signals: HashSet::new(),
+            expected_inputs: HashMap::new(),
         }
     }
 
