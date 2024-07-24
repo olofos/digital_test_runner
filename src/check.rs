@@ -7,7 +7,7 @@ use crate::{EntryIndex, Signal};
 pub(crate) struct CheckContext<'a> {
     vars: FramedSet<String>,
     signals: &'a [Signal],
-    input_indices: &'a [EntryIndex],
+    _input_indices: &'a [EntryIndex],
     expected_indices: &'a [EntryIndex],
     pub(crate) is_static: bool,
 }
@@ -45,7 +45,7 @@ impl<'a> CheckContext<'a> {
         Self {
             vars: FramedSet::new(),
             signals,
-            input_indices,
+            _input_indices: input_indices,
             expected_indices,
             is_static: true,
         }
@@ -78,37 +78,15 @@ impl Stmt {
                 expr.check(ctx)?;
                 ctx.define_var(name);
             }
-            Stmt::DataRow { data, line } => {
-                let mut entry_index = 0;
+            Stmt::DataRow { data, line: _ } => {
                 for entry in data {
-                    entry_index += match entry {
-                        DataEntry::Number(_) | DataEntry::X | DataEntry::Z => 1,
-                        DataEntry::C => {
-                            if !ctx
-                                .input_indices
-                                .iter()
-                                .any(|entry| entry.indexes(entry_index))
-                            {
-                                let signal_index = ctx
-                                    .expected_indices
-                                    .iter()
-                                    .find(|entry| entry.indexes(entry_index))
-                                    .unwrap()
-                                    .signal_index();
-                                anyhow::bail!(
-                                    "Unexpected C for output signal {} on line {line}",
-                                    ctx.signals[signal_index].name
-                                );
-                            }
-                            1
-                        }
+                    match entry {
+                        DataEntry::Number(_) | DataEntry::X | DataEntry::Z | DataEntry::C => {}
                         DataEntry::Expr(expr) => {
                             expr.check(ctx)?;
-                            1
                         }
-                        DataEntry::Bits { number, expr } => {
+                        DataEntry::Bits { number: _, expr } => {
                             expr.check(ctx)?;
-                            *number as usize
                         }
                     }
                 }
@@ -220,7 +198,6 @@ mod tests {
     #[case("A B\n(A) 1\n")]
     #[case("A B\nloop (C,2)\n1 1\nend loop\n(C) 1\n")]
     #[case("A B\nbits(2,D)\n")]
-    #[case("A B\n1 C\n")]
     fn check_returns_error(#[case] input: &str) {
         let testcase: ParsedTestCase = input.parse().unwrap();
         let signals = vec![
