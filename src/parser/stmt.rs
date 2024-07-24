@@ -34,16 +34,20 @@ impl<'a> Parser<'a> {
                     self.expect(TokenKind::LParen)?;
                     let variable = {
                         let token = self.expect(TokenKind::Ident)?;
-                        self.text(&token).to_string()
+                        self.text(&token)
                     };
                     self.expect(TokenKind::Comma)?;
                     let max = self.parse_const_expr()?;
                     self.expect(TokenKind::RParen)?;
                     self.expect(TokenKind::Eol)?;
+
+                    self.vars.push_frame();
+                    self.vars.insert(variable);
                     let inner = self.parse_stmt_block(Some(TokenKind::Loop))?;
+                    self.vars.pop_frame();
 
                     block.push(Stmt::Loop {
-                        variable,
+                        variable: variable.to_string(),
                         max,
                         inner,
                     });
@@ -53,7 +57,12 @@ impl<'a> Parser<'a> {
                     self.expect(TokenKind::LParen)?;
                     let max = self.parse_const_expr()?;
                     self.expect(TokenKind::RParen)?;
+
+                    self.vars.push_frame();
+                    self.vars.insert("n");
                     let data = self.parse_data_row()?;
+                    self.vars.pop_frame();
+
                     let stmt = Stmt::DataRow {
                         data,
                         line: self.line,
@@ -68,12 +77,16 @@ impl<'a> Parser<'a> {
                     self.skip();
                     let name = {
                         let token = self.expect(TokenKind::Ident)?;
-                        self.text(&token).to_string()
+                        self.text(&token)
                     };
                     self.expect(TokenKind::Equal)?;
                     let expr = self.parse_expr()?;
                     self.expect(TokenKind::Semi)?;
-                    block.push(Stmt::Let { name, expr });
+                    self.vars.insert(name);
+                    block.push(Stmt::Let {
+                        name: name.to_string(),
+                        expr,
+                    });
                 }
                 TokenKind::ResetRandom => {
                     self.skip();

@@ -114,13 +114,13 @@ impl<'a> Parser<'a> {
             }
             TokenKind::Ident => {
                 let ident_tok = self.get()?;
-                let name = self.text(&ident_tok).to_string();
+                let name = self.text(&ident_tok);
 
                 if self.at(TokenKind::LParen) {
-                    let Some(func_entry) = FUNC_TABLE.get(&name) else {
-                        return Err(
-                            ident_tok.error(ParseErrorKind::FunctionNotFound { ident: name })
-                        );
+                    let Some(func_entry) = FUNC_TABLE.get(name) else {
+                        return Err(ident_tok.error(ParseErrorKind::FunctionNotFound {
+                            ident: name.to_string(),
+                        }));
                     };
 
                     let mut args = vec![];
@@ -142,10 +142,16 @@ impl<'a> Parser<'a> {
                             at: ident_tok.span.start..self.peek_span().start,
                         })
                     } else {
-                        Ok(Expr::Func { name, args })
+                        Ok(Expr::Func {
+                            name: name.to_string(),
+                            args,
+                        })
                     }
                 } else {
-                    Ok(Expr::Variable(name))
+                    if !self.vars.contains(name) {
+                        self.expected_outputs.entry(name).or_insert(ident_tok.span);
+                    }
+                    Ok(Expr::Variable(name.to_string()))
                 }
             }
             kind @ (TokenKind::Minus | TokenKind::LogicalNot | TokenKind::BinaryNot) => {

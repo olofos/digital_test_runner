@@ -4,6 +4,7 @@ mod stmt;
 
 use crate::{
     errors::{ParseError, ParseErrorKind},
+    framed_map::FramedSet,
     lexer::{HeaderTokenKind, Token, TokenIter, TokenKind},
     ParsedTestCase,
 };
@@ -22,6 +23,8 @@ pub(crate) struct Parser<'a> {
     line: usize,
     signals: &'a [String],
     expected_inputs: HashMap<&'a str, logos::Span>,
+    expected_outputs: HashMap<&'a str, logos::Span>,
+    vars: FramedSet<&'a str>,
 }
 
 impl Token {
@@ -74,6 +77,8 @@ impl<'a> Parser<'a> {
             line: 1,
             signals,
             expected_inputs: HashMap::new(),
+            expected_outputs: HashMap::new(),
+            vars: FramedSet::new(),
         }
     }
 
@@ -85,6 +90,8 @@ impl<'a> Parser<'a> {
             line,
             signals,
             expected_inputs: HashMap::new(),
+            expected_outputs: HashMap::new(),
+            vars: FramedSet::new(),
         }
     }
 
