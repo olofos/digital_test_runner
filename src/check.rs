@@ -216,13 +216,11 @@ mod tests {
     }
 
     #[rstest]
-    #[case("A B\n(1+f(1)) 1\n")]
     #[case("A B\n(C) 1\n")]
     #[case("A B\n(A) 1\n")]
     #[case("A B\nloop (C,2)\n1 1\nend loop\n(C) 1\n")]
     #[case("A B\nbits(2,D)\n")]
     #[case("A B\n1 C\n")]
-    #[case("A B\nlet x = random(1,2,3);\n")]
     fn check_returns_error(#[case] input: &str) {
         let testcase: ParsedTestCase = input.parse().unwrap();
         let signals = vec![

@@ -1,6 +1,6 @@
 use crate::{
     errors::{ParseError, ParseErrorKind},
-    expr::{BinOp, Expr, UnaryOp},
+    expr::{BinOp, Expr, UnaryOp, FUNC_TABLE},
     lexer::TokenKind,
     parser::{binoptree::BinOpTree, Parser},
 };
@@ -113,11 +113,16 @@ impl<'a> Parser<'a> {
                 Ok(Expr::Number(n))
             }
             TokenKind::Ident => {
-                let name = {
-                    let tok = self.get()?;
-                    self.text(&tok).to_string()
-                };
+                let ident_tok = self.get()?;
+                let name = self.text(&ident_tok).to_string();
+
                 if self.at(TokenKind::LParen) {
+                    let Some(func_entry) = FUNC_TABLE.get(&name) else {
+                        return Err(
+                            ident_tok.error(ParseErrorKind::FunctionNotFound { ident: name })
+                        );
+                    };
+
                     let mut args = vec![];
                     loop {
                         self.skip();
@@ -127,7 +132,18 @@ impl<'a> Parser<'a> {
                         }
                     }
                     self.expect(TokenKind::RParen)?;
-                    Ok(Expr::Func { name, args })
+
+                    if args.len() != func_entry.number_of_args {
+                        Err(ParseError {
+                            kind: ParseErrorKind::WrongNumberOfArguments {
+                                expected: func_entry.number_of_args,
+                                found: args.len(),
+                            },
+                            at: ident_tok.span.start..self.peek_span().start,
+                        })
+                    } else {
+                        Ok(Expr::Func { name, args })
+                    }
                 } else {
                     Ok(Expr::Variable(name))
                 }
@@ -197,8 +213,8 @@ mod tests {
     #[case("A1", Expr::Variable("A1".into()))]
     #[case("_", Expr::Variable("_".into()))]
     #[case("_1_a_A", Expr::Variable("_1_a_A".into()))]
-    #[case("f(1)", Expr::Func { name: "f".into(), args: vec![Expr::Number(1)] })]
-    #[case("f(1,a)", Expr::Func { name: "f".into(), args: vec![Expr::Number(1),Expr::Variable("a".into())] })]
+    #[case("random(1)", Expr::Func { name: "random".into(), args: vec![Expr::Number(1)] })]
+    #[case("signExt(1,a)", Expr::Func { name: "signExt".into(), args: vec![Expr::Number(1),Expr::Variable("a".into())] })]
     fn identifier_works(#[case] input: &str, #[case] expected: Expr) {
         let signals = vec!["a".to_string()];
         let mut parser = Parser::new(input, &signals);
@@ -213,11 +229,11 @@ mod tests {
     #[case("1+2", "(1 + 2)")]
     #[case("1 + 2", "(1 + 2)")]
     #[case("1 + 2*3 + 4", "((1 + (2 * 3)) + 4)")]
-    #[case("f(1)", "f(1)")]
-    #[case("f(1,2)", "f(1,2)")]
-    #[case("f(1 , 2)", "f(1,2)")]
+    #[case("random(1)", "random(1)")]
+    #[case("signExt(1,2)", "signExt(1,2)")]
+    #[case("signExt(1 , 2)", "signExt(1,2)")]
     #[case("-1", "-1")]
-    #[case("f(1+2)*f(3)", "(f((1 + 2)) * f(3))")]
+    #[case("random(1+2)*random(3)", "(random((1 + 2)) * random(3))")]
     #[case("1 + 2 * 3 = 4 + 5", "((1 + (2 * 3)) = (4 + 5))")]
     #[case("1*2/3*4", "(((1 * 2) / 3) * 4)")]
     #[case("1=2", "(1 = 2)")]
@@ -238,5 +254,36 @@ mod tests {
         let mut parser = Parser::new(input, &signals);
         let expr = parser.parse_expr().unwrap();
         assert_eq!(format!("{expr}"), result);
+    }
+
+    #[test]
+    fn returns_error_for_unknown_function() {
+        let input = "f(1)";
+        let mut parser = Parser::new(input, &[]);
+        let Err(err) = parser.parse_expr() else {
+            panic!("Expected an error, but got none");
+        };
+
+        assert_eq!(
+            err.kind,
+            ParseErrorKind::FunctionNotFound { ident: "f".into() }
+        );
+    }
+
+    #[test]
+    fn returns_error_for_wrong_number_of_arguments() {
+        let input = "random(1,2,3)";
+        let mut parser = Parser::new(input, &[]);
+        let Err(err) = parser.parse_expr() else {
+            panic!("Expected an error, but got none");
+        };
+
+        assert_eq!(
+            err.kind,
+            ParseErrorKind::WrongNumberOfArguments {
+                expected: 1,
+                found: 3
+            }
+        );
     }
 }
