@@ -115,12 +115,9 @@ impl Stmt {
             }
             Stmt::Loop {
                 variable,
-                max,
+                max: _,
                 inner,
             } => {
-                if !max.is_const() {
-                    anyhow::bail!("Loop bound for {variable} should be constant");
-                }
                 ctx.vars.push_frame();
                 ctx.define_var(variable);
                 for stmt in inner {
@@ -175,16 +172,6 @@ impl Expr {
         }
         Ok(())
     }
-
-    fn is_const(&self) -> bool {
-        match self {
-            Expr::Number(_) => true,
-            Expr::Variable(_) => false,
-            Expr::BinOp { op: _, left, right } => left.is_const() && right.is_const(),
-            Expr::UnaryOp { op: _, expr } => expr.is_const(),
-            Expr::Func { name: _, args: _ } => false,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -236,7 +223,6 @@ mod tests {
     #[case("A B\nbits(2,D)\n")]
     #[case("A B\n1 C\n")]
     #[case("A B\nlet x = random(1,2,3);\n")]
-    #[case("A B\nlet m = 2;\nloop (i,m)\nend loop\n")]
     fn check_returns_error(#[case] input: &str) {
         let testcase: ParsedTestCase = input.parse().unwrap();
         let signals = vec![

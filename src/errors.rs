@@ -27,7 +27,7 @@ pub enum RuntimeErrorKind {
     WrongOutputOrder,
 }
 
-#[derive(Debug, Error, Diagnostic)]
+#[derive(Debug, Error, Diagnostic, PartialEq, Eq)]
 pub(super) enum ParseErrorKind {
     #[error("Unexpected EOF")]
     UnexpectedEof,
@@ -55,6 +55,8 @@ pub(super) enum ParseErrorKind {
     UnexpectedEndAtTopLevel,
     #[error("Wrong number of entries in data row. Expected {expected} but found {found}")]
     DataRowWithWrongNumberOfSignals { expected: usize, found: usize },
+    #[error("Expected a constant expression")]
+    ExpectedConst,
 }
 
 #[derive(Debug, Error, Diagnostic)]
