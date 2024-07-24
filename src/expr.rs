@@ -63,6 +63,39 @@ impl Display for UnaryOp {
     }
 }
 
+impl BinOp {
+    fn eval(&self, left: i64, right: i64) -> i64 {
+        match self {
+            Self::Equal => (left == right) as i64,
+            Self::NotEqual => (left != right) as i64,
+            Self::GreaterThan => (left > right) as i64,
+            Self::LessThan => (left < right) as i64,
+            Self::GreaterThanOrEqual => (left >= right) as i64,
+            Self::LessThanOrEqual => (left <= right) as i64,
+            Self::Or => left | right,
+            Self::Xor => left ^ right,
+            Self::And => left & right,
+            Self::ShiftLeft => left << right,
+            Self::ShiftRight => left >> right,
+            Self::Plus => left + right,
+            Self::Minus => left - right,
+            Self::Times => left * right,
+            Self::Divide => left / right,
+            Self::Reminder => left % right,
+        }
+    }
+}
+
+impl UnaryOp {
+    fn eval(&self, val: i64) -> i64 {
+        match self {
+            Self::Minus => -val,
+            Self::LogicalNot => (val == 0) as i64,
+            Self::BinaryNot => !val,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Expr {
     Number(i64),
@@ -162,78 +195,8 @@ impl Expr {
             Self::Variable(name) => ctx
                 .get(name)
                 .expect("Variable {name} not found. This should have been found at parse time"),
-            Self::UnaryOp { op, expr } => {
-                let val = expr.eval(ctx);
-                match op {
-                    UnaryOp::BinaryNot => !val,
-                    UnaryOp::LogicalNot => {
-                        if val == 0 {
-                            1
-                        } else {
-                            0
-                        }
-                    }
-                    UnaryOp::Minus => -val,
-                }
-            }
-            Self::BinOp { op, left, right } => {
-                let left = left.eval(ctx);
-                let right = right.eval(ctx);
-                match op {
-                    BinOp::Equal => {
-                        if left == right {
-                            1
-                        } else {
-                            0
-                        }
-                    }
-                    BinOp::NotEqual => {
-                        if left != right {
-                            1
-                        } else {
-                            0
-                        }
-                    }
-                    BinOp::GreaterThan => {
-                        if left > right {
-                            1
-                        } else {
-                            0
-                        }
-                    }
-                    BinOp::LessThan => {
-                        if left < right {
-                            1
-                        } else {
-                            0
-                        }
-                    }
-                    BinOp::GreaterThanOrEqual => {
-                        if left >= right {
-                            1
-                        } else {
-                            0
-                        }
-                    }
-                    BinOp::LessThanOrEqual => {
-                        if left <= right {
-                            1
-                        } else {
-                            0
-                        }
-                    }
-                    BinOp::Or => left | right,
-                    BinOp::Xor => left ^ right,
-                    BinOp::And => left & right,
-                    BinOp::ShiftLeft => left << right,
-                    BinOp::ShiftRight => left >> right,
-                    BinOp::Plus => left + right,
-                    BinOp::Minus => left - right,
-                    BinOp::Times => left * right,
-                    BinOp::Divide => left / right,
-                    BinOp::Reminder => left % right,
-                }
-            }
+            Self::UnaryOp { op, expr } => op.eval(expr.eval(ctx)),
+            Self::BinOp { op, left, right } => op.eval(left.eval(ctx), right.eval(ctx)),
             Self::Func { name, args } => {
                 let Some(entry) = FUNC_TABLE.get(name) else {
                     panic!(
