@@ -265,11 +265,11 @@ mod test {
 
     #[test]
     fn can_parse_data_row() {
-        let signals = ["a", "b", "c", "d", "e", "f"]
+        let signals = ["a", "b", "c", "d", "e", "f", "g"]
             .into_iter()
             .map(String::from)
             .collect::<Vec<_>>();
-        let mut parser = Parser::new("1 (a+b) X\tZ\t\tbits(1,3)", &signals);
+        let mut parser = Parser::new("1 (a+b) X\tZ\t\tbits(3,3)", &signals);
         let data = parser.parse_data_row().unwrap();
         assert_eq!(data.len(), 5);
     }
