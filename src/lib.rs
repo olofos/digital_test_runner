@@ -80,6 +80,8 @@ pub struct ParsedTestCase {
     stmts: Vec<Stmt>,
     /// List of signal names appearing in the test
     pub signals: Vec<String>,
+    expected_inputs: Vec<(String, logos::Span)>,
+    expected_outputs: Vec<(String, logos::Span)>,
 }
 
 /// Represents a fully specified test case
@@ -383,6 +385,21 @@ impl ParsedTestCase {
                 "No description provided of signals {}",
                 missing_signals.join(", ")
             )
+        }
+
+        for (name, _) in self.expected_inputs {
+            if !signals.iter().any(|sig| sig.name == name && sig.is_input()) {
+                anyhow::bail!("Expected {name} to be an input signal")
+            }
+        }
+
+        for (name, _) in self.expected_outputs {
+            if !signals
+                .iter()
+                .any(|sig| sig.name == name && sig.is_output())
+            {
+                anyhow::bail!("Expected {name} to be an output signal")
+            }
         }
 
         self.stmts

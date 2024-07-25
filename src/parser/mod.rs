@@ -157,7 +157,28 @@ pub(crate) fn parse_testcase(input: &str) -> Result<ParsedTestCase, ParseError> 
     let mut parser = Parser::from(parser, &signals);
     let stmts = parser.parse_stmt_block(None)?;
 
-    let test_case = ParsedTestCase { stmts, signals };
+    let mut expected_inputs = parser
+        .expected_inputs
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect::<Vec<_>>();
+
+    expected_inputs.sort_by(|(_, a), (_, b)| a.start.cmp(&b.start));
+
+    let mut expected_outputs = parser
+        .expected_outputs
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect::<Vec<_>>();
+
+    expected_outputs.sort_by(|(_, a), (_, b)| a.start.cmp(&b.start));
+
+    let test_case = ParsedTestCase {
+        stmts,
+        signals,
+        expected_inputs,
+        expected_outputs,
+    };
     Ok(test_case)
 }
 
