@@ -7,7 +7,6 @@ pub mod dig;
 /// Error types
 pub mod errors;
 
-mod check;
 mod eval_context;
 mod expr;
 mod framed_map;
@@ -20,7 +19,6 @@ use stmt::DataEntries;
 
 pub use crate::value::{ExpectedValue, InputValue, OutputValue};
 
-use crate::check::TestCheck;
 use crate::errors::RuntimeError;
 use crate::eval_context::EvalContext;
 use crate::stmt::{DataEntry, Stmt, StmtIterator};
@@ -401,9 +399,6 @@ impl ParsedTestCase {
                 anyhow::bail!("Expected {name} to be an output signal")
             }
         }
-
-        self.stmts
-            .check(signals, &input_indices, &expected_indices)?;
 
         Ok(TestCase {
             stmts: self.stmts,
