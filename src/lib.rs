@@ -1260,4 +1260,58 @@ Z 1";
 
         Ok(())
     }
+
+    #[test]
+    fn gives_error_for_c_if_not_an_input() -> anyhow::Result<()> {
+        let input = r"
+    A B
+    0 c
+";
+
+        let known_inputs = ["A"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Input {
+                default: InputValue::Value(0),
+            },
+        });
+        let known_outputs = ["B"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Output,
+        });
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+        let Err(err) = ParsedTestCase::from_str(input)?.with_signals(&known_signals) else {
+            panic!("Should have failed")
+        };
+
+        Ok(())
+    }
+
+    #[test]
+    fn gives_error_for_reading_value_if_not_an_output() -> anyhow::Result<()> {
+        let input = r"
+    A B
+    0 (A)
+";
+
+        let known_inputs = ["A"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Input {
+                default: InputValue::Value(0),
+            },
+        });
+        let known_outputs = ["B"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Output,
+        });
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+        let Err(err) = ParsedTestCase::from_str(input)?.with_signals(&known_signals) else {
+            panic!("Should have failed")
+        };
+
+        Ok(())
+    }
 }
