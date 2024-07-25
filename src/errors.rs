@@ -75,6 +75,38 @@ pub struct ParseError {
     pub at: logos::Span,
 }
 
+/// Error returned by [ParsedTestCase::with_signals]
+#[derive(Debug, Error, Diagnostic)]
+#[error(transparent)]
+#[diagnostic(transparent)]
+pub struct SignalError(#[from] pub(crate) SignalErrorKind);
+
+#[derive(Debug, Error, Diagnostic)]
+pub(crate) enum SignalErrorKind {
+    #[error("Unknown signals: {signals}")]
+    UnknownSignals {
+        signals: String,
+        #[label(collection, "here")]
+        at: Vec<logos::Span>,
+    },
+    #[error("Expected {name} to be an input")]
+    NotAnInput {
+        name: String,
+        #[label("here")]
+        at: logos::Span,
+        #[label("signal")]
+        signal_span: logos::Span,
+    },
+    #[error("Expected {name} to be an output")]
+    NotAnOutput {
+        name: String,
+        #[label("here")]
+        at: logos::Span,
+        #[label("signal")]
+        signal_span: logos::Span,
+    },
+}
+
 #[derive(Debug, Error, Diagnostic)]
 #[diagnostic(transparent)]
 #[error(transparent)]

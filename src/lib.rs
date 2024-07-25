@@ -15,6 +15,7 @@ mod parser;
 mod stmt;
 mod value;
 
+use errors::{SignalError, SignalErrorKind};
 use stmt::DataEntries;
 
 pub use crate::value::{ExpectedValue, InputValue, OutputValue};
@@ -78,6 +79,7 @@ pub struct ParsedTestCase {
     stmts: Vec<Stmt>,
     /// List of signal names appearing in the test
     pub signals: Vec<String>,
+    signal_spans: Vec<logos::Span>,
     expected_inputs: Vec<(String, logos::Span)>,
     expected_outputs: Vec<(String, logos::Span)>,
 }
@@ -310,7 +312,7 @@ impl<'a, 'b, T> DataRowIterator<'a, 'b, T> {
 impl ParsedTestCase {
     /// Construct a complete test case by supplying a description of the
     /// input and expected signals of the device under test
-    pub fn with_signals(self, signals: &[Signal]) -> anyhow::Result<TestCase<'_>> {
+    pub fn with_signals(self, signals: &[Signal]) -> Result<TestCase<'_>, SignalError> {
         let mut input_indices = vec![];
         let mut expected_indices = vec![];
 
@@ -379,24 +381,55 @@ impl ParsedTestCase {
             .collect::<Vec<_>>();
 
         if !missing_signals.is_empty() {
-            anyhow::bail!(
-                "No description provided of signals {}",
-                missing_signals.join(", ")
-            )
+            let at = missing_signals
+                .iter()
+                .map(|name| {
+                    let i = self
+                        .signals
+                        .iter()
+                        .position(|sig_name| sig_name == name)
+                        .unwrap();
+                    self.signal_spans[i].clone()
+                })
+                .collect::<Vec<_>>();
+            return Err(SignalError(SignalErrorKind::UnknownSignals {
+                signals: missing_signals.join(", "),
+                at,
+            }));
         }
 
-        for (name, _) in self.expected_inputs {
+        for (name, at) in self.expected_inputs {
             if !signals.iter().any(|sig| sig.name == name && sig.is_input()) {
-                anyhow::bail!("Expected {name} to be an input signal")
+                let i = self
+                    .signals
+                    .iter()
+                    .position(|sig_name| sig_name == &name)
+                    .unwrap();
+                let signal_span = self.signal_spans[i].clone();
+                return Err(SignalError(SignalErrorKind::NotAnInput {
+                    name,
+                    at,
+                    signal_span,
+                }));
             }
         }
 
-        for (name, _) in self.expected_outputs {
+        for (name, at) in self.expected_outputs {
             if !signals
                 .iter()
                 .any(|sig| sig.name == name && sig.is_output())
             {
-                anyhow::bail!("Expected {name} to be an output signal")
+                let i = self
+                    .signals
+                    .iter()
+                    .position(|sig_name| sig_name == &name)
+                    .unwrap();
+                let signal_span = self.signal_spans[i].clone();
+                return Err(SignalError(SignalErrorKind::NotAnOutput {
+                    name,
+                    at,
+                    signal_span,
+                }));
             }
         }
 
@@ -418,7 +451,7 @@ impl dig::File {
                 self.test_cases.len()
             );
         }
-        ParsedTestCase::from_str(&self.test_cases[n].source)?.with_signals(&self.signals)
+        Ok(ParsedTestCase::from_str(&self.test_cases[n].source)?.with_signals(&self.signals)?)
     }
 
     /// Load a test by name
@@ -1285,6 +1318,8 @@ Z 1";
             panic!("Should have failed")
         };
 
+        assert!(matches!(err.0, SignalErrorKind::NotAnInput { .. }));
+
         Ok(())
     }
 
@@ -1311,6 +1346,8 @@ Z 1";
         let Err(err) = ParsedTestCase::from_str(input)?.with_signals(&known_signals) else {
             panic!("Should have failed")
         };
+
+        assert!(matches!(err.0, SignalErrorKind::NotAnOutput { .. }));
 
         Ok(())
     }

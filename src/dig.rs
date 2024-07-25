@@ -166,6 +166,7 @@ impl File {
         for test_case in &test_cases {
             for name in HeaderParser::new(&test_case.source)
                 .parse()
+                .map(|(signals, _)| signals)
                 .map_err(|_| DigFileErrorKind::EmptyTest)?
             {
                 if let Some(stripped_name) = name.strip_suffix("_out") {

@@ -43,15 +43,19 @@ impl<'a> HeaderParser<'a> {
         Self { input, iter, line }
     }
 
-    pub(crate) fn parse(&mut self) -> Result<Vec<String>, ParseError> {
+    pub(crate) fn parse(&mut self) -> Result<(Vec<String>, Vec<logos::Span>), ParseError> {
         let mut signals: Vec<String> = vec![];
+        let mut spans: Vec<logos::Span> = vec![];
         loop {
             match self.iter.next() {
-                Some(Ok(HeaderTokenKind::SignalName)) => signals.push(self.iter.slice().into()),
+                Some(Ok(HeaderTokenKind::SignalName)) => {
+                    signals.push(self.iter.slice().into());
+                    spans.push(self.iter.span());
+                }
                 Some(Ok(HeaderTokenKind::Eol)) => {
                     self.line += 1;
                     if !signals.is_empty() {
-                        return Ok(signals);
+                        return Ok((signals, spans));
                     }
                 }
                 Some(Ok(HeaderTokenKind::WS)) => unreachable!(),
@@ -152,7 +156,7 @@ impl<'a> Parser<'a> {
 
 pub(crate) fn parse_testcase(input: &str) -> Result<ParsedTestCase, ParseError> {
     let mut parser = HeaderParser::new(input);
-    let signals = parser.parse()?;
+    let (signals, signal_spans) = parser.parse()?;
 
     let mut parser = Parser::from(parser, &signals);
     let stmts = parser.parse_stmt_block(None)?;
@@ -176,6 +180,7 @@ pub(crate) fn parse_testcase(input: &str) -> Result<ParsedTestCase, ParseError> 
     let test_case = ParsedTestCase {
         stmts,
         signals,
+        signal_spans,
         expected_inputs,
         expected_outputs,
     };
