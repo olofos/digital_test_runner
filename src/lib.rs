@@ -15,7 +15,7 @@ mod parser;
 mod stmt;
 mod value;
 
-use errors::{SignalError, SignalErrorKind};
+use errors::{FileLoadError, SignalError, SignalErrorKind};
 use stmt::DataEntries;
 
 pub use crate::value::{ExpectedValue, InputValue, OutputValue};
@@ -444,18 +444,22 @@ impl ParsedTestCase {
 
 impl dig::File {
     /// Load a test by index
-    pub fn load_test(&self, n: usize) -> anyhow::Result<TestCase<'_>> {
+    pub fn load_test(&self, n: usize) -> Result<TestCase<'_>, FileLoadError> {
         if n >= self.test_cases.len() {
-            anyhow::bail!(
-                "Trying to load test case #{n}, but file only contains {} test cases",
-                self.test_cases.len()
-            );
+            Err(FileLoadError::IndexOutOfBounds {
+                number: n,
+                len: self.test_cases.len(),
+            })
+        } else {
+            Ok(
+                ParsedTestCase::from_str(&self.test_cases[n].source)?
+                    .with_signals(&self.signals)?,
+            )
         }
-        Ok(ParsedTestCase::from_str(&self.test_cases[n].source)?.with_signals(&self.signals)?)
     }
 
     /// Load a test by name
-    pub fn load_test_by_name(&self, name: &str) -> anyhow::Result<TestCase<'_>> {
+    pub fn load_test_by_name(&self, name: &str) -> Result<TestCase<'_>, FileLoadError> {
         if let Some(n) = self
             .test_cases
             .iter()
@@ -463,7 +467,7 @@ impl dig::File {
         {
             self.load_test(n)
         } else {
-            anyhow::bail!("Could not find test case \"{name}\"");
+            Err(FileLoadError::TestNotFound(name.to_string()))
         }
     }
 }

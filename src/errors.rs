@@ -107,6 +107,26 @@ pub(crate) enum SignalErrorKind {
     },
 }
 
+/// Error returned from [dig::File::load_test] and [dig::File::load_test_by_name]
+#[derive(Debug, Error, Diagnostic)]
+pub enum FileLoadError {
+    /// Numerical test number out of bounds
+    #[error("Trying to load test case #{number}, but file only contains {len} test cases")]
+    #[allow(missing_docs)]
+    IndexOutOfBounds { number: usize, len: usize },
+    /// Could not find test by name
+    #[error("Could not find test case \"{0}\"")]
+    TestNotFound(String),
+    /// Parse error
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ParseError(#[from] ParseError),
+    /// Signals do not match what is expected in the test
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    SignalError(#[from] SignalError),
+}
+
 #[derive(Debug, Error, Diagnostic)]
 #[diagnostic(transparent)]
 #[error(transparent)]
