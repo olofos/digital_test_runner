@@ -1,5 +1,7 @@
 use std::{collections::HashSet, ops::Range, str::FromStr};
 
+use miette::NamedSource;
+
 use crate::{
     errors::{DigFileError, DigFileErrorKind},
     parser::HeaderParser,
@@ -22,6 +24,12 @@ pub struct File {
     pub signals: Vec<Signal>,
     /// A list of test cases
     pub test_cases: Vec<TestCaseDescription>,
+}
+
+impl TestCaseDescription {
+    pub(crate) fn named_source(&self) -> NamedSource<String> {
+        NamedSource::new(self.name.clone(), self.source.clone())
+    }
 }
 
 fn visual_elements<'a, 'b>(

@@ -1,5 +1,6 @@
 use colored::{Color, Colorize};
 use digital_test_runner::{dig, InputEntry, OutputEntry, Signal, SignalDirection, TestDriver};
+use miette::{IntoDiagnostic, Result};
 use std::{ffi::OsStr, io::Write};
 use util::Cursor;
 
@@ -72,7 +73,7 @@ impl Drop for Driver {
     }
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() -> miette::Result<()> {
     for test_name in ["Counter", "74779"] {
         println!("Testing circuit {test_name}");
         let path = format!(
@@ -80,7 +81,8 @@ fn main() -> anyhow::Result<()> {
             env!("CARGO_MANIFEST_DIR"),
             test_name
         );
-        let dig_file = dig::File::parse(&std::fs::read_to_string(path)?)?;
+        let dig_file_input = std::fs::read_to_string(path).into_diagnostic()?;
+        let dig_file = dig::File::parse(&dig_file_input)?;
 
         for test_num in 0..dig_file.test_cases.len() {
             println!(
@@ -95,13 +97,15 @@ fn main() -> anyhow::Result<()> {
                     &format!("{}.v", test_name),
                     &format!("{}_int_tb.v", test_name),
                 ],
-            )?;
-            let mut driver = Driver::try_new(prog_path, &test_case.signals)?;
+            )
+            .map_err(|err| miette::miette!("{err}"))?;
+            let mut driver = Driver::try_new(prog_path, &test_case.signals)
+                .map_err(|err| miette::miette!("{err}"))?;
 
             let mut it = test_case.run_iter(&mut driver);
 
             while let Some(row) = it.next() {
-                let row = row?;
+                let row = row.map_err(|err| miette::miette!("{err}"))?;
                 print!("{:2}: ", row.line);
                 for input in &row.inputs {
                     print!("{} ", input.value);

@@ -168,6 +168,7 @@ impl<'a> Parser<'a> {
                             return Err(ParseError {
                                 kind: ParseErrorKind::TooManyBits,
                                 at,
+                                source_code: None,
                             });
                         }
                         n as u8
@@ -218,6 +219,7 @@ impl<'a> Parser<'a> {
                     found: signal_index,
                 },
                 at: row_start..row_end,
+                source_code: None,
             });
         }
 

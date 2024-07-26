@@ -395,22 +395,27 @@ impl ParsedTestCase {
             return Err(SignalError(SignalErrorKind::UnknownSignals {
                 signals: missing_signals.join(", "),
                 at,
+                source_code: None,
             }));
         }
 
         for (name, at) in self.expected_inputs {
             if !signals.iter().any(|sig| sig.name == name && sig.is_input()) {
-                let i = self
-                    .signals
-                    .iter()
-                    .position(|sig_name| sig_name == &name)
-                    .unwrap();
-                let signal_span = self.signal_spans[i].clone();
-                return Err(SignalError(SignalErrorKind::NotAnInput {
-                    name,
-                    at,
-                    signal_span,
-                }));
+                if let Some(i) = self.signals.iter().position(|sig_name| sig_name == &name) {
+                    let signal_span = self.signal_spans[i].clone();
+                    return Err(SignalError(SignalErrorKind::NotAnInput {
+                        name,
+                        at,
+                        signal_span,
+                        source_code: None,
+                    }));
+                } else {
+                    return Err(SignalError(SignalErrorKind::UnknownVariableOrSignal {
+                        name,
+                        at,
+                        source_code: None,
+                    }));
+                }
             }
         }
 
@@ -419,17 +424,21 @@ impl ParsedTestCase {
                 .iter()
                 .any(|sig| sig.name == name && sig.is_output())
             {
-                let i = self
-                    .signals
-                    .iter()
-                    .position(|sig_name| sig_name == &name)
-                    .unwrap();
-                let signal_span = self.signal_spans[i].clone();
-                return Err(SignalError(SignalErrorKind::NotAnOutput {
-                    name,
-                    at,
-                    signal_span,
-                }));
+                if let Some(i) = self.signals.iter().position(|sig_name| sig_name == &name) {
+                    let signal_span = self.signal_spans[i].clone();
+                    return Err(SignalError(SignalErrorKind::NotAnOutput {
+                        name,
+                        at,
+                        signal_span,
+                        source_code: None,
+                    }));
+                } else {
+                    return Err(SignalError(SignalErrorKind::UnknownVariableOrSignal {
+                        name,
+                        at,
+                        source_code: None,
+                    }));
+                }
             }
         }
 
@@ -451,10 +460,10 @@ impl dig::File {
                 len: self.test_cases.len(),
             })
         } else {
-            Ok(
-                ParsedTestCase::from_str(&self.test_cases[n].source)?
-                    .with_signals(&self.signals)?,
-            )
+            Ok(ParsedTestCase::from_str(&self.test_cases[n].source)
+                .map_err(|err| err.with_source(self.test_cases[n].named_source()))?
+                .with_signals(&self.signals)
+                .map_err(|err| err.with_source(self.test_cases[n].named_source()))?)
         }
     }
 

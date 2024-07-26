@@ -1,4 +1,4 @@
-use miette::Diagnostic;
+use miette::{Diagnostic, NamedSource};
 use thiserror::Error;
 
 use crate::lexer::TokenKind;
@@ -73,37 +73,118 @@ pub struct ParseError {
     /// Error location
     #[label("here")]
     pub at: logos::Span,
+    #[source_code]
+    pub(crate) source_code: Option<NamedSource<String>>,
+}
+
+impl ParseError {
+    pub(crate) fn with_source(self, source: NamedSource<String>) -> Self {
+        Self {
+            source_code: Some(source),
+            ..self
+        }
+    }
 }
 
 /// Error returned by [ParsedTestCase::with_signals]
 #[derive(Debug, Error, Diagnostic)]
-#[error(transparent)]
-#[diagnostic(transparent)]
-pub struct SignalError(#[from] pub(crate) SignalErrorKind);
+#[error("Signal mismatch")]
+#[diagnostic()]
+pub struct SignalError(
+    #[source]
+    #[diagnostic_source]
+    pub(crate) SignalErrorKind,
+);
+
+impl SignalError {
+    pub(crate) fn with_source(self, source: NamedSource<String>) -> Self {
+        let kind = match self.0 {
+            SignalErrorKind::UnknownSignals {
+                signals,
+                at,
+                source_code: _,
+            } => SignalErrorKind::UnknownSignals {
+                signals,
+                at,
+                source_code: Some(source),
+            },
+            SignalErrorKind::NotAnInput {
+                name,
+                at,
+                signal_span,
+                source_code: _,
+            } => SignalErrorKind::NotAnInput {
+                name,
+                at,
+                signal_span,
+                source_code: Some(source),
+            },
+            SignalErrorKind::NotAnOutput {
+                name,
+                at,
+                signal_span,
+                source_code: _,
+            } => SignalErrorKind::NotAnOutput {
+                name,
+                at,
+                signal_span,
+                source_code: Some(source),
+            },
+            SignalErrorKind::UnknownVariableOrSignal {
+                name,
+                at,
+                source_code: _,
+            } => SignalErrorKind::UnknownVariableOrSignal {
+                name,
+                at,
+                source_code: Some(source),
+            },
+        };
+        Self(kind)
+    }
+}
 
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum SignalErrorKind {
     #[error("Unknown signals: {signals}")]
+    #[diagnostic()]
     UnknownSignals {
         signals: String,
         #[label(collection, "here")]
         at: Vec<logos::Span>,
+        #[source_code]
+        source_code: Option<NamedSource<String>>,
     },
     #[error("Expected {name} to be an input")]
+    #[diagnostic()]
     NotAnInput {
         name: String,
-        #[label("here")]
+        #[label("used as input here")]
         at: logos::Span,
         #[label("signal")]
         signal_span: logos::Span,
+        #[source_code]
+        source_code: Option<NamedSource<String>>,
     },
     #[error("Expected {name} to be an output")]
+    #[diagnostic()]
     NotAnOutput {
+        name: String,
+        #[label("used as output here")]
+        at: logos::Span,
+        #[label("signal")]
+        signal_span: logos::Span,
+        #[source_code]
+        source_code: Option<NamedSource<String>>,
+    },
+    #[error("Unknown variable or signal {name}")]
+    #[diagnostic()]
+    UnknownVariableOrSignal {
         name: String,
         #[label("here")]
         at: logos::Span,
-        #[label("signal")]
-        signal_span: logos::Span,
+        #[source_code]
+        source_code: Option<NamedSource<String>>,
     },
 }
 

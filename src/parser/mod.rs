@@ -32,6 +32,7 @@ impl Token {
         ParseError {
             kind,
             at: self.span.clone(),
+            source_code: None,
         }
     }
 }
@@ -64,6 +65,7 @@ impl<'a> HeaderParser<'a> {
                     return Err(ParseError {
                         kind: ParseErrorKind::UnexpectedEof,
                         at: self.iter.span(),
+                        source_code: None,
                     })
                 }
             }
@@ -105,6 +107,7 @@ impl<'a> Parser<'a> {
             return Err(ParseError {
                 kind: ParseErrorKind::UnexpectedEof,
                 at: end..end,
+                source_code: None,
             });
         };
         if tok.kind == TokenKind::Eol {

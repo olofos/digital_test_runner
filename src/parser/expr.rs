@@ -87,6 +87,7 @@ impl<'a> Parser<'a> {
         expr.eval_const().ok_or(ParseError {
             at: start..end,
             kind: ParseErrorKind::ExpectedConst,
+            source_code: None,
         })
     }
 
@@ -140,6 +141,7 @@ impl<'a> Parser<'a> {
                                 found: args.len(),
                             },
                             at: ident_tok.span.start..self.peek_span().start,
+                            source_code: None,
                         })
                     } else {
                         Ok(Expr::Func {
