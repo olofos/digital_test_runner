@@ -166,7 +166,7 @@ pub(crate) enum SignalErrorKind {
 
 /// Error returned from [dig::File::load_test] and [dig::File::load_test_by_name]
 #[derive(Debug, Error, Diagnostic)]
-pub enum FileLoadError {
+pub enum LoadTestError {
     /// Numerical test number out of bounds
     #[error("Trying to load test case #{number}, but file only contains {len} test cases")]
     #[allow(missing_docs)]
@@ -193,8 +193,14 @@ pub struct DigFileError(#[from] pub(crate) DigFileErrorKind);
 #[derive(Debug, Error, Diagnostic)]
 #[diagnostic()]
 pub(crate) enum DigFileErrorKind {
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
     #[error("XML parsing error")]
-    XMLError(#[source] roxmltree::Error, #[label("here")] logos::Span),
+    XMLError(
+        #[source] roxmltree::Error,
+        #[label("here")] logos::Span,
+        #[source_code] NamedSource<String>,
+    ),
     #[error("Could not parse empty test")]
     EmptyTest,
     #[error("Signals {0} found in tests but not found in circuit")]

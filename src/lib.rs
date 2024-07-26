@@ -15,7 +15,7 @@ mod parser;
 mod stmt;
 mod value;
 
-use errors::{FileLoadError, SignalError, SignalErrorKind};
+use errors::{LoadTestError, SignalError, SignalErrorKind};
 use stmt::DataEntries;
 
 pub use crate::value::{ExpectedValue, InputValue, OutputValue};
@@ -453,9 +453,9 @@ impl ParsedTestCase {
 
 impl dig::File {
     /// Load a test by index
-    pub fn load_test(&self, n: usize) -> Result<TestCase<'_>, FileLoadError> {
+    pub fn load_test(&self, n: usize) -> Result<TestCase<'_>, LoadTestError> {
         if n >= self.test_cases.len() {
-            Err(FileLoadError::IndexOutOfBounds {
+            Err(LoadTestError::IndexOutOfBounds {
                 number: n,
                 len: self.test_cases.len(),
             })
@@ -468,7 +468,7 @@ impl dig::File {
     }
 
     /// Load a test by name
-    pub fn load_test_by_name(&self, name: &str) -> Result<TestCase<'_>, FileLoadError> {
+    pub fn load_test_by_name(&self, name: &str) -> Result<TestCase<'_>, LoadTestError> {
         if let Some(n) = self
             .test_cases
             .iter()
@@ -476,7 +476,7 @@ impl dig::File {
         {
             self.load_test(n)
         } else {
-            Err(FileLoadError::TestNotFound(name.to_string()))
+            Err(LoadTestError::TestNotFound(name.to_string()))
         }
     }
 }

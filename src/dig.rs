@@ -120,7 +120,11 @@ impl File {
     pub fn parse(input: &str) -> Result<File, DigFileError> {
         let doc = roxmltree::Document::parse(input).map_err(|err| {
             let span = text_pos_to_range(input, err.pos());
-            DigFileErrorKind::XMLError(err, span)
+            DigFileError(DigFileErrorKind::XMLError(
+                err,
+                span,
+                NamedSource::new("(unnamed)", input.to_string()),
+            ))
         })?;
 
         let output_signals = visual_elements(&doc, &["Out"])
@@ -265,7 +269,7 @@ mod test {
         println!("{err:?} {}", err.source().unwrap());
         assert!(matches!(
             err,
-            DigFileError(DigFileErrorKind::XMLError(_, _))
+            DigFileError(DigFileErrorKind::XMLError(_, _, _))
         ))
     }
 }
