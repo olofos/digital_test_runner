@@ -97,50 +97,26 @@ pub struct SignalError(
 );
 
 impl SignalError {
-    pub(crate) fn with_source(self, source: NamedSource<String>) -> Self {
-        let kind = match self.0 {
+    pub(crate) fn with_source(mut self, source: NamedSource<String>) -> Self {
+        match self.0 {
             SignalErrorKind::UnknownSignals {
-                signals,
-                at,
-                source_code: _,
-            } => SignalErrorKind::UnknownSignals {
-                signals,
-                at,
-                source_code: Some(source),
-            },
-            SignalErrorKind::NotAnInput {
-                name,
-                at,
-                signal_span,
-                source_code: _,
-            } => SignalErrorKind::NotAnInput {
-                name,
-                at,
-                signal_span,
-                source_code: Some(source),
-            },
-            SignalErrorKind::NotAnOutput {
-                name,
-                at,
-                signal_span,
-                source_code: _,
-            } => SignalErrorKind::NotAnOutput {
-                name,
-                at,
-                signal_span,
-                source_code: Some(source),
-            },
-            SignalErrorKind::UnknownVariableOrSignal {
-                name,
-                at,
-                source_code: _,
-            } => SignalErrorKind::UnknownVariableOrSignal {
-                name,
-                at,
-                source_code: Some(source),
-            },
+                ref mut source_code,
+                ..
+            }
+            | SignalErrorKind::NotAnInput {
+                ref mut source_code,
+                ..
+            }
+            | SignalErrorKind::NotAnOutput {
+                ref mut source_code,
+                ..
+            }
+            | SignalErrorKind::UnknownVariableOrSignal {
+                ref mut source_code,
+                ..
+            } => *source_code = Some(source),
         };
-        Self(kind)
+        self
     }
 }
 
