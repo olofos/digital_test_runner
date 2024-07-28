@@ -839,7 +839,7 @@ mod tests {
     }
 
     #[test]
-    fn run_works() -> anyhow::Result<()> {
+    fn run_works() -> miette::Result<()> {
         let input = r"
 BUS-CLK S         A        B        N ALU-~RESET ALU-AUX   OUT           FLAG DLEN DSUM
 
@@ -898,7 +898,7 @@ end loop
     }
 
     #[test]
-    fn can_parse_directional_signal() -> anyhow::Result<()> {
+    fn can_parse_directional_signal() -> miette::Result<()> {
         let input = r"
 A A_out
 1 X
@@ -934,7 +934,7 @@ Z 1";
     }
 
     #[test]
-    fn iter_with_c_works() -> anyhow::Result<()> {
+    fn iter_with_c_works() -> miette::Result<()> {
         let input = r"
     CLK IN OUT
     C 0 0
@@ -989,7 +989,7 @@ Z 1";
     }
 
     #[test]
-    fn iter_with_x_works() -> anyhow::Result<()> {
+    fn iter_with_x_works() -> miette::Result<()> {
         let input = r"
     A B OUT
     X X 0
@@ -1044,7 +1044,7 @@ Z 1";
     }
 
     #[test]
-    fn iter_with_x_and_c_works() -> anyhow::Result<()> {
+    fn iter_with_x_and_c_works() -> miette::Result<()> {
         let input = r"
     CLK A OUT
     C X 0
@@ -1102,7 +1102,7 @@ Z 1";
     }
 
     #[test]
-    fn with_signals_returns_error_for_missing_signal() -> anyhow::Result<()> {
+    fn with_signals_returns_error_for_missing_signal() -> miette::Result<()> {
         let input = r"
     A B C
     0 0 0
@@ -1129,7 +1129,7 @@ Z 1";
     }
 
     #[test]
-    fn works_if_not_all_outputs_are_given() -> anyhow::Result<()> {
+    fn works_if_not_all_outputs_are_given() -> miette::Result<()> {
         let input = r"
     A B C
     0 0 0
@@ -1168,7 +1168,7 @@ Z 1";
     }
 
     #[test]
-    fn gives_error_if_outputs_change_order() -> anyhow::Result<()> {
+    fn gives_error_if_outputs_change_order() -> miette::Result<()> {
         let input = r"
     A B C
     0 0 1
@@ -1217,7 +1217,7 @@ Z 1";
     }
 
     #[test]
-    fn gives_error_if_outputs_changes_length() -> anyhow::Result<()> {
+    fn gives_error_if_outputs_changes_length() -> miette::Result<()> {
         let input = r"
     A B C
     0 0 1
@@ -1264,7 +1264,7 @@ Z 1";
     }
 
     #[test]
-    fn gives_error_if_outputs_changes_length_2() -> anyhow::Result<()> {
+    fn gives_error_if_outputs_changes_length_2() -> miette::Result<()> {
         let input = r"
     A B C
     0 0 1
@@ -1311,7 +1311,7 @@ Z 1";
     }
 
     #[test]
-    fn gives_error_for_c_if_not_an_input() -> anyhow::Result<()> {
+    fn gives_error_for_c_if_not_an_input() -> miette::Result<()> {
         let input = r"
     A B
     0 c
@@ -1340,7 +1340,7 @@ Z 1";
     }
 
     #[test]
-    fn gives_error_for_reading_value_if_not_an_output() -> anyhow::Result<()> {
+    fn gives_error_for_reading_value_if_not_an_output() -> miette::Result<()> {
         let input = r"
     A B
     0 (A)

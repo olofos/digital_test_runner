@@ -227,7 +227,7 @@ end loop
     }
 
     #[test]
-    fn test_error() -> anyhow::Result<()> {
+    fn test_error() -> miette::Result<()> {
         let input = r"
 A B
 

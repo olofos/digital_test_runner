@@ -2,9 +2,10 @@ use std::io::{BufRead, BufReader, ErrorKind, Read};
 use std::{path::PathBuf, process::Command};
 
 use digital_test_runner::OutputValue;
+use miette::IntoDiagnostic;
 
-pub fn compile_verilog(name: &str, sources: &[&str]) -> anyhow::Result<PathBuf> {
-    let iverilog_path = which::which("iverilog")?;
+pub fn compile_verilog(name: &str, sources: &[&str]) -> miette::Result<PathBuf> {
+    let iverilog_path = which::which("iverilog").into_diagnostic()?;
     let mut cmd = Command::new(iverilog_path);
     let output_path = std::env::temp_dir().join(name);
 
@@ -21,11 +22,11 @@ pub fn compile_verilog(name: &str, sources: &[&str]) -> anyhow::Result<PathBuf> 
     cmd.arg("-o");
     cmd.arg(&output_path);
 
-    let mut child = cmd.spawn()?;
-    if child.wait()?.success() {
+    let mut child = cmd.spawn().into_diagnostic()?;
+    if child.wait().into_diagnostic()?.success() {
         Ok(output_path)
     } else {
-        Err(anyhow::anyhow!("Error while executing iverilog"))
+        Err(miette::miette!("Error while executing iverilog"))
     }
 }
 

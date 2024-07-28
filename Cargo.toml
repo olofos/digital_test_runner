@@ -14,7 +14,6 @@ roxmltree = "0.20.0"
 thiserror = "1.0.61"
 
 [dev-dependencies]
-anyhow = "1.0.80"
 colored = "2.1.0"
 rstest = "0.21.0"
 which = "6.0.1"

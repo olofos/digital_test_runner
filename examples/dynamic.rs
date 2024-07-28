@@ -1,6 +1,6 @@
 use colored::{Color, Colorize};
 use digital_test_runner::{dig, InputEntry, OutputEntry, Signal, SignalDirection, TestDriver};
-use miette::Result;
+use miette::{IntoDiagnostic, Result};
 use std::{ffi::OsStr, io::Write};
 use util::Cursor;
 
@@ -37,11 +37,12 @@ impl TestDriver for Driver {
 }
 
 impl Driver {
-    fn try_new(path: impl AsRef<OsStr>, signals: &[Signal]) -> anyhow::Result<Self> {
+    fn try_new(path: impl AsRef<OsStr>, signals: &[Signal]) -> miette::Result<Self> {
         let mut child = std::process::Command::new(path)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
-            .spawn()?;
+            .spawn()
+            .into_diagnostic()?;
 
         let stdin = child.stdin.take().unwrap();
         let cursor = util::Cursor::new(child.stdout.take().unwrap());
@@ -96,15 +97,13 @@ fn main() -> miette::Result<()> {
                     &format!("{}.v", test_name),
                     &format!("{}_int_tb.v", test_name),
                 ],
-            )
-            .map_err(|err| miette::miette!("{err}"))?;
-            let mut driver = Driver::try_new(prog_path, &test_case.signals)
-                .map_err(|err| miette::miette!("{err}"))?;
+            )?;
+            let mut driver = Driver::try_new(prog_path, &test_case.signals)?;
 
             let mut it = test_case.run_iter(&mut driver);
 
             while let Some(row) = it.next() {
-                let row = row.map_err(|err| miette::miette!("{err}"))?;
+                let row = row.into_diagnostic()?;
                 print!("{:2}: ", row.line);
                 for input in &row.inputs {
                     print!("{} ", input.value);
