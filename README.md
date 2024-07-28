@@ -7,9 +7,11 @@ or in hardware.
 
 ## Usage
 
-The simplest way of loading a test is to first load a `.dig` file
+The simplest way of loading a test is to load a `.dig` file and then load a particular test by number or by name
 
-    use digital_test_runner::dig;
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/Counter.dig");
-    let dig_file: dig::File = std::fs::read_to_string(path).unwrap().parse().unwrap();
-    let test_case = dig_file.load_test(0).unwrap();
+    use digital_test_runner::{dig,TestCase};
+    fn load_test(path: &std::path::Path, n: usize) -> TestCase {
+        let dig_file = dig::File::open(path).unwrap();
+        dig_file.load_test(n).unwrap()
+    }
+
