@@ -86,12 +86,12 @@ pub struct ParsedTestCase {
 
 /// Represents a fully specified test case
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TestCase<'a> {
+pub struct TestCase {
     stmts: Vec<Stmt>,
     /// List of input and output signals for the device under test
     ///
     /// Not all signals are necessarily involved in the test
-    pub signals: &'a [Signal],
+    pub signals: Vec<Signal>,
     input_indices: Vec<EntryIndex>,
     expected_indices: Vec<EntryIndex>,
 }
@@ -313,8 +313,8 @@ impl ParsedTestCase {
     /// Construct a complete test case by supplying a description of the
     /// input and expected signals of the device under test
     #[allow(clippy::result_large_err)]
-    pub fn with_signals(self, signals: &[Signal]) -> Result<TestCase<'_>, SignalError> {
-        let mut input_indices = vec![];
+    pub fn with_signals(self, signals: Vec<Signal>) -> Result<TestCase, SignalError> {
+        let mut input_indices: Vec<EntryIndex> = vec![];
         let mut expected_indices = vec![];
 
         for (signal_index, signal) in signals.iter().enumerate() {
@@ -455,7 +455,7 @@ impl ParsedTestCase {
 impl dig::File {
     /// Load a test by index
     #[allow(clippy::result_large_err)]
-    pub fn load_test(&self, n: usize) -> Result<TestCase<'_>, LoadTestError> {
+    pub fn load_test(&self, n: usize) -> Result<TestCase, LoadTestError> {
         if n >= self.test_cases.len() {
             Err(LoadTestError::IndexOutOfBounds {
                 number: n,
@@ -464,14 +464,14 @@ impl dig::File {
         } else {
             Ok(ParsedTestCase::from_str(&self.test_cases[n].source)
                 .map_err(|err| err.with_source(self.test_cases[n].named_source()))?
-                .with_signals(&self.signals)
+                .with_signals(self.signals.clone())
                 .map_err(|err| err.with_source(self.test_cases[n].named_source()))?)
         }
     }
 
     /// Load a test by name
     #[allow(clippy::result_large_err)]
-    pub fn load_test_by_name(&self, name: &str) -> Result<TestCase<'_>, LoadTestError> {
+    pub fn load_test_by_name(&self, name: &str) -> Result<TestCase, LoadTestError> {
         if let Some(n) = self
             .test_cases
             .iter()
@@ -676,16 +676,16 @@ impl<'a> DataRow<'a> {
     }
 }
 
-impl<'a> TestCase<'a> {
+impl TestCase {
     /// Run the test dynamically using `driver` for commnicating with the device under test
     ///
     /// This function returns an iterator over the resulting data rows
-    pub fn run_iter<'b, T>(&'a self, driver: &'b mut T) -> DataRowIterator<'a, 'b, T> {
+    pub fn run_iter<'a, 'b, T>(&'a self, driver: &'b mut T) -> DataRowIterator<'a, 'b, T> {
         DataRowIterator {
             iter: StmtIterator::new(&self.stmts),
             ctx: EvalContext::new(),
             test_data: DataRowIteratorTestData {
-                signals: self.signals,
+                signals: &self.signals,
                 input_indices: &self.input_indices,
                 expected_indices: &self.expected_indices,
                 output_indices: vec![],
@@ -772,7 +772,7 @@ impl Display for Signal {
     }
 }
 
-impl<'a> Display for TestCase<'a> {
+impl Display for TestCase {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let signal_names = self
             .signals
@@ -879,7 +879,7 @@ end loop
             })
             .collect::<Vec<_>>();
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs.clone()));
-        let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
         let mut driver = DummyDriver;
         let it = testcase.run_iter(&mut driver);
         for row in it {
@@ -912,7 +912,7 @@ Z 1";
         });
 
         let known_signals = Vec::from_iter(known_inputs);
-        let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
 
         let mut driver = DummyDriver;
         let it = testcase.run_iter(&mut driver);
@@ -962,10 +962,10 @@ Z 1";
             })
             .collect::<Vec<_>>();
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs.clone()));
-        let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals.clone())?;
 
         let expanded_testcase =
-            ParsedTestCase::from_str(expanded_input)?.with_signals(&known_signals)?;
+            ParsedTestCase::from_str(expanded_input)?.with_signals(known_signals)?;
 
         let mut driver = DummyDriver;
         let rows = testcase
@@ -1018,10 +1018,10 @@ Z 1";
             })
             .collect::<Vec<_>>();
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs.clone()));
-        let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals.clone())?;
 
         let expanded_testcase =
-            ParsedTestCase::from_str(expanded_input)?.with_signals(&known_signals)?;
+            ParsedTestCase::from_str(expanded_input)?.with_signals(known_signals)?;
 
         let mut driver = DummyDriver;
         let rows = testcase
@@ -1075,10 +1075,10 @@ Z 1";
             })
             .collect::<Vec<_>>();
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs.clone()));
-        let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals.clone())?;
 
         let expanded_testcase =
-            ParsedTestCase::from_str(expanded_input)?.with_signals(&known_signals)?;
+            ParsedTestCase::from_str(expanded_input)?.with_signals(known_signals)?;
 
         let mut driver = DummyDriver;
         let rows = testcase
@@ -1121,7 +1121,7 @@ Z 1";
             dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase_result = ParsedTestCase::from_str(input)?.with_signals(&known_signals);
+        let testcase_result = ParsedTestCase::from_str(input)?.with_signals(known_signals);
 
         assert!(testcase_result.is_err());
 
@@ -1149,7 +1149,7 @@ Z 1";
             dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
 
         let signal = Signal {
             name: String::from("B"),
@@ -1188,7 +1188,7 @@ Z 1";
             dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
 
         let signal_b = Signal {
             name: String::from("B"),
@@ -1237,7 +1237,7 @@ Z 1";
             dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
 
         let signal_b = Signal {
             name: String::from("B"),
@@ -1284,7 +1284,7 @@ Z 1";
             dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let testcase = ParsedTestCase::from_str(input)?.with_signals(&known_signals)?;
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
 
         let signal_b = Signal {
             name: String::from("B"),
@@ -1330,7 +1330,7 @@ Z 1";
             dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let Err(err) = ParsedTestCase::from_str(input)?.with_signals(&known_signals) else {
+        let Err(err) = ParsedTestCase::from_str(input)?.with_signals(known_signals) else {
             panic!("Should have failed")
         };
 
@@ -1359,7 +1359,7 @@ Z 1";
             dir: SignalDirection::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
-        let Err(err) = ParsedTestCase::from_str(input)?.with_signals(&known_signals) else {
+        let Err(err) = ParsedTestCase::from_str(input)?.with_signals(known_signals) else {
             panic!("Should have failed")
         };
 
