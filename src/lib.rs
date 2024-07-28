@@ -312,6 +312,7 @@ impl<'a, 'b, T> DataRowIterator<'a, 'b, T> {
 impl ParsedTestCase {
     /// Construct a complete test case by supplying a description of the
     /// input and expected signals of the device under test
+    #[allow(clippy::result_large_err)]
     pub fn with_signals(self, signals: &[Signal]) -> Result<TestCase<'_>, SignalError> {
         let mut input_indices = vec![];
         let mut expected_indices = vec![];
@@ -453,6 +454,7 @@ impl ParsedTestCase {
 
 impl dig::File {
     /// Load a test by index
+    #[allow(clippy::result_large_err)]
     pub fn load_test(&self, n: usize) -> Result<TestCase<'_>, LoadTestError> {
         if n >= self.test_cases.len() {
             Err(LoadTestError::IndexOutOfBounds {
@@ -468,6 +470,7 @@ impl dig::File {
     }
 
     /// Load a test by name
+    #[allow(clippy::result_large_err)]
     pub fn load_test_by_name(&self, name: &str) -> Result<TestCase<'_>, LoadTestError> {
         if let Some(n) = self
             .test_cases
