@@ -3,9 +3,10 @@ use thiserror::Error;
 
 use crate::lexer::TokenKind;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
+#[diagnostic()]
 /// Error returned from DataRowIterator
-pub enum RuntimeError<T> {
+pub enum RuntimeError<T: std::error::Error + 'static> {
     /// Driver error
     #[error("Driver error")]
     Driver(#[from] T),
@@ -206,3 +207,15 @@ pub(crate) enum DigFileErrorKind {
     #[error("Signals {0} found in tests but not found in circuit")]
     MissingSignals(String),
 }
+
+#[derive(Debug)]
+/// This should never happen
+pub enum NoError {}
+
+impl std::fmt::Display for NoError {
+    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        unreachable!("This type cannot be constructed")
+    }
+}
+
+impl std::error::Error for NoError {}

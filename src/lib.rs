@@ -31,7 +31,7 @@ use std::{fmt::Display, str::FromStr};
 /// Communicate with the device under test
 pub trait TestDriver {
     /// Error returned by the driver
-    type Error;
+    type Error: std::error::Error + 'static;
 
     /// Write `input` to the device under test and return the resulting output values
     fn write_input_and_read_output(
@@ -800,14 +800,18 @@ mod tests {
         outputs: Vec<Vec<OutputEntry<'a>>>,
     }
 
+    #[derive(Debug, thiserror::Error)]
+    #[error("Error")]
+    struct TableDriverError;
+
     impl<'a> TestDriver for TableDriver<'a> {
-        type Error = ();
+        type Error = TableDriverError;
 
         fn write_input_and_read_output(
             &mut self,
             _inputs: &[InputEntry<'_>],
         ) -> Result<Vec<OutputEntry<'_>>, Self::Error> {
-            self.outputs.pop().ok_or(())
+            self.outputs.pop().ok_or(TableDriverError)
         }
     }
 

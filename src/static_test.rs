@@ -1,4 +1,4 @@
-use crate::{InputEntry, OutputEntry, TestDriver};
+use crate::{errors::NoError, InputEntry, OutputEntry, TestDriver};
 
 #[derive(Debug)]
 /// Trivial test driver that always returns an empty output.
@@ -10,7 +10,7 @@ use crate::{InputEntry, OutputEntry, TestDriver};
 /// the test assertions.
 pub struct Driver;
 impl TestDriver for Driver {
-    type Error = DummyError;
+    type Error = NoError;
 
     fn write_input_and_read_output(
         &mut self,
@@ -19,8 +19,3 @@ impl TestDriver for Driver {
         Ok(vec![])
     }
 }
-
-#[derive(Debug, thiserror::Error)]
-#[error("Error")]
-/// This should never happen
-pub struct DummyError;
