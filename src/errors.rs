@@ -86,7 +86,7 @@ impl ParseError {
     }
 }
 
-/// Error returned by [ParsedTestCase::with_signals]
+/// Error returned by [ParsedTestCase::with_signals](crate::ParsedTestCase::with_signals)
 #[derive(Debug, Error, Diagnostic)]
 #[error("Signal mismatch")]
 #[diagnostic()]
@@ -164,7 +164,7 @@ pub(crate) enum SignalErrorKind {
     },
 }
 
-/// Error returned from [dig::File::load_test] and [dig::File::load_test_by_name]
+/// Error returned from [dig::File::load_test](crate::dig::File::load_test) and [dig::File::load_test_by_name](crate::dig::File::load_test_by_name)
 #[derive(Debug, Error, Diagnostic)]
 pub enum LoadTestError {
     /// Numerical test number out of bounds
