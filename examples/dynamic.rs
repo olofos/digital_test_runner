@@ -1,6 +1,6 @@
 use colored::{Color, Colorize};
 use digital_test_runner::{dig, InputEntry, OutputEntry, Signal, SignalDirection, TestDriver};
-use miette::{IntoDiagnostic, Result};
+use miette::Result;
 use std::{ffi::OsStr, io::Write};
 use util::Cursor;
 
@@ -81,8 +81,7 @@ fn main() -> miette::Result<()> {
             env!("CARGO_MANIFEST_DIR"),
             test_name
         );
-        let dig_file_input = std::fs::read_to_string(path).into_diagnostic()?;
-        let dig_file = dig::File::parse(&dig_file_input)?;
+        let dig_file = dig::File::open(path)?;
 
         for test_num in 0..dig_file.test_cases.len() {
             println!(

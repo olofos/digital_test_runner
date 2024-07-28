@@ -221,6 +221,21 @@ impl File {
             test_cases,
         })
     }
+
+    /// Open and parse dig file
+    pub fn open(path: impl AsRef<std::path::Path>) -> Result<File, DigFileError> {
+        let path = path.as_ref();
+        let input = std::fs::read_to_string(path).map_err(DigFileErrorKind::from)?;
+        File::parse(&input).map_err(|DigFileError(err)| match err {
+            DigFileErrorKind::XMLError(e, span, _) => {
+                DigFileErrorKind::XMLError(e, span, NamedSource::new(path.to_string_lossy(), input))
+                    .into()
+            }
+            DigFileErrorKind::IoError(_)
+            | DigFileErrorKind::EmptyTest
+            | DigFileErrorKind::MissingSignals(_) => DigFileError(err),
+        })
+    }
 }
 
 #[cfg(test)]
