@@ -1362,4 +1362,32 @@ Z 1";
 
         Ok(())
     }
+
+    #[test]
+    fn test_missing_ouput() -> miette::Result<()> {
+        let input = r"
+A B C
+0 X X
+1 X (B)";
+        let known_inputs = ["A"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Input {
+                default: InputValue::Value(0),
+            },
+        });
+        let known_outputs = ["B", "C"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Output,
+        });
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
+
+        let mut driver = Driver;
+        let it = testcase.run_iter(&mut driver);
+        let _ = it.collect::<Result<Vec<_>, _>>();
+
+        Ok(())
+    }
 }
