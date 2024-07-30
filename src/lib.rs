@@ -487,6 +487,21 @@ impl dig::File {
 }
 
 impl<'a> DataRowIteratorTestData<'a> {
+    fn generate_default_input_entries(&self) -> Vec<InputEntry<'a>> {
+        self.input_indices
+            .iter()
+            .map(|index| {
+                let signal = &self.signals[index.signal_index()];
+                let value = signal.default_value().unwrap();
+                InputEntry {
+                    signal,
+                    value,
+                    changed: false,
+                }
+            })
+            .collect()
+    }
+
     fn generate_input_entries(
         &self,
         stmt_entries: &[DataEntry],
@@ -576,13 +591,6 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
         if update_output {
             let outputs = self.driver.write_input_and_read_output(inputs)?;
             self.ctx.set_outputs(&outputs);
-
-            if self.test_data.output_indices.is_empty()
-                && !self.test_data.expected_indices.is_empty()
-            {
-                self.test_data.output_indices = self.test_data.build_output_indices(&outputs);
-            }
-
             let num_outputs = self.test_data.num_outputs();
 
             if outputs.len() != num_outputs {
@@ -624,26 +632,35 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
         self.ctx.vars()
     }
 
-    fn new(
+    fn try_new(
         stmts: &'a [Stmt],
         signals: &'a [Signal],
         input_indices: &'a [EntryIndex],
         expected_indices: &'a [EntryIndex],
         driver: &'b mut T,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, RuntimeError<T::Error>> {
+        let mut test_data = DataRowIteratorTestData {
+            signals,
+            input_indices,
+            expected_indices,
+            output_indices: vec![],
+        };
+        let inputs = test_data.generate_default_input_entries();
+        let outputs = driver.write_input_and_read_output(&inputs)?;
+
+        let mut ctx = EvalContext::new();
+        ctx.set_outputs(&outputs);
+
+        test_data.output_indices = test_data.build_output_indices(&outputs);
+
+        Ok(Self {
             iter: StmtIterator::new(stmts),
-            ctx: EvalContext::new(),
-            test_data: DataRowIteratorTestData {
-                signals,
-                input_indices,
-                expected_indices,
-                output_indices: vec![],
-            },
+            ctx,
+            test_data,
             prev: None,
             cache: vec![],
             driver,
-        }
+        })
     }
 }
 
@@ -703,12 +720,14 @@ impl<'a> DataRow<'a> {
 impl TestCase {
     /// Run the test dynamically using `driver` for commnicating with the device under test
     ///
-    /// This function returns an iterator over the resulting data rows
+    /// This function returns an iterator over the resulting data rows.
+    ///
+    /// Before starting the test all inputs are set to their default values.
     pub fn run_iter<'a, 'b, T: TestDriver>(
         &'a self,
         driver: &'b mut T,
-    ) -> DataRowIterator<'a, 'b, T> {
-        DataRowIterator::new(
+    ) -> Result<DataRowIterator<'a, 'b, T>, RuntimeError<T::Error>> {
+        DataRowIterator::try_new(
             &self.stmts,
             &self.signals,
             &self.input_indices,
@@ -895,7 +914,7 @@ end loop
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs.clone()));
         let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
         let mut driver = Driver;
-        let it = testcase.run_iter(&mut driver);
+        let it = testcase.run_iter(&mut driver)?;
         for row in it {
             let row = row.unwrap();
             for input in row.inputs {
@@ -929,7 +948,7 @@ Z 1";
         let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
 
         let mut driver = Driver;
-        let it = testcase.run_iter(&mut driver);
+        let it = testcase.run_iter(&mut driver)?;
         let result: Vec<_> = it.collect::<Result<_, _>>().unwrap();
 
         assert_eq!(result.len(), 2);
@@ -983,12 +1002,12 @@ Z 1";
 
         let mut driver = Driver;
         let rows = testcase
-            .run_iter(&mut driver)
+            .run_iter(&mut driver)?
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
 
         let expanded_rows: Vec<_> = expanded_testcase
-            .run_iter(&mut driver)
+            .run_iter(&mut driver)?
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
 
@@ -1039,12 +1058,12 @@ Z 1";
 
         let mut driver = Driver;
         let rows = testcase
-            .run_iter(&mut driver)
+            .run_iter(&mut driver)?
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
 
         let expanded_rows: Vec<_> = expanded_testcase
-            .run_iter(&mut driver)
+            .run_iter(&mut driver)?
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
 
@@ -1096,12 +1115,12 @@ Z 1";
 
         let mut driver = Driver;
         let rows = testcase
-            .run_iter(&mut driver)
+            .run_iter(&mut driver)?
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
 
         let expanded_rows: Vec<_> = expanded_testcase
-            .run_iter(&mut driver)
+            .run_iter(&mut driver)?
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
 
@@ -1172,9 +1191,10 @@ Z 1";
         };
         let signal = &signal;
 
-        let mut driver = TableDriver::new(&[vec![(signal, 0)], vec![(signal, 0)]]);
+        let mut driver =
+            TableDriver::new(&[vec![(signal, 0)], vec![(signal, 0)], vec![(signal, 0)]]);
 
-        for row in testcase.run_iter(&mut driver) {
+        for row in testcase.run_iter(&mut driver)? {
             let _ = row.unwrap();
         }
 
@@ -1223,8 +1243,7 @@ Z 1";
             vec![(signal_c, 0), (signal_b, 1)],
         ]);
 
-        let mut it = testcase.run_iter(&mut driver);
-        assert!(it.next().unwrap().is_ok());
+        let mut it = testcase.run_iter(&mut driver)?;
         assert!(it.next().unwrap().is_err());
 
         Ok(())
@@ -1270,8 +1289,7 @@ Z 1";
         let mut driver =
             TableDriver::new(&[vec![(signal_b, 0), (signal_c, 1)], vec![(signal_b, 0)]]);
 
-        let mut it = testcase.run_iter(&mut driver);
-        assert!(it.next().unwrap().is_ok());
+        let mut it = testcase.run_iter(&mut driver)?;
         assert!(it.next().unwrap().is_err());
 
         Ok(())
@@ -1317,8 +1335,7 @@ Z 1";
         let mut driver =
             TableDriver::new(&[vec![(signal_b, 0)], vec![(signal_b, 0), (signal_c, 1)]]);
 
-        let mut it = testcase.run_iter(&mut driver);
-        assert!(it.next().unwrap().is_ok());
+        let mut it = testcase.run_iter(&mut driver)?;
         assert!(it.next().unwrap().is_err());
 
         Ok(())
@@ -1404,7 +1421,7 @@ A B C
         let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
 
         let mut driver = Driver;
-        let it = testcase.run_iter(&mut driver);
+        let it = testcase.run_iter(&mut driver)?;
         let _ = it.collect::<Result<Vec<_>, _>>();
 
         Ok(())
