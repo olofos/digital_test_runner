@@ -623,6 +623,28 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
     pub fn vars(&self) -> HashMap<String, i64> {
         self.ctx.vars()
     }
+
+    fn new(
+        stmts: &'a [Stmt],
+        signals: &'a [Signal],
+        input_indices: &'a [EntryIndex],
+        expected_indices: &'a [EntryIndex],
+        driver: &'b mut T,
+    ) -> Self {
+        Self {
+            iter: StmtIterator::new(stmts),
+            ctx: EvalContext::new(),
+            test_data: DataRowIteratorTestData {
+                signals,
+                input_indices,
+                expected_indices,
+                output_indices: vec![],
+            },
+            prev: None,
+            cache: vec![],
+            driver,
+        }
+    }
 }
 
 impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
@@ -682,20 +704,17 @@ impl TestCase {
     /// Run the test dynamically using `driver` for commnicating with the device under test
     ///
     /// This function returns an iterator over the resulting data rows
-    pub fn run_iter<'a, 'b, T>(&'a self, driver: &'b mut T) -> DataRowIterator<'a, 'b, T> {
-        DataRowIterator {
-            iter: StmtIterator::new(&self.stmts),
-            ctx: EvalContext::new(),
-            test_data: DataRowIteratorTestData {
-                signals: &self.signals,
-                input_indices: &self.input_indices,
-                expected_indices: &self.expected_indices,
-                output_indices: vec![],
-            },
-            prev: None,
-            cache: vec![],
+    pub fn run_iter<'a, 'b, T: TestDriver>(
+        &'a self,
+        driver: &'b mut T,
+    ) -> DataRowIterator<'a, 'b, T> {
+        DataRowIterator::new(
+            &self.stmts,
+            &self.signals,
+            &self.input_indices,
+            &self.expected_indices,
             driver,
-        }
+        )
     }
 }
 
