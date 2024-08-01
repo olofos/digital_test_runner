@@ -172,20 +172,20 @@ pub(crate) fn parse_testcase(input: &str) -> Result<ParsedTestCase, ParseError> 
 
     expected_inputs.sort_by(|(_, a), (_, b)| a.start.cmp(&b.start));
 
-    let mut expected_outputs = parser
+    let mut read_outputs = parser
         .expected_outputs
         .into_iter()
         .map(|(k, v)| (k.to_string(), v))
         .collect::<Vec<_>>();
 
-    expected_outputs.sort_by(|(_, a), (_, b)| a.start.cmp(&b.start));
+    read_outputs.sort_by(|(_, a), (_, b)| a.start.cmp(&b.start));
 
     let test_case = ParsedTestCase {
         stmts,
         signals,
         signal_spans,
         expected_inputs,
-        expected_outputs,
+        read_outputs,
     };
     Ok(test_case)
 }

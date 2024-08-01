@@ -26,6 +26,9 @@ pub enum RuntimeErrorKind {
     /// the signals should always appear in the same order
     #[error("The order of the outputs must not change.")]
     WrongOutputOrder,
+    /// One or more output signals are needed by the test but are not returned by the driver
+    #[error("The output signals {0} are read by the test but not returned by the driver")]
+    MissingOutputs(String),
 }
 
 #[derive(Debug, Error, Diagnostic, PartialEq, Eq)]

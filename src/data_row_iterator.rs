@@ -57,10 +57,9 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
 
         let inputs = test_data.generate_default_input_entries();
         let outputs = driver.write_input_and_read_output(&inputs)?;
+        test_data.build_output_indices(&outputs, &test_case.read_outputs)?;
 
         let ctx = EvalContext::new_with_outputs(&outputs);
-
-        test_data.build_output_indices(&outputs);
 
         Ok(Self {
             ctx,
@@ -171,15 +170,41 @@ impl<'a> DataRowIteratorTestData<'a> {
             .collect()
     }
 
-    fn build_output_indices(&mut self, outputs: &[OutputEntry<'_>]) {
-        self.output_indices = self
-            .expected_indices
+    fn build_output_indices<E: std::error::Error>(
+        &mut self,
+        outputs: &[OutputEntry<'_>],
+        read_outputs: &[usize],
+    ) -> Result<(), RuntimeError<E>> {
+        let mut output_indices = Vec::with_capacity(outputs.len());
+        let mut found_outputs = vec![];
+
+        for expected_index in self.expected_indices.iter() {
+            let signal = &self.signals[expected_index.signal_index()];
+            let entry = outputs.iter().position(|output| output.signal == signal);
+            output_indices.push(entry);
+            if entry.is_some() {
+                found_outputs.push(expected_index.signal_index());
+            }
+        }
+
+        let missing = read_outputs
             .iter()
-            .map(|expected_index| {
-                let signal = &self.signals[expected_index.signal_index()];
-                outputs.iter().position(|output| output.signal == signal)
+            .filter_map(|read| {
+                if !found_outputs.contains(read) {
+                    Some(self.signals[*read].name.clone())
+                } else {
+                    None
+                }
             })
-            .collect();
+            .collect::<Vec<_>>();
+        if missing.is_empty() {
+            self.output_indices = output_indices;
+            Ok(())
+        } else {
+            Err(RuntimeError::Runtime(RuntimeErrorKind::MissingOutputs(
+                missing.join(", "),
+            )))
+        }
     }
 
     fn num_outputs(&self) -> usize {

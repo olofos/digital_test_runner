@@ -83,7 +83,7 @@ pub struct ParsedTestCase {
     pub signals: Vec<String>,
     signal_spans: Vec<logos::Span>,
     expected_inputs: Vec<(String, logos::Span)>,
-    expected_outputs: Vec<(String, logos::Span)>,
+    read_outputs: Vec<(String, logos::Span)>,
 }
 
 /// Represents a fully specified test case
@@ -96,6 +96,7 @@ pub struct TestCase {
     pub signals: Vec<Signal>,
     input_indices: Vec<EntryIndex>,
     expected_indices: Vec<EntryIndex>,
+    read_outputs: Vec<usize>,
 }
 
 /// A single row of input values, output values and expected values
@@ -200,6 +201,7 @@ impl ParsedTestCase {
     pub fn with_signals(self, signals: Vec<Signal>) -> Result<TestCase, SignalError> {
         let mut input_indices: Vec<EntryIndex> = vec![];
         let mut expected_indices = vec![];
+        let mut read_outputs = vec![];
 
         for (signal_index, signal) in signals.iter().enumerate() {
             let index = self
@@ -304,11 +306,13 @@ impl ParsedTestCase {
             }
         }
 
-        for (name, at) in self.expected_outputs {
-            if !signals
+        for (name, at) in self.read_outputs {
+            if let Some(i) = signals
                 .iter()
-                .any(|sig| sig.name == name && sig.is_output())
+                .position(|sig| sig.name == name && sig.is_output())
             {
+                read_outputs.push(i);
+            } else {
                 if let Some(i) = self.signals.iter().position(|sig_name| sig_name == &name) {
                     let signal_span = self.signal_spans[i].clone();
                     return Err(SignalError(SignalErrorKind::NotAnOutput {
@@ -332,6 +336,7 @@ impl ParsedTestCase {
             signals,
             input_indices,
             expected_indices,
+            read_outputs,
         })
     }
 }
@@ -1051,7 +1056,6 @@ Z 1";
         Ok(())
     }
 
-    #[ignore]
     #[test]
     fn test_missing_ouput() -> miette::Result<()> {
         let input = r"
@@ -1074,8 +1078,13 @@ A B C
         let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
 
         let mut driver = Driver;
-        let it = testcase.run_iter(&mut driver)?;
-        let _ = it.collect::<Result<Vec<_>, _>>();
+        let Err(err) = testcase.run_iter(&mut driver) else {
+            panic!("Should have failed")
+        };
+        assert!(matches!(
+            err,
+            RuntimeError::Runtime(errors::RuntimeErrorKind::MissingOutputs { .. })
+        ));
 
         Ok(())
     }
