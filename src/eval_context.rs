@@ -19,6 +19,12 @@ impl EvalContext {
         Self::with_seed(seed)
     }
 
+    pub(crate) fn new_with_outputs(outputs: &[OutputEntry<'_>]) -> Self {
+        let mut ctx = Self::new();
+        ctx.set_outputs(outputs);
+        ctx
+    }
+
     pub(crate) fn with_seed(seed: u64) -> Self {
         Self {
             vars: FramedMap::new(),

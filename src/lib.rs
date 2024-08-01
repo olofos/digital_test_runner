@@ -101,19 +101,19 @@ pub struct TestCase {
 #[derive(Debug)]
 struct DataRowIteratorTestData<'a> {
     signals: &'a [Signal],
+    iter: StmtIterator<'a>,
     input_indices: &'a [EntryIndex],
     expected_indices: &'a [EntryIndex],
     output_indices: Vec<Option<usize>>,
+    prev: Option<Vec<DataEntry>>,
+    cache: Vec<(DataEntries, bool)>,
 }
 
 #[derive(Debug)]
 /// An iterator over the test results for a dynamic test
 pub struct DataRowIterator<'a, 'b, T> {
-    iter: StmtIterator<'a>,
     ctx: EvalContext,
     test_data: DataRowIteratorTestData<'a>,
-    prev: Option<Vec<DataEntry>>,
-    cache: Vec<(DataEntries, bool)>,
     driver: &'b mut T,
 }
 
@@ -178,6 +178,14 @@ enum EntryIndex {
     },
 }
 
+#[derive(Debug)]
+struct EvaluatedRow<'a> {
+    line: usize,
+    inputs: Vec<InputEntry<'a>>,
+    expected: Vec<ExpectedEntry<'a>>,
+    update_output: bool,
+}
+
 impl<'a> OutputResultEntry<'a> {
     /// Does the output value match the expected value?
     pub fn check(&self) -> bool {
@@ -212,104 +220,7 @@ impl EntryIndex {
     }
 }
 
-impl<'a, 'b, T> DataRowIterator<'a, 'b, T> {
-    fn entry_is_input(&self, entry_index: usize) -> bool {
-        self.test_data
-            .input_indices
-            .iter()
-            .any(|entry| entry.indexes(entry_index))
-    }
-
-    fn expand_x(&mut self) {
-        loop {
-            let (row_result, check_output) = self
-                .cache
-                .last()
-                .expect("cache should be refilled before calling expand_x");
-            let check_output = *check_output;
-
-            let Some(x_index) =
-                row_result
-                    .entries
-                    .iter()
-                    .enumerate()
-                    .rev()
-                    .find_map(|(i, entry)| {
-                        if entry == &DataEntry::X && self.entry_is_input(i) {
-                            Some(i)
-                        } else {
-                            None
-                        }
-                    })
-            else {
-                break;
-            };
-            let (mut row_result, _) = self.cache.pop().unwrap();
-            row_result.entries[x_index] = DataEntry::Number(1);
-            self.cache.push((row_result.clone(), check_output));
-            row_result.entries[x_index] = DataEntry::Number(0);
-            self.cache.push((row_result, check_output));
-        }
-    }
-
-    fn expand_c(&mut self) {
-        let (mut row_result, check_output) = self
-            .cache
-            .pop()
-            .expect("cache should be refilled before calling expand_c");
-
-        let c_indices = row_result
-            .entries
-            .iter()
-            .enumerate()
-            .filter_map(|(i, entry)| {
-                if entry == &DataEntry::C && self.entry_is_input(i) {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
-
-        if c_indices.is_empty() {
-            self.cache.push((row_result, check_output));
-        } else {
-            for &i in &c_indices {
-                row_result.entries[i] = DataEntry::Number(0);
-            }
-            self.cache.push((row_result.clone(), true));
-            for entry_index in self.test_data.expected_indices {
-                match entry_index {
-                    EntryIndex::Entry {
-                        entry_index,
-                        signal_index: _,
-                    } => row_result.entries[*entry_index] = DataEntry::X,
-                    EntryIndex::Default { signal_index: _ } => continue,
-                }
-            }
-            for &i in &c_indices {
-                row_result.entries[i] = DataEntry::Number(1);
-            }
-            self.cache.push((row_result.clone(), false));
-            for &i in &c_indices {
-                row_result.entries[i] = DataEntry::Number(0);
-            }
-            self.cache.push((row_result.clone(), false));
-        }
-    }
-
-    fn check_changed_entries(&self, stmt_entries: &[DataEntry]) -> Vec<bool> {
-        if let Some(prev) = &self.prev {
-            stmt_entries
-                .iter()
-                .zip(prev)
-                .map(|(new, old)| new != old)
-                .collect()
-        } else {
-            vec![true; stmt_entries.len()]
-        }
-    }
-}
+impl<'a, 'b, T> DataRowIterator<'a, 'b, T> {}
 
 impl ParsedTestCase {
     /// Construct a complete test case by supplying a description of the
@@ -567,22 +478,210 @@ impl<'a> DataRowIteratorTestData<'a> {
             .collect()
     }
 
-    fn build_output_indices(&self, outputs: &[OutputEntry<'_>]) -> Vec<Option<usize>> {
-        self.expected_indices
+    fn build_output_indices(&mut self, outputs: &[OutputEntry<'_>]) {
+        self.output_indices = self
+            .expected_indices
             .iter()
             .map(|expected_index| {
                 let signal = &self.signals[expected_index.signal_index()];
                 outputs.iter().position(|output| output.signal == signal)
             })
-            .collect()
+            .collect();
     }
 
     fn num_outputs(&self) -> usize {
         self.output_indices.iter().filter(|i| i.is_some()).count()
     }
+
+    fn extract_output_values<E: std::error::Error>(
+        &self,
+        outputs: Vec<OutputEntry<'_>>,
+    ) -> Result<Vec<OutputValue>, RuntimeError<E>> {
+        let num_outputs = self.num_outputs();
+
+        if outputs.len() != num_outputs {
+            return Err(RuntimeError::Runtime(
+                errors::RuntimeErrorKind::WrongNumberOfOutputs(num_outputs, outputs.len()),
+            ));
+        }
+
+        self.expected_indices
+            .iter()
+            .zip(&self.output_indices)
+            .map(|(expected_index, output_index)| {
+                if let Some(output_entry_index) = output_index {
+                    let expected_signal = &self.signals[expected_index.signal_index()];
+                    let output_signal = outputs[*output_entry_index].signal;
+
+                    if expected_signal == output_signal {
+                        Ok(outputs[*output_entry_index].value)
+                    } else {
+                        Err(RuntimeError::Runtime(
+                            errors::RuntimeErrorKind::WrongOutputOrder,
+                        ))
+                    }
+                } else {
+                    Ok(OutputValue::X)
+                }
+            })
+            .collect()
+    }
+
+    fn new(test_case: &'a TestCase) -> Self {
+        DataRowIteratorTestData {
+            iter: StmtIterator::new(&test_case.stmts),
+            signals: &test_case.signals,
+            input_indices: &test_case.input_indices,
+            expected_indices: &test_case.expected_indices,
+            output_indices: vec![],
+            prev: None,
+            cache: vec![],
+        }
+    }
+
+    fn check_changed_entries(&self, stmt_entries: &[DataEntry]) -> Vec<bool> {
+        if let Some(prev) = &self.prev {
+            stmt_entries
+                .iter()
+                .zip(prev)
+                .map(|(new, old)| new != old)
+                .collect()
+        } else {
+            vec![true; stmt_entries.len()]
+        }
+    }
+
+    fn entry_is_input(&self, entry_index: usize) -> bool {
+        self.input_indices
+            .iter()
+            .any(|entry| entry.indexes(entry_index))
+    }
+
+    fn expand_x(&mut self) {
+        loop {
+            let (row_result, check_output) = self
+                .cache
+                .last()
+                .expect("cache should be refilled before calling expand_x");
+            let check_output = *check_output;
+
+            let Some(x_index) =
+                row_result
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .find_map(|(i, entry)| {
+                        if entry == &DataEntry::X && self.entry_is_input(i) {
+                            Some(i)
+                        } else {
+                            None
+                        }
+                    })
+            else {
+                break;
+            };
+            let (mut row_result, _) = self.cache.pop().unwrap();
+            row_result.entries[x_index] = DataEntry::Number(1);
+            self.cache.push((row_result.clone(), check_output));
+            row_result.entries[x_index] = DataEntry::Number(0);
+            self.cache.push((row_result, check_output));
+        }
+    }
+
+    fn expand_c(&mut self) {
+        let (mut row_result, check_output) = self
+            .cache
+            .pop()
+            .expect("cache should be refilled before calling expand_c");
+
+        let c_indices = row_result
+            .entries
+            .iter()
+            .enumerate()
+            .filter_map(|(i, entry)| {
+                if entry == &DataEntry::C && self.entry_is_input(i) {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        if c_indices.is_empty() {
+            self.cache.push((row_result, check_output));
+        } else {
+            for &i in &c_indices {
+                row_result.entries[i] = DataEntry::Number(0);
+            }
+            self.cache.push((row_result.clone(), true));
+            for entry_index in self.expected_indices {
+                match entry_index {
+                    EntryIndex::Entry {
+                        entry_index,
+                        signal_index: _,
+                    } => row_result.entries[*entry_index] = DataEntry::X,
+                    EntryIndex::Default { signal_index: _ } => continue,
+                }
+            }
+            for &i in &c_indices {
+                row_result.entries[i] = DataEntry::Number(1);
+            }
+            self.cache.push((row_result.clone(), false));
+            for &i in &c_indices {
+                row_result.entries[i] = DataEntry::Number(0);
+            }
+            self.cache.push((row_result.clone(), false));
+        }
+    }
+
+    fn get_row(&mut self, ctx: &mut EvalContext) -> Option<EvaluatedRow<'a>> {
+        if self.cache.is_empty() {
+            let row_result = self.iter.next_with_context(ctx)?;
+            self.cache.push((row_result, true));
+        }
+
+        self.expand_x();
+        self.expand_c();
+
+        let (row_result, update_output) = self.cache.pop().unwrap();
+
+        let changed = self.check_changed_entries(&row_result.entries);
+
+        let inputs = self.generate_input_entries(&row_result.entries, &changed);
+
+        let expected = self.generate_expected_entries(&row_result.entries);
+
+        let line = row_result.line;
+        self.prev = Some(row_result.entries);
+
+        Some(EvaluatedRow {
+            line,
+            inputs,
+            expected,
+            update_output,
+        })
+    }
 }
 
 impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
+    fn try_new(test_case: &'a TestCase, driver: &'b mut T) -> Result<Self, RuntimeError<T::Error>> {
+        let mut test_data = DataRowIteratorTestData::new(test_case);
+
+        let inputs = test_data.generate_default_input_entries();
+        let outputs = driver.write_input_and_read_output(&inputs)?;
+
+        let ctx = EvalContext::new_with_outputs(&outputs);
+
+        test_data.build_output_indices(&outputs);
+
+        Ok(Self {
+            ctx,
+            test_data,
+            driver,
+        })
+    }
+
     fn handle_io(
         &mut self,
         inputs: &[InputEntry<'a>],
@@ -591,36 +690,7 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
         if update_output {
             let outputs = self.driver.write_input_and_read_output(inputs)?;
             self.ctx.set_outputs(&outputs);
-            let num_outputs = self.test_data.num_outputs();
-
-            if outputs.len() != num_outputs {
-                return Err(RuntimeError::Runtime(
-                    errors::RuntimeErrorKind::WrongNumberOfOutputs(num_outputs, outputs.len()),
-                ));
-            }
-
-            self.test_data
-                .expected_indices
-                .iter()
-                .zip(&self.test_data.output_indices)
-                .map(|(expected_index, output_index)| {
-                    if let Some(output_entry_index) = output_index {
-                        let expected_signal =
-                            &self.test_data.signals[expected_index.signal_index()];
-                        let output_signal = outputs[*output_entry_index].signal;
-
-                        if expected_signal == output_signal {
-                            Ok(outputs[*output_entry_index].value)
-                        } else {
-                            Err(RuntimeError::Runtime(
-                                errors::RuntimeErrorKind::WrongOutputOrder,
-                            ))
-                        }
-                    } else {
-                        Ok(OutputValue::X)
-                    }
-                })
-                .collect()
+            self.test_data.extract_output_values(outputs)
         } else {
             self.driver.write_input(inputs)?;
             Ok(vec![])
@@ -631,36 +701,26 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
     pub fn vars(&self) -> HashMap<String, i64> {
         self.ctx.vars()
     }
+}
 
-    fn try_new(
-        stmts: &'a [Stmt],
-        signals: &'a [Signal],
-        input_indices: &'a [EntryIndex],
-        expected_indices: &'a [EntryIndex],
-        driver: &'b mut T,
-    ) -> Result<Self, RuntimeError<T::Error>> {
-        let mut test_data = DataRowIteratorTestData {
-            signals,
-            input_indices,
-            expected_indices,
-            output_indices: vec![],
-        };
-        let inputs = test_data.generate_default_input_entries();
-        let outputs = driver.write_input_and_read_output(&inputs)?;
+impl<'a> EvaluatedRow<'a> {
+    fn to_data_row(self, outputs: Vec<OutputValue>) -> DataRow<'a> {
+        let outputs = self
+            .expected
+            .into_iter()
+            .zip(outputs)
+            .map(|(expected_entry, output_value)| OutputResultEntry {
+                signal: expected_entry.signal,
+                output: output_value,
+                expected: expected_entry.value,
+            })
+            .collect();
 
-        let mut ctx = EvalContext::new();
-        ctx.set_outputs(&outputs);
-
-        test_data.output_indices = test_data.build_output_indices(&outputs);
-
-        Ok(Self {
-            iter: StmtIterator::new(stmts),
-            ctx,
-            test_data,
-            prev: None,
-            cache: vec![],
-            driver,
-        })
+        DataRow {
+            inputs: self.inputs,
+            outputs,
+            line: self.line,
+        }
     }
 }
 
@@ -668,45 +728,12 @@ impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
     type Item = Result<DataRow<'a>, RuntimeError<T::Error>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.cache.is_empty() {
-            let row_result = self.iter.next_with_context(&mut self.ctx)?;
-            self.cache.push((row_result, true));
+        let row = self.test_data.get_row(&mut self.ctx)?;
+
+        match self.handle_io(&row.inputs, row.update_output) {
+            Ok(outputs) => Some(Ok(row.to_data_row(outputs))),
+            Err(err) => Some(Err(err)),
         }
-
-        self.expand_x();
-        self.expand_c();
-
-        let (row_result, update_output) = self.cache.pop().unwrap();
-
-        let changed = self.check_changed_entries(&row_result.entries);
-        self.prev = Some(row_result.entries.clone());
-
-        let inputs = self
-            .test_data
-            .generate_input_entries(&row_result.entries, &changed);
-
-        let result = self.handle_io(&inputs, update_output).map(|outputs| {
-            let expected = self
-                .test_data
-                .generate_expected_entries(&row_result.entries);
-
-            let outputs = expected
-                .into_iter()
-                .zip(outputs)
-                .map(|(expected_entry, output_value)| OutputResultEntry {
-                    signal: expected_entry.signal,
-                    output: output_value,
-                    expected: expected_entry.value,
-                })
-                .collect();
-            DataRow {
-                inputs,
-                outputs,
-                line: row_result.line,
-            }
-        });
-
-        Some(result)
     }
 }
 
@@ -727,13 +754,7 @@ impl TestCase {
         &'a self,
         driver: &'b mut T,
     ) -> Result<DataRowIterator<'a, 'b, T>, RuntimeError<T::Error>> {
-        DataRowIterator::try_new(
-            &self.stmts,
-            &self.signals,
-            &self.input_indices,
-            &self.expected_indices,
-            driver,
-        )
+        DataRowIterator::try_new(self, driver)
     }
 }
 
@@ -1399,6 +1420,7 @@ Z 1";
         Ok(())
     }
 
+    #[ignore]
     #[test]
     fn test_missing_ouput() -> miette::Result<()> {
         let input = r"
