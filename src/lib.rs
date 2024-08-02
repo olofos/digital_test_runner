@@ -518,7 +518,7 @@ mod tests {
                     row.iter()
                         .map(|(signal, value)| OutputEntry {
                             signal,
-                            value: OutputValue::Value(*value),
+                            value: (*value).into(),
                         })
                         .collect()
                 })
