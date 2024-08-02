@@ -495,18 +495,22 @@ mod tests {
         outputs: Vec<Vec<OutputEntry<'a>>>,
     }
 
+    struct ConstDriver<'a> {
+        outputs: Vec<OutputEntry<'a>>,
+    }
+
     #[derive(Debug, thiserror::Error)]
     #[error("Error")]
-    struct TableDriverError;
+    struct DriverError;
 
     impl<'a> TestDriver for TableDriver<'a> {
-        type Error = TableDriverError;
+        type Error = DriverError;
 
         fn write_input_and_read_output(
             &mut self,
             _inputs: &[InputEntry<'_>],
         ) -> Result<Vec<OutputEntry<'_>>, Self::Error> {
-            self.outputs.pop().ok_or(TableDriverError)
+            self.outputs.pop().ok_or(DriverError)
         }
     }
 
@@ -525,6 +529,17 @@ mod tests {
                 .collect();
             outputs.reverse();
             Self { outputs }
+        }
+    }
+
+    impl<'a> TestDriver for ConstDriver<'a> {
+        type Error = DriverError;
+
+        fn write_input_and_read_output(
+            &mut self,
+            _inputs: &[InputEntry<'_>],
+        ) -> Result<Vec<OutputEntry<'_>>, Self::Error> {
+            Ok(self.outputs.clone())
         }
     }
 
@@ -1085,6 +1100,52 @@ A B C
             err,
             RuntimeError::Runtime(errors::RuntimeErrorKind::MissingOutputs { .. })
         ));
+
+        Ok(())
+    }
+
+    #[ignore]
+    #[test]
+    fn return_x_for_read_signal() -> miette::Result<()> {
+        let input = r"
+    A B C
+    0 0 0
+    0 0 0
+    1 1 (B)
+    ";
+
+        let known_inputs = ["A"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Input {
+                default: InputValue::Value(0),
+            },
+        });
+        let known_outputs = ["B", "C"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Output,
+        });
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
+
+        let signal_b = Signal {
+            name: String::from("B"),
+            bits: 1,
+            dir: SignalDirection::Output,
+        };
+        let signal_b = &signal_b;
+
+        let mut driver = ConstDriver {
+            outputs: vec![OutputEntry {
+                signal: signal_b,
+                value: OutputValue::X,
+            }],
+        };
+
+        let _ = testcase
+            .run_iter(&mut driver)?
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(())
     }
