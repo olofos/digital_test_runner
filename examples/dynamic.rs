@@ -100,7 +100,7 @@ fn main() -> miette::Result<()> {
             )?;
             let mut driver = Driver::try_new(prog_path, &test_case.signals)?;
 
-            let mut it = test_case.run_iter(&mut driver);
+            let mut it = test_case.run_iter(&mut driver)?;
 
             while let Some(row) = it.next() {
                 let row = row.into_diagnostic()?;
