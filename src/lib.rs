@@ -1106,10 +1106,9 @@ A B C
 
     #[ignore]
     #[test]
-    fn return_x_for_read_signal() -> miette::Result<()> {
+    fn return_z_for_read_signal_should_not_panic() -> miette::Result<()> {
         let input = r"
     A B C
-    0 0 0
     0 0 0
     1 1 (B)
     ";
@@ -1139,7 +1138,7 @@ A B C
         let mut driver = ConstDriver {
             outputs: vec![OutputEntry {
                 signal: signal_b,
-                value: OutputValue::X,
+                value: OutputValue::Z,
             }],
         };
 
