@@ -198,15 +198,13 @@ impl Expr {
             Self::Number(n) => *n,
             Self::Variable(name) => ctx
                 .get(name)
-                .expect("Variable {name} not found. This should have been found at parse time"),
+                .expect("Variable not found. This should have been found at parse time"),
             Self::UnaryOp { op, expr } => op.eval(expr.eval(ctx)),
             Self::BinOp { op, left, right } => op.eval(left.eval(ctx), right.eval(ctx)),
             Self::Func { name, args } => {
-                let Some(entry) = FUNC_TABLE.get(name) else {
-                    panic!(
-                        "Function '{name}' not found. This should have been found at parse time"
-                    );
-                };
+                let entry = FUNC_TABLE
+                    .get(name)
+                    .expect("Function not found. This should have been found at parse time");
                 if entry.number_of_args != args.len() {
                     panic!(
                         "The function '{name}' takes {} arguments, but {} were found. This should have been found at parse time",
