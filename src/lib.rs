@@ -617,9 +617,14 @@ Z 1";
         });
 
         let known_signals = Vec::from_iter(known_inputs);
-        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals.clone())?;
 
-        let mut driver = Driver;
+        let mut driver = ConstDriver {
+            outputs: vec![OutputEntry {
+                signal: &known_signals[0],
+                value: OutputValue::Value(0),
+            }],
+        };
         let it = testcase.run_iter(&mut driver)?;
         let result: Vec<_> = it.collect::<Result<_, _>>().unwrap();
 
