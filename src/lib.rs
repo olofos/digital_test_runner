@@ -94,8 +94,13 @@ pub struct TestCase {
     ///
     /// Not all signals are necessarily involved in the test
     pub signals: Vec<Signal>,
+    /// List of inputs which links signals to test entries
     input_indices: Vec<EntryIndex>,
+    /// List of expected values which links signals to test entries
     expected_indices: Vec<EntryIndex>,
+    /// Each entry is an index into [Self::signals] and
+    /// indicates that that signal is an output from which
+    /// the test directly reads the value
     read_outputs: Vec<usize>,
 }
 
