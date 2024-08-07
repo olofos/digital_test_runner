@@ -203,10 +203,24 @@ impl ParsedTestCase {
     /// Construct a complete test case by supplying a description of the
     /// input and expected signals of the device under test
     #[allow(clippy::result_large_err)]
-    pub fn with_signals(self, signals: Vec<Signal>) -> Result<TestCase, SignalError> {
+    pub fn with_signals(mut self, signals: Vec<Signal>) -> Result<TestCase, SignalError> {
+        let (input_indices, expected_indices) = self.build_indices(&signals);
+        self.check_missing_signals(&input_indices, &expected_indices)?;
+        self.check_and_consume_expected_inputs(&signals)?;
+        let read_outputs = self.build_read_outputs(&signals)?;
+
+        Ok(TestCase {
+            stmts: self.stmts,
+            signals,
+            input_indices,
+            expected_indices,
+            read_outputs,
+        })
+    }
+
+    fn build_indices(&self, signals: &[Signal]) -> (Vec<EntryIndex>, Vec<EntryIndex>) {
         let mut input_indices: Vec<EntryIndex> = vec![];
         let mut expected_indices = vec![];
-        let mut read_outputs = vec![];
 
         for (signal_index, signal) in signals.iter().enumerate() {
             let index = self
@@ -254,7 +268,15 @@ impl ParsedTestCase {
                 }
             }
         }
+        (input_indices, expected_indices)
+    }
 
+    #[allow(clippy::result_large_err)]
+    fn check_missing_signals(
+        &self,
+        input_indices: &[EntryIndex],
+        expected_indices: &[EntryIndex],
+    ) -> Result<(), SignalError> {
         let missing_signals = self
             .signals
             .iter()
@@ -262,7 +284,7 @@ impl ParsedTestCase {
             .filter_map(|(entry_index, signal_name)| {
                 if !input_indices
                     .iter()
-                    .chain(&expected_indices)
+                    .chain(expected_indices)
                     .any(|entry| entry.indexes(entry_index))
                 {
                     Some(signal_name.to_owned())
@@ -290,8 +312,12 @@ impl ParsedTestCase {
                 source_code: None,
             }));
         }
+        Ok(())
+    }
 
-        for (name, at) in self.expected_inputs {
+    #[allow(clippy::result_large_err)]
+    fn check_and_consume_expected_inputs(&mut self, signals: &[Signal]) -> Result<(), SignalError> {
+        for (name, at) in self.expected_inputs.drain(..) {
             if !signals.iter().any(|sig| sig.name == name && sig.is_input()) {
                 if let Some(i) = self.signals.iter().position(|sig_name| sig_name == &name) {
                     let signal_span = self.signal_spans[i].clone();
@@ -310,39 +336,35 @@ impl ParsedTestCase {
                 }
             }
         }
+        Ok(())
+    }
 
-        for (name, at) in self.read_outputs {
+    #[allow(clippy::result_large_err)]
+    fn build_read_outputs(&mut self, signals: &[Signal]) -> Result<Vec<usize>, SignalError> {
+        let mut read_outputs = vec![];
+        for (name, at) in self.read_outputs.drain(..) {
             if let Some(i) = signals
                 .iter()
                 .position(|sig| sig.name == name && sig.is_output())
             {
                 read_outputs.push(i);
+            } else if let Some(i) = self.signals.iter().position(|sig_name| sig_name == &name) {
+                let signal_span = self.signal_spans[i].clone();
+                return Err(SignalError(SignalErrorKind::NotAnOutput {
+                    name,
+                    at,
+                    signal_span,
+                    source_code: None,
+                }));
             } else {
-                if let Some(i) = self.signals.iter().position(|sig_name| sig_name == &name) {
-                    let signal_span = self.signal_spans[i].clone();
-                    return Err(SignalError(SignalErrorKind::NotAnOutput {
-                        name,
-                        at,
-                        signal_span,
-                        source_code: None,
-                    }));
-                } else {
-                    return Err(SignalError(SignalErrorKind::UnknownVariableOrSignal {
-                        name,
-                        at,
-                        source_code: None,
-                    }));
-                }
+                return Err(SignalError(SignalErrorKind::UnknownVariableOrSignal {
+                    name,
+                    at,
+                    source_code: None,
+                }));
             }
         }
-
-        Ok(TestCase {
-            stmts: self.stmts,
-            signals,
-            input_indices,
-            expected_indices,
-            read_outputs,
-        })
+        Ok(read_outputs)
     }
 }
 
