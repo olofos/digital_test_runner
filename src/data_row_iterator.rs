@@ -42,7 +42,7 @@ impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
         let row = self.test_data.get_row(&mut self.ctx)?;
 
         match self.handle_io(&row.inputs, row.update_output) {
-            Ok(outputs) => Some(Ok(row.to_data_row(outputs))),
+            Ok(outputs) => Some(Ok(row.into_data_row(outputs))),
             Err(err) => Some(Err(err)),
         }
     }
@@ -381,7 +381,7 @@ impl<'a> DataRowIteratorTestData<'a> {
 }
 
 impl<'a> EvaluatedRow<'a> {
-    fn to_data_row(self, outputs: Vec<OutputValue>) -> DataRow<'a> {
+    fn into_data_row(self, outputs: Vec<OutputValue>) -> DataRow<'a> {
         let outputs = self
             .expected
             .into_iter()
