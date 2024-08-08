@@ -145,7 +145,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_data_row(&mut self) -> Result<Vec<DataEntry>, ParseError> {
-        let mut data = vec![];
+        let mut data = Vec::with_capacity(self.signals.len());
         let mut signal_index = 0;
         let row_start = self.peek_span().start;
 
