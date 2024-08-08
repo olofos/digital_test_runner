@@ -196,9 +196,16 @@ impl Expr {
     pub(crate) fn eval(&self, ctx: &EvalContext) -> i64 {
         match self {
             Self::Number(n) => *n,
-            Self::Variable(name) => ctx
-                .get(name)
-                .expect("Variable not found. This should have been found at parse time"),
+            Self::Variable(name) => {
+                match ctx
+                    .get(name)
+                    .expect("Variable not found. This should have been found at parse time")
+                {
+                    crate::OutputValue::Value(n) => n,
+                    crate::OutputValue::Z => panic!("Unexpected value Z for variable '{name}'"),
+                    crate::OutputValue::X => panic!("Unexpected value X for variable '{name}'"),
+                }
+            }
             Self::UnaryOp { op, expr } => op.eval(expr.eval(ctx)),
             Self::BinOp { op, left, right } => op.eval(left.eval(ctx), right.eval(ctx)),
             Self::Func { name, args } => {

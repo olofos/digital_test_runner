@@ -46,14 +46,11 @@ impl EvalContext {
         self.vars.set(name, value)
     }
 
-    pub(crate) fn get(&self, name: &str) -> Option<i64> {
+    pub(crate) fn get(&self, name: &str) -> Option<OutputValue> {
         if let Some(n) = self.vars.get(name) {
-            Some(n)
+            Some(OutputValue::Value(n))
         } else {
-            match self.outputs.get(name)? {
-                OutputValue::Value(n) => Some(*n),
-                OutputValue::Z | OutputValue::X => None,
-            }
+            self.outputs.get(name).cloned()
         }
     }
 
@@ -96,24 +93,24 @@ mod tests {
         ctx.set("a", 1);
         ctx.set("b", 2);
         ctx.set("c", 3);
-        assert_eq!(ctx.get("a"), Some(1));
-        assert_eq!(ctx.get("b"), Some(2));
-        assert_eq!(ctx.get("c"), Some(3));
+        assert_eq!(ctx.get("a"), Some(OutputValue::Value(1)));
+        assert_eq!(ctx.get("b"), Some(OutputValue::Value(2)));
+        assert_eq!(ctx.get("c"), Some(OutputValue::Value(3)));
         ctx.set("a", 4);
-        assert_eq!(ctx.get("a"), Some(4));
-        assert_eq!(ctx.get("b"), Some(2));
-        assert_eq!(ctx.get("c"), Some(3));
+        assert_eq!(ctx.get("a"), Some(OutputValue::Value(4)));
+        assert_eq!(ctx.get("b"), Some(OutputValue::Value(2)));
+        assert_eq!(ctx.get("c"), Some(OutputValue::Value(3)));
 
         ctx.push_frame();
         ctx.set("a", 5);
         ctx.set("b", 6);
-        assert_eq!(ctx.get("a"), Some(5));
-        assert_eq!(ctx.get("b"), Some(6));
-        assert_eq!(ctx.get("c"), Some(3));
+        assert_eq!(ctx.get("a"), Some(OutputValue::Value(5)));
+        assert_eq!(ctx.get("b"), Some(OutputValue::Value(6)));
+        assert_eq!(ctx.get("c"), Some(OutputValue::Value(3)));
 
         ctx.pop_frame();
-        assert_eq!(ctx.get("a"), Some(4));
-        assert_eq!(ctx.get("b"), Some(2));
-        assert_eq!(ctx.get("c"), Some(3));
+        assert_eq!(ctx.get("a"), Some(OutputValue::Value(4)));
+        assert_eq!(ctx.get("b"), Some(OutputValue::Value(2)));
+        assert_eq!(ctx.get("c"), Some(OutputValue::Value(3)));
     }
 }
