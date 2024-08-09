@@ -1,4 +1,4 @@
-use crate::eval_context::EvalContext;
+use crate::{errors::ExprError, eval_context::EvalContext};
 use std::fmt::Display;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -138,7 +138,7 @@ pub(crate) struct FuncTableEntry {
     pub(crate) name: &'static str,
     pub(crate) number_of_args: usize,
     is_pure: bool,
-    f: fn(&EvalContext, &[Expr]) -> i64,
+    f: fn(&EvalContext, &[Expr]) -> Result<i64, ExprError>,
 }
 
 pub(crate) struct FuncTable {
@@ -174,13 +174,13 @@ pub(crate) const FUNC_TABLE: FuncTable = FuncTable {
     ],
 };
 
-fn func_random(ctx: &EvalContext, args: &[Expr]) -> i64 {
-    let max = args[0].eval(ctx);
-    ctx.random(1..max)
+fn func_random(ctx: &EvalContext, args: &[Expr]) -> Result<i64, ExprError> {
+    let max = args[0].eval(ctx)?;
+    Ok(ctx.random(1..max))
 }
 
-fn func_ite(ctx: &EvalContext, args: &[Expr]) -> i64 {
-    let test = args[0].eval(ctx);
+fn func_ite(ctx: &EvalContext, args: &[Expr]) -> Result<i64, ExprError> {
+    let test = args[0].eval(ctx)?;
     if test == 0 {
         args[2].eval(ctx)
     } else {
@@ -188,26 +188,26 @@ fn func_ite(ctx: &EvalContext, args: &[Expr]) -> i64 {
     }
 }
 
-fn func_sign_ext(_ctx: &EvalContext, _args: &[Expr]) -> i64 {
+fn func_sign_ext(_ctx: &EvalContext, _args: &[Expr]) -> Result<i64, ExprError> {
     todo!("signExt")
 }
 
 impl Expr {
-    pub(crate) fn eval(&self, ctx: &EvalContext) -> i64 {
+    pub(crate) fn eval(&self, ctx: &EvalContext) -> Result<i64, ExprError> {
         match self {
-            Self::Number(n) => *n,
+            Self::Number(n) => Ok(*n),
             Self::Variable(name) => {
                 match ctx
                     .get(name)
                     .expect("Variable not found. This should have been found at parse time")
                 {
-                    crate::OutputValue::Value(n) => n,
+                    crate::OutputValue::Value(n) => Ok(n),
                     crate::OutputValue::Z => panic!("Unexpected value Z for variable '{name}'"),
                     crate::OutputValue::X => panic!("Unexpected value X for variable '{name}'"),
                 }
             }
-            Self::UnaryOp { op, expr } => op.eval(expr.eval(ctx)),
-            Self::BinOp { op, left, right } => op.eval(left.eval(ctx), right.eval(ctx)),
+            Self::UnaryOp { op, expr } => Ok(op.eval(expr.eval(ctx)?)),
+            Self::BinOp { op, left, right } => Ok(op.eval(left.eval(ctx)?, right.eval(ctx)?)),
             Self::Func { name, args } => {
                 let entry = FUNC_TABLE
                     .get(name)
@@ -240,7 +240,7 @@ impl Expr {
                     .iter()
                     .map(|expr| expr.eval_const().map(Expr::Number))
                     .collect::<Option<Vec<_>>>()?;
-                Some((entry.f)(&EvalContext::new(), &args))
+                Some((entry.f)(&EvalContext::new(), &args).ok()?)
             }
             _ => None,
         }
@@ -267,7 +267,7 @@ mod tests {
         ctx.set("a", 1);
         ctx.set("b", 2);
         ctx.set("c", 3);
-        assert_eq!(expr.eval(&mut ctx), value);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), value);
     }
 
     #[rstest]
@@ -292,7 +292,7 @@ mod tests {
         ctx.set("a", 1);
         ctx.set("b", 2);
         ctx.set("c", 3);
-        assert_eq!(expr.eval(&mut ctx), value);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), value);
     }
 
     #[rstest]
@@ -307,7 +307,7 @@ mod tests {
         ctx.set("a", 1);
         ctx.set("b", 2);
         ctx.set("c", 3);
-        assert_eq!(expr.eval(&mut ctx), value);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), value);
     }
 
     #[test]
@@ -316,9 +316,9 @@ mod tests {
         let mut parser = Parser::new("random(10)", &signals);
         let expr = parser.parse_expr().unwrap();
         let mut ctx = EvalContext::with_seed(0);
-        assert_eq!(expr.eval(&mut ctx), 1);
-        assert_eq!(expr.eval(&mut ctx), 6);
-        assert_eq!(expr.eval(&mut ctx), 3);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), 1);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), 6);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), 3);
     }
 
     #[rstest]
@@ -329,6 +329,6 @@ mod tests {
         let mut parser = Parser::new(input, &signals);
         let expr = parser.parse_expr().unwrap();
         let mut ctx = EvalContext::new();
-        assert_eq!(expr.eval(&mut ctx), value);
+        assert_eq!(expr.eval(&mut ctx).unwrap(), value);
     }
 }

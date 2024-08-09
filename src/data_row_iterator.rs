@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    errors::{RuntimeError, RuntimeErrorKind},
+    errors::{ExprError, RuntimeError, RuntimeErrorKind},
     stmt::DataEntries,
     DataEntry, DataRow, EntryIndex, EvalContext, ExpectedEntry, ExpectedValue, InputEntry,
     InputValue, OutputEntry, OutputResultEntry, OutputValue, Signal, StmtIterator, TestCase,
@@ -39,7 +39,10 @@ impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
     type Item = Result<DataRow<'a>, RuntimeError<T::Error>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let row = self.test_data.get_row(&mut self.ctx)?;
+        let row = match self.test_data.get_row(&mut self.ctx) {
+            Ok(val) => val?,
+            Err(err) => return Some(Err(RuntimeError::Runtime(err.into()))),
+        };
 
         match self.handle_io(&row.inputs, row.update_output) {
             Ok(outputs) => Some(Ok(row.into_data_row(outputs))),
@@ -351,9 +354,11 @@ impl<'a> DataRowIteratorTestData<'a> {
         }
     }
 
-    fn get_row(&mut self, ctx: &mut EvalContext) -> Option<EvaluatedRow<'a>> {
+    fn get_row(&mut self, ctx: &mut EvalContext) -> Result<Option<EvaluatedRow<'a>>, ExprError> {
         if self.cache.is_empty() {
-            let row_result = self.iter.next_with_context(ctx)?;
+            let Some(row_result) = self.iter.next_with_context(ctx)? else {
+                return Ok(None);
+            };
             self.cache.push((row_result, true));
         }
 
@@ -371,12 +376,12 @@ impl<'a> DataRowIteratorTestData<'a> {
         let line = row_result.line;
         self.prev = Some(row_result.entries);
 
-        Some(EvaluatedRow {
+        Ok(Some(EvaluatedRow {
             line,
             inputs,
             expected,
             update_output,
-        })
+        }))
     }
 }
 

@@ -1,5 +1,6 @@
 use std::mem;
 
+use crate::errors::ExprError;
 use crate::eval_context::EvalContext;
 use crate::expr::Expr;
 
@@ -109,23 +110,28 @@ impl<'a> StmtIterator<'a> {
             inner_state: StmtIteratorState::Iterate,
         }
     }
-    pub(crate) fn next_with_context(&mut self, ctx: &mut EvalContext) -> Option<DataEntries> {
+    pub(crate) fn next_with_context(
+        &mut self,
+        ctx: &mut EvalContext,
+    ) -> Result<Option<DataEntries>, ExprError> {
         loop {
             match &mut self.inner_state {
                 StmtIteratorState::Iterate => {
-                    let next = self.stmt_iter.next()?;
+                    let Some(next) = self.stmt_iter.next() else {
+                        return Ok(None);
+                    };
 
                     match next {
-                        Stmt::Let { name, expr } => ctx.set(name, expr.eval(ctx)),
+                        Stmt::Let { name, expr } => ctx.set(name, expr.eval(ctx)?),
                         Stmt::DataRow { data, line } => {
                             let mut entries = vec![];
                             for entry in data {
-                                entries.extend(entry.eval(ctx));
+                                entries.extend(entry.eval(ctx)?);
                             }
-                            return Some(DataEntries {
+                            return Ok(Some(DataEntries {
                                 entries,
                                 line: *line,
-                            });
+                            }));
                         }
                         Stmt::Loop {
                             variable,
@@ -151,8 +157,8 @@ impl<'a> StmtIterator<'a> {
                     inner_iterator,
                     loop_state,
                 } => {
-                    if let Some(result) = inner_iterator.next_with_context(ctx) {
-                        return Some(result);
+                    if let Some(result) = inner_iterator.next_with_context(ctx)? {
+                        return Ok(Some(result));
                     }
                     self.inner_state = StmtIteratorState::EndIterateInner(loop_state.take())
                 }
@@ -187,7 +193,7 @@ impl<'a> StmtIterator<'a> {
                     }
                 }
                 StmtIteratorState::StartWhile(while_state) => {
-                    let cond = while_state.condition.eval(ctx);
+                    let cond = while_state.condition.eval(ctx)?;
                     if cond == 0 {
                         self.inner_state = StmtIteratorState::Iterate;
                     } else {
@@ -206,8 +212,8 @@ impl<'a> StmtIterator<'a> {
                     inner_iterator,
                     while_state,
                 } => {
-                    if let Some(result) = inner_iterator.next_with_context(ctx) {
-                        return Some(result);
+                    if let Some(result) = inner_iterator.next_with_context(ctx)? {
+                        return Ok(Some(result));
                     }
                     self.inner_state = StmtIteratorState::StartWhile(while_state.take())
                 }
@@ -217,17 +223,17 @@ impl<'a> StmtIterator<'a> {
 }
 
 impl DataEntry {
-    fn eval(&self, ctx: &mut EvalContext) -> Vec<DataEntry> {
+    fn eval(&self, ctx: &mut EvalContext) -> Result<Vec<DataEntry>, ExprError> {
         match self {
-            Self::Expr(expr) => vec![Self::Number(expr.eval(ctx))],
+            Self::Expr(expr) => Ok(vec![Self::Number(expr.eval(ctx)?)]),
             Self::Bits { number, expr } => {
-                let value = expr.eval(ctx);
-                (0..*number)
+                let value = expr.eval(ctx)?;
+                Ok((0..*number)
                     .rev()
                     .map(|n| Self::Number((value >> n) & 1))
-                    .collect()
+                    .collect())
             }
-            Self::X | Self::Z | Self::C | Self::Number(_) => vec![self.clone()],
+            Self::X | Self::Z | Self::C | Self::Number(_) => Ok(vec![self.clone()]),
         }
     }
 }
@@ -347,7 +353,7 @@ A B
         let mut ctx = EvalContext::new();
         let mut result = vec![];
         let mut iter = StmtIterator::new(&testcase.stmts);
-        while let Some(row) = iter.next_with_context(&mut ctx) {
+        while let Some(row) = iter.next_with_context(&mut ctx).unwrap() {
             result.push(row.entries);
         }
         assert_eq!(result, expectation)
@@ -381,7 +387,7 @@ end loop
         let mut ctx = EvalContext::new();
         let mut result = vec![];
         let mut iter = StmtIterator::new(&testcase.stmts);
-        while let Some(row) = iter.next_with_context(&mut ctx) {
+        while let Some(row) = iter.next_with_context(&mut ctx).unwrap() {
             result.push(row.entries);
         }
         assert_eq!(result, expectation)
@@ -409,7 +415,7 @@ bits(2,n)
         let mut ctx = EvalContext::new();
         let mut result = vec![];
         let mut iter = StmtIterator::new(&testcase.stmts);
-        while let Some(row) = iter.next_with_context(&mut ctx) {
+        while let Some(row) = iter.next_with_context(&mut ctx).unwrap() {
             result.push(row.entries);
         }
         assert_eq!(result, expectation)
@@ -436,7 +442,7 @@ end while
         let mut ctx = EvalContext::new();
         let mut result = vec![];
         let mut iter = StmtIterator::new(&testcase.stmts);
-        while let Some(row) = iter.next_with_context(&mut ctx) {
+        while let Some(row) = iter.next_with_context(&mut ctx).unwrap() {
             result.push(row.entries);
         }
         assert_eq!(result, expectation)

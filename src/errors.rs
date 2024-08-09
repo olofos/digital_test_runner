@@ -29,6 +29,9 @@ pub enum RuntimeErrorKind {
     /// One or more output signals are needed by the test but are not returned by the driver
     #[error("The output signals {0} are read by the test but not returned by the driver")]
     MissingOutputs(String),
+    /// Error encountered while evaluating an expression
+    #[error(transparent)]
+    ExprError(#[from] ExprError),
 }
 
 #[derive(Debug, Error, Diagnostic, PartialEq, Eq)]
@@ -210,6 +213,11 @@ pub(crate) enum DigFileErrorKind {
     #[error("Signals {0} found in tests but not found in circuit")]
     MissingSignals(String),
 }
+
+/// Errors encountered while evaluating an expression
+#[derive(Debug, Error, Diagnostic)]
+#[diagnostic()]
+pub enum ExprError {}
 
 #[derive(Debug)]
 /// This should never happen
