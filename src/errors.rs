@@ -1,7 +1,7 @@
 use miette::{Diagnostic, NamedSource};
 use thiserror::Error;
 
-use crate::lexer::TokenKind;
+use crate::{lexer::TokenKind, OutputValue};
 
 #[derive(Debug, Error, Diagnostic)]
 #[diagnostic()]
@@ -224,7 +224,10 @@ pub(crate) enum DigFileErrorKind {
 pub struct ExprError(#[from] pub(crate) ExprErrorKind);
 
 #[derive(Debug, Error)]
-pub(crate) enum ExprErrorKind {}
+pub(crate) enum ExprErrorKind {
+    #[error("Unexpected value {1} for signal {0}")]
+    UnexpectedValueForSignal(String, OutputValue),
+}
 
 #[derive(Debug)]
 /// This should never happen

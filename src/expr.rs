@@ -1,4 +1,7 @@
-use crate::{errors::ExprError, eval_context::EvalContext};
+use crate::{
+    errors::{ExprError, ExprErrorKind},
+    eval_context::EvalContext,
+};
 use std::fmt::Display;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -197,13 +200,13 @@ impl Expr {
         match self {
             Self::Number(n) => Ok(*n),
             Self::Variable(name) => {
-                match ctx
+                let value = ctx
                     .get(name)
-                    .expect("Variable not found. This should have been found at parse time")
-                {
-                    crate::OutputValue::Value(n) => Ok(n),
-                    crate::OutputValue::Z => panic!("Unexpected value Z for variable '{name}'"),
-                    crate::OutputValue::X => panic!("Unexpected value X for variable '{name}'"),
+                    .expect("Variable not found. This should have been found at parse time");
+                if let crate::OutputValue::Value(n) = value {
+                    Ok(n)
+                } else {
+                    Err(ExprErrorKind::UnexpectedValueForSignal(name.clone(), value).into())
                 }
             }
             Self::UnaryOp { op, expr } => Ok(op.eval(expr.eval(ctx)?)),

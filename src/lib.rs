@@ -516,6 +516,7 @@ impl Display for TestCase {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use errors::RuntimeError;
     use static_test::Driver;
 
     struct TableDriver<'a> {
@@ -1130,7 +1131,7 @@ A B C
         };
         assert!(matches!(
             err,
-            IterationError::Runtime(errors::RuntimeError(
+            IterationError::Runtime(RuntimeError(
                 errors::RuntimeErrorKind::MissingOutputs { .. }
             ))
         ));
@@ -1138,7 +1139,6 @@ A B C
         Ok(())
     }
 
-    #[ignore]
     #[test]
     fn return_z_for_read_signal_should_not_panic() -> miette::Result<()> {
         let input = r"
@@ -1176,9 +1176,21 @@ A B C
             }],
         };
 
-        let _ = testcase
+        let Err(err) = testcase
             .run_iter(&mut driver)?
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, _>>()
+        else {
+            panic!("Expected an error")
+        };
+
+        let IterationError::Runtime(RuntimeError(errors::RuntimeErrorKind::ExprError(
+            errors::ExprError(errors::ExprErrorKind::UnexpectedValueForSignal(err_name, err_val)),
+        ))) = err
+        else {
+            panic!("Unexpected error type")
+        };
+        assert_eq!(err_name, String::from("B"));
+        assert_eq!(err_val, OutputValue::Z);
 
         Ok(())
     }
