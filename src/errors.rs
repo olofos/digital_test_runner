@@ -6,7 +6,7 @@ use crate::lexer::TokenKind;
 #[derive(Debug, Error, Diagnostic)]
 #[diagnostic()]
 /// Error returned from DataRowIterator
-pub enum RuntimeError<T: std::error::Error + 'static> {
+pub enum IterationError<T: std::error::Error + 'static> {
     /// Driver error
     #[error("Driver error")]
     Driver(#[from] T),

@@ -23,7 +23,7 @@ use errors::{LoadTestError, SignalError, SignalErrorKind};
 pub use crate::data_row_iterator::DataRowIterator;
 pub use crate::value::{ExpectedValue, InputValue, OutputValue};
 
-use crate::errors::RuntimeError;
+use crate::errors::IterationError;
 use crate::eval_context::EvalContext;
 use crate::stmt::{DataEntry, Stmt, StmtIterator};
 use std::{fmt::Display, str::FromStr};
@@ -416,7 +416,7 @@ impl TestCase {
     pub fn run_iter<'a, 'b, T: TestDriver>(
         &'a self,
         driver: &'b mut T,
-    ) -> Result<DataRowIterator<'a, 'b, T>, RuntimeError<T::Error>> {
+    ) -> Result<DataRowIterator<'a, 'b, T>, IterationError<T::Error>> {
         DataRowIterator::try_new(self, driver)
     }
 }
@@ -1130,7 +1130,7 @@ A B C
         };
         assert!(matches!(
             err,
-            RuntimeError::Runtime(errors::RuntimeErrorKind::MissingOutputs { .. })
+            IterationError::Runtime(errors::RuntimeErrorKind::MissingOutputs { .. })
         ));
 
         Ok(())

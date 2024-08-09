@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    errors::{ExprError, RuntimeError, RuntimeErrorKind},
+    errors::{ExprError, IterationError, RuntimeErrorKind},
     stmt::DataEntries,
     DataEntry, DataRow, EntryIndex, EvalContext, ExpectedEntry, ExpectedValue, InputEntry,
     InputValue, OutputEntry, OutputResultEntry, OutputValue, Signal, StmtIterator, TestCase,
@@ -36,12 +36,12 @@ struct EvaluatedRow<'a> {
 }
 
 impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
-    type Item = Result<DataRow<'a>, RuntimeError<T::Error>>;
+    type Item = Result<DataRow<'a>, IterationError<T::Error>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let row = match self.test_data.get_row(&mut self.ctx) {
             Ok(val) => val?,
-            Err(err) => return Some(Err(RuntimeError::Runtime(err.into()))),
+            Err(err) => return Some(Err(IterationError::Runtime(err.into()))),
         };
 
         match self.handle_io(&row.inputs, row.update_output) {
@@ -55,7 +55,7 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
     pub(crate) fn try_new(
         test_case: &'a TestCase,
         driver: &'b mut T,
-    ) -> Result<Self, RuntimeError<T::Error>> {
+    ) -> Result<Self, IterationError<T::Error>> {
         let mut test_data = DataRowIteratorTestData::new(test_case);
 
         let inputs = test_data.generate_default_input_entries();
@@ -75,7 +75,7 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
         &mut self,
         inputs: &[InputEntry<'a>],
         update_output: bool,
-    ) -> Result<Vec<OutputValue>, RuntimeError<T::Error>> {
+    ) -> Result<Vec<OutputValue>, IterationError<T::Error>> {
         if update_output {
             let outputs = self.driver.write_input_and_read_output(inputs)?;
             self.ctx.set_outputs(&outputs);
@@ -177,7 +177,7 @@ impl<'a> DataRowIteratorTestData<'a> {
         &mut self,
         outputs: &[OutputEntry<'_>],
         read_outputs: &[usize],
-    ) -> Result<(), RuntimeError<E>> {
+    ) -> Result<(), IterationError<E>> {
         let mut output_indices = Vec::with_capacity(outputs.len());
         let mut found_outputs = vec![];
 
@@ -204,7 +204,7 @@ impl<'a> DataRowIteratorTestData<'a> {
             self.output_indices = output_indices;
             Ok(())
         } else {
-            Err(RuntimeError::Runtime(RuntimeErrorKind::MissingOutputs(
+            Err(IterationError::Runtime(RuntimeErrorKind::MissingOutputs(
                 missing.join(", "),
             )))
         }
@@ -217,11 +217,11 @@ impl<'a> DataRowIteratorTestData<'a> {
     fn extract_output_values<E: std::error::Error>(
         &self,
         outputs: Vec<OutputEntry<'_>>,
-    ) -> Result<Vec<OutputValue>, RuntimeError<E>> {
+    ) -> Result<Vec<OutputValue>, IterationError<E>> {
         let num_outputs = self.num_outputs();
 
         if outputs.len() != num_outputs {
-            return Err(RuntimeError::Runtime(
+            return Err(IterationError::Runtime(
                 RuntimeErrorKind::WrongNumberOfOutputs(num_outputs, outputs.len()),
             ));
         }
@@ -237,7 +237,7 @@ impl<'a> DataRowIteratorTestData<'a> {
                     if expected_signal == output_signal {
                         Ok(outputs[*output_entry_index].value)
                     } else {
-                        Err(RuntimeError::Runtime(RuntimeErrorKind::WrongOutputOrder))
+                        Err(IterationError::Runtime(RuntimeErrorKind::WrongOutputOrder))
                     }
                 } else {
                     Ok(OutputValue::X)
