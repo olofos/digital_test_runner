@@ -12,12 +12,16 @@ pub enum IterationError<T: std::error::Error + 'static> {
     Driver(#[from] T),
     /// Runtime error
     #[error("Runtime error")]
-    Runtime(#[source] RuntimeErrorKind),
+    Runtime(#[source] RuntimeError),
 }
 
-/// Possible internal runtime errors
+/// Internal runtime errors
 #[derive(Debug, Error)]
-pub enum RuntimeErrorKind {
+#[error(transparent)]
+pub struct RuntimeError(#[from] pub(crate) RuntimeErrorKind);
+
+#[derive(Debug, Error)]
+pub(crate) enum RuntimeErrorKind {
     /// If the driver returns a non-empty [Vec] of outputs
     /// it should always have the same number of elements.
     #[error("Wrong number of outputs. Expected {0} but got {1}")]
@@ -215,9 +219,12 @@ pub(crate) enum DigFileErrorKind {
 }
 
 /// Errors encountered while evaluating an expression
-#[derive(Debug, Error, Diagnostic)]
-#[diagnostic()]
-pub enum ExprError {}
+#[derive(Debug, Error)]
+#[error(transparent)]
+pub struct ExprError(#[from] pub(crate) ExprErrorKind);
+
+#[derive(Debug, Error)]
+pub(crate) enum ExprErrorKind {}
 
 #[derive(Debug)]
 /// This should never happen

@@ -41,7 +41,11 @@ impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
     fn next(&mut self) -> Option<Self::Item> {
         let row = match self.test_data.get_row(&mut self.ctx) {
             Ok(val) => val?,
-            Err(err) => return Some(Err(IterationError::Runtime(err.into()))),
+            Err(err) => {
+                return Some(Err(IterationError::Runtime(
+                    RuntimeErrorKind::ExprError(err).into(),
+                )))
+            }
         };
 
         match self.handle_io(&row.inputs, row.update_output) {
@@ -204,9 +208,9 @@ impl<'a> DataRowIteratorTestData<'a> {
             self.output_indices = output_indices;
             Ok(())
         } else {
-            Err(IterationError::Runtime(RuntimeErrorKind::MissingOutputs(
-                missing.join(", "),
-            )))
+            Err(IterationError::Runtime(
+                RuntimeErrorKind::MissingOutputs(missing.join(", ")).into(),
+            ))
         }
     }
 
@@ -222,7 +226,7 @@ impl<'a> DataRowIteratorTestData<'a> {
 
         if outputs.len() != num_outputs {
             return Err(IterationError::Runtime(
-                RuntimeErrorKind::WrongNumberOfOutputs(num_outputs, outputs.len()),
+                RuntimeErrorKind::WrongNumberOfOutputs(num_outputs, outputs.len()).into(),
             ));
         }
 
@@ -237,7 +241,9 @@ impl<'a> DataRowIteratorTestData<'a> {
                     if expected_signal == output_signal {
                         Ok(outputs[*output_entry_index].value)
                     } else {
-                        Err(IterationError::Runtime(RuntimeErrorKind::WrongOutputOrder))
+                        Err(IterationError::Runtime(
+                            RuntimeErrorKind::WrongOutputOrder.into(),
+                        ))
                     }
                 } else {
                     Ok(OutputValue::X)

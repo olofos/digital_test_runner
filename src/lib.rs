@@ -1130,7 +1130,9 @@ A B C
         };
         assert!(matches!(
             err,
-            IterationError::Runtime(errors::RuntimeErrorKind::MissingOutputs { .. })
+            IterationError::Runtime(errors::RuntimeError(
+                errors::RuntimeErrorKind::MissingOutputs { .. }
+            ))
         ));
 
         Ok(())
