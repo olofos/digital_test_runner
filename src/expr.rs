@@ -140,7 +140,6 @@ impl Display for Expr {
 pub(crate) struct FuncTableEntry {
     pub(crate) name: &'static str,
     pub(crate) number_of_args: usize,
-    is_pure: bool,
     f: fn(&EvalContext, &[Expr]) -> Result<i64, ExprError>,
 }
 
@@ -160,19 +159,16 @@ pub(crate) const FUNC_TABLE: FuncTable = FuncTable {
             name: "random",
             number_of_args: 1,
             f: func_random,
-            is_pure: false,
         },
         FuncTableEntry {
             name: "ite",
             number_of_args: 3,
             f: func_ite,
-            is_pure: true,
         },
         FuncTableEntry {
             name: "signExt",
             number_of_args: 2,
             f: func_sign_ext,
-            is_pure: true,
         },
     ],
 };
@@ -224,28 +220,6 @@ impl Expr {
                 }
                 (entry.f)(ctx, args)
             }
-        }
-    }
-
-    pub(crate) fn eval_const(&self) -> Option<i64> {
-        match self {
-            Self::Number(n) => Some(*n),
-            Self::UnaryOp { op, expr } => Some(op.eval(expr.eval_const()?)),
-            Self::BinOp { op, left, right } => {
-                Some(op.eval(left.eval_const()?, right.eval_const()?))
-            }
-            Self::Func { name, args } => {
-                let entry = FUNC_TABLE.get(name)?;
-                if !entry.is_pure {
-                    return None;
-                }
-                let args = args
-                    .iter()
-                    .map(|expr| expr.eval_const().map(Expr::Number))
-                    .collect::<Option<Vec<_>>>()?;
-                Some((entry.f)(&EvalContext::new(), &args).ok()?)
-            }
-            _ => None,
         }
     }
 }

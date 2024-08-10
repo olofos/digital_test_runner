@@ -37,7 +37,7 @@ impl<'a> Parser<'a> {
                         self.text(&token)
                     };
                     self.expect(TokenKind::Comma)?;
-                    let max = self.parse_const_expr()?;
+                    let max = self.parse_expr()?;
                     self.expect(TokenKind::RParen)?;
                     self.expect(TokenKind::Eol)?;
 
@@ -55,7 +55,7 @@ impl<'a> Parser<'a> {
                 TokenKind::Repeat => {
                     self.skip();
                     self.expect(TokenKind::LParen)?;
-                    let max = self.parse_const_expr()?;
+                    let max = self.parse_expr()?;
                     self.expect(TokenKind::RParen)?;
 
                     self.vars.push_frame();
@@ -268,7 +268,7 @@ mod test {
             panic!("Expected a loop stmt");
         };
         assert_eq!(variable, &String::from("n"));
-        assert_eq!(*max, 3);
+        assert_eq!(*max, Expr::Number(3));
         assert_eq!(
             inner,
             &vec![Stmt::Let {
@@ -337,13 +337,9 @@ end loop
     }
 
     #[test]
-    fn gives_error_if_loop_count_not_const() {
-        let input = "loop(n,random(3))\nlet b = 1;\nend loop\n";
+    fn gives_accepts_loop_count_not_const() {
+        let input = "let a = 3;\nloop(n,random(a))\nlet b = 1;\nend loop\n";
         let mut parser = Parser::new(input, &[]);
-        let Err(err) = parser.parse_stmt_block(None) else {
-            panic!("Expected an error")
-        };
-        assert_eq!(err.kind, crate::errors::ParseErrorKind::ExpectedConst);
-        assert_eq!(&input[err.at], "random(3)")
+        let _ = parser.parse_stmt_block(None).unwrap();
     }
 }

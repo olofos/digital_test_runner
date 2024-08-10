@@ -66,8 +66,6 @@ pub(super) enum ParseErrorKind {
     UnexpectedEndAtTopLevel,
     #[error("Wrong number of entries in data row. Expected {expected} but found {found}")]
     DataRowWithWrongNumberOfSignals { expected: usize, found: usize },
-    #[error("Expected a constant expression")]
-    ExpectedConst,
     #[error("Function {ident} not found")]
     FunctionNotFound { ident: String },
     #[error("Wrong number of arguments. Expeted {expected} but found {found}")]

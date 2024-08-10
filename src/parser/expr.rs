@@ -80,17 +80,6 @@ impl<'a> Parser<'a> {
         Ok(tree.into())
     }
 
-    pub(crate) fn parse_const_expr(&mut self) -> Result<i64, ParseError> {
-        let start = self.peek_span().start;
-        let expr = self.parse_expr()?;
-        let end = self.peek_span().start;
-        expr.eval_const().ok_or(ParseError {
-            at: start..end,
-            kind: ParseErrorKind::ExpectedConst,
-            source_code: None,
-        })
-    }
-
     pub(super) fn parse_number(&mut self) -> Result<i64, ParseError> {
         let tok = self.get()?;
         let literal = self.text(&tok);

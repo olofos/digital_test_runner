@@ -16,7 +16,7 @@ pub(crate) enum Stmt {
     },
     Loop {
         variable: String,
-        max: i64,
+        max: Expr,
         inner: Vec<Stmt>,
     },
     While {
@@ -140,7 +140,7 @@ impl<'a> StmtIterator<'a> {
                         } => {
                             self.inner_state = StmtIteratorState::StartLoop(LoopState {
                                 variable,
-                                max: *max,
+                                max: max.eval(ctx)?,
                                 stmts: inner,
                             })
                         }
