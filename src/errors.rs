@@ -124,6 +124,7 @@ impl SignalError {
                 ref mut source_code,
                 ..
             } => *source_code = Some(source),
+            SignalErrorKind::DuplicateSignal { .. } => {}
         };
         self
     }
@@ -171,6 +172,9 @@ pub(crate) enum SignalErrorKind {
         #[source_code]
         source_code: Option<NamedSource<String>>,
     },
+    #[error("The signal \"{signal}\" was provided multiple times")]
+    #[diagnostic()]
+    DuplicateSignal { signal: String },
 }
 
 /// Error returned from [dig::File::load_test](crate::dig::File::load_test) and [dig::File::load_test_by_name](crate::dig::File::load_test_by_name)

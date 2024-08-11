@@ -26,6 +26,7 @@ pub use crate::value::{ExpectedValue, InputValue, OutputValue};
 use crate::errors::IterationError;
 use crate::eval_context::EvalContext;
 use crate::stmt::{DataEntry, Stmt, StmtIterator};
+use std::collections::HashSet;
 use std::{fmt::Display, str::FromStr};
 
 /// Communicate with the device under test
@@ -204,6 +205,7 @@ impl ParsedTestCase {
     /// input and expected signals of the device under test
     #[allow(clippy::result_large_err)]
     pub fn with_signals(mut self, signals: Vec<Signal>) -> Result<TestCase, SignalError> {
+        self.check_duplicate_signals(&signals)?;
         let (input_indices, expected_indices) = self.build_indices(&signals);
         self.check_missing_signals(&input_indices, &expected_indices)?;
         self.check_and_consume_expected_inputs(&signals)?;
@@ -216,6 +218,19 @@ impl ParsedTestCase {
             expected_indices,
             read_outputs,
         })
+    }
+
+    #[allow(clippy::result_large_err)]
+    fn check_duplicate_signals(&self, signals: &[Signal]) -> Result<(), SignalError> {
+        let mut names = HashSet::new();
+        for sig in signals {
+            if !names.insert(&sig.name) {
+                return Err(SignalError(SignalErrorKind::DuplicateSignal {
+                    signal: sig.name.clone(),
+                }));
+            }
+        }
+        Ok(())
     }
 
     fn build_indices(&self, signals: &[Signal]) -> (Vec<EntryIndex>, Vec<EntryIndex>) {
@@ -1191,6 +1206,38 @@ A B C
         };
         assert_eq!(err_name, String::from("B"));
         assert_eq!(err_val, OutputValue::Z);
+
+        Ok(())
+    }
+
+    #[test]
+    fn with_error_with_duplicate_signal_gives_error() -> miette::Result<()> {
+        let input = r"
+    A B
+    0 0
+    1 1
+    ";
+
+        let known_inputs = ["A"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Input {
+                default: InputValue::Value(0),
+            },
+        });
+        let known_outputs = ["B", "A"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Output,
+        });
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+        let Err(err) = ParsedTestCase::from_str(input)?.with_signals(known_signals) else {
+            panic!("Expected an error")
+        };
+        assert!(matches!(
+            err,
+            SignalError(SignalErrorKind::DuplicateSignal { .. })
+        ));
 
         Ok(())
     }
