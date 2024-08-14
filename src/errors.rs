@@ -70,6 +70,8 @@ pub(super) enum ParseErrorKind {
     FunctionNotFound { ident: String },
     #[error("Wrong number of arguments. Expeted {expected} but found {found}")]
     WrongNumberOfArguments { expected: usize, found: usize },
+    #[error("Signal name {name} appears twice")]
+    DuplicateSignal { name: String },
 }
 
 #[derive(Debug, Error, Diagnostic)]

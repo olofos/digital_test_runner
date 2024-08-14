@@ -50,8 +50,17 @@ impl<'a> HeaderParser<'a> {
         loop {
             match self.iter.next() {
                 Some(Ok(HeaderTokenKind::SignalName)) => {
-                    signals.push(self.iter.slice().into());
-                    spans.push(self.iter.span());
+                    let name = self.iter.slice().into();
+                    let span = self.iter.span();
+                    if signals.iter().any(|n| n == &name) {
+                        return Err(ParseError {
+                            kind: ParseErrorKind::DuplicateSignal { name },
+                            at: span,
+                            source_code: None,
+                        });
+                    }
+                    signals.push(name);
+                    spans.push(span);
                 }
                 Some(Ok(HeaderTokenKind::Eol)) => {
                     self.line += 1;
