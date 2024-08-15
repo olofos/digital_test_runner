@@ -1,5 +1,6 @@
 use crate::{
     errors::{ParseError, ParseErrorKind},
+    framed_map::FramedSet,
     lexer::TokenKind,
     parser::Parser,
     stmt::{DataEntry, Stmt},
@@ -110,7 +111,13 @@ impl<'a> Parser<'a> {
                         self.text(&token)
                     };
                     self.expect(TokenKind::Equal)?;
-                    let expr = self.parse_expr()?;
+                    let expr = {
+                        // Temporarily empty the list of known variables
+                        let vars = std::mem::replace(&mut self.vars, FramedSet::new());
+                        let expr = self.parse_expr()?;
+                        self.vars = vars;
+                        expr
+                    };
                     self.expect(TokenKind::Semi)?;
                     let end = self.peek_span().start;
                     let span = start..end;
@@ -368,7 +375,7 @@ end loop
 
     #[test]
     fn test_declare() {
-        let input = "declare a = b + 1;";
+        let input = "let b = 1;\ndeclare a = b + 1;";
         let mut parser = Parser::new(input, &[]);
         let _ = parser.parse_stmt_block(None).unwrap();
         assert_eq!(
