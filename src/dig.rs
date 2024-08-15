@@ -117,7 +117,6 @@ fn text_pos_to_range(input: &str, pos: roxmltree::TextPos) -> Range<usize> {
 
 impl File {
     /// Parse the input string as dig file
-    #[allow(clippy::result_large_err)]
     pub fn parse(input: &str) -> Result<File, DigFileError> {
         let doc = roxmltree::Document::parse(input).map_err(|err| {
             let span = text_pos_to_range(input, err.pos());
@@ -224,7 +223,6 @@ impl File {
     }
 
     /// Open and parse dig file
-    #[allow(clippy::result_large_err)]
     pub fn open(path: impl AsRef<std::path::Path>) -> Result<File, DigFileError> {
         let path = path.as_ref();
         let input = std::fs::read_to_string(path).map_err(DigFileErrorKind::from)?;

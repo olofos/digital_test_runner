@@ -129,7 +129,7 @@ impl<'a> Parser<'a> {
                                 expected: func_entry.number_of_args,
                                 found: args.len(),
                             },
-                            at: ident_tok.span.start..self.peek_span().start,
+                            at: vec![ident_tok.span.start..self.peek_span().start],
                             source_code: None,
                         })
                     } else {

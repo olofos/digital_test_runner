@@ -1,5 +1,6 @@
 #![deny(missing_debug_implementations, nonstandard_style)]
 #![warn(missing_docs, unreachable_pub, rust_2018_idioms, unused_qualifications)]
+#![allow(clippy::result_large_err)]
 #![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"),"/README.md"))]
 
 /// Load tests from a dig file
@@ -19,6 +20,7 @@ mod stmt;
 mod value;
 
 use errors::{LoadTestError, SignalError, SignalErrorKind};
+use expr::Expr;
 
 pub use crate::data_row_iterator::DataRowIterator;
 pub use crate::value::{ExpectedValue, InputValue, OutputValue};
@@ -73,6 +75,12 @@ pub struct Signal {
     pub dir: SignalDirection,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct VirtualSignal {
+    pub(crate) name: String,
+    pub(crate) expr: Expr,
+}
+
 /// Represents a test case as obtained directly from the test source code
 ///
 /// To get a full runnable [TestCase], the input and output signals have to be specified using
@@ -82,6 +90,7 @@ pub struct ParsedTestCase {
     stmts: Vec<Stmt>,
     /// List of signal names appearing in the test
     pub signals: Vec<String>,
+    virtual_signals: Vec<(VirtualSignal, logos::Span)>,
     signal_spans: Vec<logos::Span>,
     expected_inputs: Vec<(String, logos::Span)>,
     read_outputs: Vec<(String, logos::Span)>,
@@ -203,7 +212,6 @@ impl EntryIndex {
 impl ParsedTestCase {
     /// Construct a complete test case by supplying a description of the
     /// input and expected signals of the device under test
-    #[allow(clippy::result_large_err)]
     pub fn with_signals(mut self, signals: Vec<Signal>) -> Result<TestCase, SignalError> {
         self.check_duplicate_signals(&signals)?;
         let (input_indices, expected_indices) = self.build_indices(&signals);
@@ -220,13 +228,21 @@ impl ParsedTestCase {
         })
     }
 
-    #[allow(clippy::result_large_err)]
     fn check_duplicate_signals(&self, signals: &[Signal]) -> Result<(), SignalError> {
         let mut names = HashSet::new();
         for sig in signals {
             if !names.insert(&sig.name) {
                 return Err(SignalError(SignalErrorKind::DuplicateSignal {
                     signal: sig.name.clone(),
+                }));
+            }
+        }
+        for (virt, span) in &self.virtual_signals {
+            if names.contains(&virt.name) {
+                return Err(SignalError(SignalErrorKind::SignalIsVirtual {
+                    name: virt.name.clone(),
+                    at: span.clone(),
+                    source_code: None,
                 }));
             }
         }
@@ -286,7 +302,6 @@ impl ParsedTestCase {
         (input_indices, expected_indices)
     }
 
-    #[allow(clippy::result_large_err)]
     fn check_missing_signals(
         &self,
         input_indices: &[EntryIndex],
@@ -330,7 +345,6 @@ impl ParsedTestCase {
         Ok(())
     }
 
-    #[allow(clippy::result_large_err)]
     fn check_and_consume_expected_inputs(&mut self, signals: &[Signal]) -> Result<(), SignalError> {
         for (name, at) in self.expected_inputs.drain(..) {
             if !signals.iter().any(|sig| sig.name == name && sig.is_input()) {
@@ -354,7 +368,6 @@ impl ParsedTestCase {
         Ok(())
     }
 
-    #[allow(clippy::result_large_err)]
     fn build_read_outputs(&mut self, signals: &[Signal]) -> Result<Vec<usize>, SignalError> {
         let mut read_outputs = vec![];
         for (name, at) in self.read_outputs.drain(..) {
@@ -385,7 +398,6 @@ impl ParsedTestCase {
 
 impl dig::File {
     /// Load a test by index
-    #[allow(clippy::result_large_err)]
     pub fn load_test(&self, n: usize) -> Result<TestCase, LoadTestError> {
         if n >= self.test_cases.len() {
             Err(LoadTestError::IndexOutOfBounds {
@@ -401,7 +413,6 @@ impl dig::File {
     }
 
     /// Load a test by name
-    #[allow(clippy::result_large_err)]
     pub fn load_test_by_name(&self, name: &str) -> Result<TestCase, LoadTestError> {
         if let Some(n) = self
             .test_cases
@@ -1238,6 +1249,34 @@ A B C
             err,
             SignalError(SignalErrorKind::DuplicateSignal { .. })
         ));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test() -> miette::Result<()> {
+        let input = r"
+        A B C
+        declare C = !B;
+        x x x
+        ";
+
+        let known_inputs = ["A"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Input {
+                default: InputValue::Value(0),
+            },
+        });
+        let known_outputs = ["B", "C"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            dir: SignalDirection::Output,
+        });
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+        let Err(_) = ParsedTestCase::from_str(input)?.with_signals(known_signals) else {
+            panic!("Expected an error")
+        };
 
         Ok(())
     }

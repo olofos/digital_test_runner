@@ -102,7 +102,30 @@ impl<'a> Parser<'a> {
                     let inner = self.parse_stmt_block(Some(TokenKind::While))?;
                     block.push(Stmt::While { condition, inner });
                 }
-                TokenKind::Declare => todo!(),
+                TokenKind::Declare => {
+                    let start = self.peek_span().start;
+                    self.skip();
+                    let name = {
+                        let token = self.expect(TokenKind::Ident)?;
+                        self.text(&token)
+                    };
+                    self.expect(TokenKind::Equal)?;
+                    let expr = self.parse_expr()?;
+                    self.expect(TokenKind::Semi)?;
+                    let end = self.peek_span().start;
+                    let span = start..end;
+                    if let Some((prev_span, _)) =
+                        self.virtual_signals.insert(name, (span.clone(), expr))
+                    {
+                        return Err(ParseError {
+                            kind: ParseErrorKind::DuplicateVirtualSignal {
+                                name: name.to_string(),
+                            },
+                            at: vec![prev_span, span],
+                            source_code: None,
+                        });
+                    }
+                }
                 TokenKind::Program => todo!(),
                 TokenKind::Init => todo!(),
                 TokenKind::Memory => todo!(),
@@ -167,7 +190,7 @@ impl<'a> Parser<'a> {
                         if n > 64 {
                             return Err(ParseError {
                                 kind: ParseErrorKind::TooManyBits,
-                                at,
+                                at: vec![at],
                                 source_code: None,
                             });
                         }
@@ -218,7 +241,7 @@ impl<'a> Parser<'a> {
                     expected: self.signals.len(),
                     found: signal_index,
                 },
-                at: row_start..row_end,
+                at: vec![row_start..row_end],
                 source_code: None,
             });
         }
@@ -341,5 +364,16 @@ end loop
         let input = "let a = 3;\nloop(n,random(a))\nlet b = 1;\nend loop\n";
         let mut parser = Parser::new(input, &[]);
         let _ = parser.parse_stmt_block(None).unwrap();
+    }
+
+    #[test]
+    fn test_declare() {
+        let input = "declare a = b + 1;";
+        let mut parser = Parser::new(input, &[]);
+        let _ = parser.parse_stmt_block(None).unwrap();
+        assert_eq!(
+            parser.expected_outputs.keys().cloned().collect::<Vec<_>>(),
+            vec!["b"]
+        );
     }
 }

@@ -1,12 +1,15 @@
+#![allow(clippy::single_range_in_vec_init)]
+
 mod binoptree;
 mod expr;
 mod stmt;
 
 use crate::{
     errors::{ParseError, ParseErrorKind},
+    expr::Expr,
     framed_map::FramedSet,
     lexer::{HeaderTokenKind, Token, TokenIter, TokenKind},
-    ParsedTestCase,
+    ParsedTestCase, VirtualSignal,
 };
 use logos::{Lexer, Logos};
 use std::{collections::HashMap, iter::Peekable};
@@ -22,6 +25,7 @@ pub(crate) struct Parser<'a> {
     iter: Peekable<TokenIter<'a>>,
     line: usize,
     signals: &'a [String],
+    virtual_signals: HashMap<&'a str, (logos::Span, Expr)>,
     expected_inputs: HashMap<&'a str, logos::Span>,
     expected_outputs: HashMap<&'a str, logos::Span>,
     vars: FramedSet<&'a str>,
@@ -31,7 +35,7 @@ impl Token {
     fn error(&self, kind: ParseErrorKind) -> ParseError {
         ParseError {
             kind,
-            at: self.span.clone(),
+            at: vec![self.span.clone()],
             source_code: None,
         }
     }
@@ -52,10 +56,10 @@ impl<'a> HeaderParser<'a> {
                 Some(Ok(HeaderTokenKind::SignalName)) => {
                     let name = self.iter.slice().into();
                     let span = self.iter.span();
-                    if signals.iter().any(|n| n == &name) {
+                    if let Some(i) = signals.iter().position(|n| n == &name) {
                         return Err(ParseError {
                             kind: ParseErrorKind::DuplicateSignal { name },
-                            at: span,
+                            at: vec![spans[i].clone(), span],
                             source_code: None,
                         });
                     }
@@ -73,7 +77,7 @@ impl<'a> HeaderParser<'a> {
                 None => {
                     return Err(ParseError {
                         kind: ParseErrorKind::UnexpectedEof,
-                        at: self.iter.span(),
+                        at: vec![self.iter.span()],
                         source_code: None,
                     })
                 }
@@ -91,6 +95,7 @@ impl<'a> Parser<'a> {
             input,
             line: 1,
             signals,
+            virtual_signals: HashMap::new(),
             expected_inputs: HashMap::new(),
             expected_outputs: HashMap::new(),
             vars: FramedSet::new(),
@@ -104,6 +109,7 @@ impl<'a> Parser<'a> {
             iter,
             line,
             signals,
+            virtual_signals: HashMap::new(),
             expected_inputs: HashMap::new(),
             expected_outputs: HashMap::new(),
             vars: FramedSet::new(),
@@ -115,7 +121,7 @@ impl<'a> Parser<'a> {
             let end = self.input.len();
             return Err(ParseError {
                 kind: ParseErrorKind::UnexpectedEof,
-                at: end..end,
+                at: vec![end..end],
                 source_code: None,
             });
         };
@@ -189,9 +195,24 @@ pub(crate) fn parse_testcase(input: &str) -> Result<ParsedTestCase, ParseError> 
 
     read_outputs.sort_by(|(_, a), (_, b)| a.start.cmp(&b.start));
 
+    let virtual_signals = parser
+        .virtual_signals
+        .into_iter()
+        .map(|(name, (span, expr))| {
+            (
+                VirtualSignal {
+                    name: name.to_string(),
+                    expr,
+                },
+                span,
+            )
+        })
+        .collect();
+
     let test_case = ParsedTestCase {
         stmts,
         signals,
+        virtual_signals,
         signal_spans,
         expected_inputs,
         read_outputs,

@@ -72,6 +72,8 @@ pub(super) enum ParseErrorKind {
     WrongNumberOfArguments { expected: usize, found: usize },
     #[error("Signal name {name} appears twice")]
     DuplicateSignal { name: String },
+    #[error("Virtual signal {name} is declared twice")]
+    DuplicateVirtualSignal { name: String },
 }
 
 #[derive(Debug, Error, Diagnostic)]
@@ -82,8 +84,8 @@ pub struct ParseError {
     #[source]
     pub(crate) kind: ParseErrorKind,
     /// Error location
-    #[label("here")]
-    pub at: logos::Span,
+    #[label(collection, "here")]
+    pub at: Vec<logos::Span>,
     #[source_code]
     pub(crate) source_code: Option<NamedSource<String>>,
 }
@@ -123,6 +125,10 @@ impl SignalError {
                 ..
             }
             | SignalErrorKind::UnknownVariableOrSignal {
+                ref mut source_code,
+                ..
+            }
+            | SignalErrorKind::SignalIsVirtual {
                 ref mut source_code,
                 ..
             } => *source_code = Some(source),
@@ -177,6 +183,15 @@ pub(crate) enum SignalErrorKind {
     #[error("The signal \"{signal}\" was provided multiple times")]
     #[diagnostic()]
     DuplicateSignal { signal: String },
+    #[error("Signal \"{name}\" is also a virtual signal")]
+    #[diagnostic()]
+    SignalIsVirtual {
+        name: String,
+        #[label("defined here")]
+        at: logos::Span,
+        #[source_code]
+        source_code: Option<NamedSource<String>>,
+    },
 }
 
 /// Error returned from [dig::File::load_test](crate::dig::File::load_test) and [dig::File::load_test_by_name](crate::dig::File::load_test_by_name)
