@@ -9,7 +9,7 @@ use crate::{
     expr::Expr,
     framed_map::FramedSet,
     lexer::{HeaderTokenKind, Token, TokenIter, TokenKind},
-    ParsedTestCase, VirtualSignal,
+    parsed_test_case::VirtualSignal,
 };
 use logos::{Lexer, Logos};
 use std::{collections::HashMap, iter::Peekable};
@@ -29,6 +29,12 @@ pub(crate) struct Parser<'a> {
     expected_inputs: HashMap<&'a str, logos::Span>,
     expected_outputs: HashMap<&'a str, logos::Span>,
     vars: FramedSet<&'a str>,
+}
+
+pub(crate) struct ParseResult {
+    pub(crate) expected_inputs: Vec<(String, logos::Span)>,
+    pub(crate) read_outputs: Vec<(String, logos::Span)>,
+    pub(crate) virtual_signals: Vec<(VirtualSignal, logos::Span)>,
 }
 
 impl Token {
@@ -102,7 +108,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn from(HeaderParser { input, iter, line }: HeaderParser<'a>, signals: &'a [String]) -> Self {
+    pub(crate) fn from(
+        HeaderParser { input, iter, line }: HeaderParser<'a>,
+        signals: &'a [String],
+    ) -> Self {
         let iter = TokenIter::from(iter).peekable();
         Parser {
             input,
@@ -170,59 +179,49 @@ impl<'a> Parser<'a> {
     fn text(&self, token: &Token) -> &'a str {
         &self.input[token.span.clone()]
     }
-}
 
-pub(crate) fn parse_testcase(input: &str) -> Result<ParsedTestCase, ParseError> {
-    let mut parser = HeaderParser::new(input);
-    let (signals, signal_spans) = parser.parse()?;
+    pub(crate) fn finish(self) -> ParseResult {
+        let mut expected_inputs = self
+            .expected_inputs
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect::<Vec<_>>();
 
-    let mut parser = Parser::from(parser, &signals);
-    let stmts = parser.parse_stmt_block(None)?;
+        expected_inputs.sort_by(|(_, a), (_, b)| a.start.cmp(&b.start));
 
-    let mut expected_inputs = parser
-        .expected_inputs
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v))
-        .collect::<Vec<_>>();
+        let mut read_outputs = self
+            .expected_outputs
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect::<Vec<_>>();
 
-    expected_inputs.sort_by(|(_, a), (_, b)| a.start.cmp(&b.start));
+        read_outputs.sort_by(|(_, a), (_, b)| a.start.cmp(&b.start));
 
-    let mut read_outputs = parser
-        .expected_outputs
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v))
-        .collect::<Vec<_>>();
+        let virtual_signals = self
+            .virtual_signals
+            .into_iter()
+            .map(|(name, (span, expr))| {
+                (
+                    VirtualSignal {
+                        name: name.to_string(),
+                        expr,
+                    },
+                    span,
+                )
+            })
+            .collect();
 
-    read_outputs.sort_by(|(_, a), (_, b)| a.start.cmp(&b.start));
-
-    let virtual_signals = parser
-        .virtual_signals
-        .into_iter()
-        .map(|(name, (span, expr))| {
-            (
-                VirtualSignal {
-                    name: name.to_string(),
-                    expr,
-                },
-                span,
-            )
-        })
-        .collect();
-
-    let test_case = ParsedTestCase {
-        stmts,
-        signals,
-        virtual_signals,
-        signal_spans,
-        expected_inputs,
-        read_outputs,
-    };
-    Ok(test_case)
+        ParseResult {
+            expected_inputs,
+            read_outputs,
+            virtual_signals,
+        }
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::{parser::parse_testcase, stmt::Stmt, ParsedTestCase};
+    use crate::{stmt::Stmt, ParsedTestCase};
 
     #[test]
     fn can_parse_simple_program() {
@@ -247,7 +246,7 @@ end loop
 end loop
 
 ";
-        let testcase: ParsedTestCase = parse_testcase(input).unwrap();
+        let testcase = ParsedTestCase::parse(input).unwrap();
         assert_eq!(testcase.signals.len(), 11);
         assert_eq!(testcase.stmts.len(), 7);
         let Stmt::DataRow { data: _, line } = &testcase.stmts[4] else {
@@ -264,7 +263,7 @@ A B
 let a ( 2;
 1 2
 ";
-        let Err(err) = parse_testcase(input) else {
+        let Err(err) = ParsedTestCase::parse(input) else {
             panic!("Expected an error")
         };
         println!("{err:?}");
