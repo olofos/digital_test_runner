@@ -5,6 +5,7 @@ use std::{cell::RefCell, collections::HashMap};
 #[derive(Debug)]
 pub(crate) struct EvalContext {
     vars: FramedMap<String, i64>,
+    alt_vars: FramedMap<String, i64>,
     outputs: HashMap<String, OutputValue>,
     rng: RefCell<StdRng>,
     seed: u64,
@@ -28,6 +29,7 @@ impl EvalContext {
     pub(crate) fn with_seed(seed: u64) -> Self {
         Self {
             vars: FramedMap::new(),
+            alt_vars: FramedMap::new(),
             outputs: HashMap::new(),
             rng: RefCell::new(StdRng::seed_from_u64(seed)),
             seed,
@@ -74,6 +76,10 @@ impl EvalContext {
 
     pub(crate) fn vars(&self) -> HashMap<String, i64> {
         self.vars.flatten()
+    }
+
+    pub(crate) fn swap_vars(&mut self) {
+        std::mem::swap(&mut self.vars, &mut self.alt_vars);
     }
 }
 

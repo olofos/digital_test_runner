@@ -51,6 +51,12 @@ pub trait TestDriver {
     }
 }
 
+/// Encapsulates a virtual signal
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VirtualExpr {
+    expr: Box<Expr>,
+}
+
 /// Represents the direction of a signal
 ///
 /// The direction is specified relative to the device under test, which means that an `Input` signal is an output from the test
@@ -58,10 +64,18 @@ pub trait TestDriver {
 /// test itself does not override it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(missing_docs)]
-pub enum SignalDirection {
-    Input { default: InputValue },
+pub enum SignalType {
+    Input {
+        default: InputValue,
+    },
     Output,
-    Bidirectional { default: InputValue },
+    Bidirectional {
+        default: InputValue,
+    },
+    #[non_exhaustive]
+    Virtual {
+        expr: VirtualExpr,
+    },
 }
 
 /// Represent a input or output signal of the device under test
@@ -72,7 +86,7 @@ pub struct Signal {
     /// Bit width of the signal
     pub bits: usize,
     /// The type of the signal
-    pub dir: SignalDirection,
+    pub typ: SignalType,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -212,8 +226,19 @@ impl EntryIndex {
 impl ParsedTestCase {
     /// Construct a complete test case by supplying a description of the
     /// input and expected signals of the device under test
-    pub fn with_signals(mut self, signals: Vec<Signal>) -> Result<TestCase, SignalError> {
+    pub fn with_signals(mut self, mut signals: Vec<Signal>) -> Result<TestCase, SignalError> {
         self.check_duplicate_signals(&signals)?;
+
+        signals.extend(self.virtual_signals.drain(..).map(|(virt, _)| Signal {
+            name: virt.name,
+            bits: 64,
+            typ: SignalType::Virtual {
+                expr: VirtualExpr {
+                    expr: Box::new(virt.expr),
+                },
+            },
+        }));
+
         let (input_indices, expected_indices) = self.build_indices(&signals);
         self.check_missing_signals(&input_indices, &expected_indices)?;
         self.check_and_consume_expected_inputs(&signals)?;
@@ -264,8 +289,8 @@ impl ParsedTestCase {
                 .iter()
                 .position(|signal_name| signal_name == &(signal.name.clone() + "_out"));
 
-            match signal.dir {
-                SignalDirection::Input { .. } | SignalDirection::Bidirectional { .. } => {
+            match signal.typ {
+                SignalType::Input { .. } | SignalType::Bidirectional { .. } => {
                     input_indices.push(match &index {
                         Some(entry_index) => EntryIndex::Entry {
                             entry_index: *entry_index,
@@ -274,12 +299,12 @@ impl ParsedTestCase {
                         None => EntryIndex::Default { signal_index },
                     });
                 }
-                SignalDirection::Output => {}
+                SignalType::Output | SignalType::Virtual { .. } => {}
             }
 
-            match signal.dir {
-                SignalDirection::Input { .. } => {}
-                SignalDirection::Bidirectional { .. } => {
+            match signal.typ {
+                SignalType::Input { .. } => {}
+                SignalType::Bidirectional { .. } => {
                     expected_indices.push(match &index_out {
                         Some(entry_index) => EntryIndex::Entry {
                             entry_index: *entry_index,
@@ -288,7 +313,7 @@ impl ParsedTestCase {
                         None => EntryIndex::Default { signal_index },
                     });
                 }
-                SignalDirection::Output => {
+                SignalType::Output | SignalType::Virtual { .. } => {
                     expected_indices.push(match &index {
                         Some(entry_index) => EntryIndex::Entry {
                             entry_index: *entry_index,
@@ -461,7 +486,7 @@ impl Signal {
         Self {
             name: name.into(),
             bits,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         }
     }
 
@@ -470,28 +495,28 @@ impl Signal {
         Self {
             name: name.into(),
             bits,
-            dir: SignalDirection::Input { default },
+            typ: SignalType::Input { default },
         }
     }
 
     /// Is this signal bidirectional?
     pub fn is_bidirectional(&self) -> bool {
-        matches!(self.dir, SignalDirection::Bidirectional { default: _ })
+        matches!(self.typ, SignalType::Bidirectional { default: _ })
     }
 
     /// Is this test an input (including bidirectional signals)?
     pub fn is_input(&self) -> bool {
         matches!(
-            self.dir,
-            SignalDirection::Input { .. } | SignalDirection::Bidirectional { .. }
+            self.typ,
+            SignalType::Input { .. } | SignalType::Bidirectional { .. }
         )
     }
 
     /// Is this test an output (including bidirectional signals)?
     pub fn is_output(&self) -> bool {
         matches!(
-            self.dir,
-            SignalDirection::Output | SignalDirection::Bidirectional { .. }
+            self.typ,
+            SignalType::Output | SignalType::Bidirectional { .. }
         )
     }
 
@@ -499,24 +524,31 @@ impl Signal {
     ///
     /// Returns `None` if the signal is an `Output`
     pub fn default_value(&self) -> Option<InputValue> {
-        match self.dir {
-            SignalDirection::Input { default } | SignalDirection::Bidirectional { default } => {
-                Some(default)
-            }
-            SignalDirection::Output => None,
+        match self.typ {
+            SignalType::Input { default } | SignalType::Bidirectional { default } => Some(default),
+            SignalType::Output | SignalType::Virtual { .. } => None,
         }
+    }
+}
+
+impl Display for VirtualExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.expr)
     }
 }
 
 impl Display for Signal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.dir {
-            SignalDirection::Input { default } => {
+        match &self.typ {
+            SignalType::Input { default } => {
                 write!(f, "{}({}:{})", self.name, self.bits, default)
             }
-            SignalDirection::Output => write!(f, "{}({})", self.name, self.bits),
-            SignalDirection::Bidirectional { default } => {
+            SignalType::Output => write!(f, "{}({})", self.name, self.bits),
+            SignalType::Bidirectional { default } => {
                 write!(f, "{}[{}:{}]", self.name, self.bits, default)
+            }
+            SignalType::Virtual { expr: value } => {
+                write!(f, "{}[{}={}]", self.name, self.bits, value)
             }
         }
     }
@@ -625,7 +657,7 @@ end loop
             .map(|name| Signal {
                 name: String::from(name),
                 bits: 1,
-                dir: SignalDirection::Input {
+                typ: SignalType::Input {
                     default: InputValue::Value(0),
                 },
             });
@@ -634,7 +666,7 @@ end loop
             .map(|name| Signal {
                 name: String::from(name),
                 bits: 1,
-                dir: SignalDirection::Output,
+                typ: SignalType::Output,
             })
             .collect::<Vec<_>>();
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs.clone()));
@@ -665,7 +697,7 @@ Z 1";
         let known_inputs = ["A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Bidirectional {
+            typ: SignalType::Bidirectional {
                 default: InputValue::Value(0),
             },
         });
@@ -713,7 +745,7 @@ Z 1";
         let known_inputs = ["CLK", "IN"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Input {
+            typ: SignalType::Input {
                 default: InputValue::Value(0),
             },
         });
@@ -722,7 +754,7 @@ Z 1";
             .map(|name| Signal {
                 name: String::from(name),
                 bits: 1,
-                dir: SignalDirection::Output,
+                typ: SignalType::Output,
             })
             .collect::<Vec<_>>();
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs.clone()));
@@ -769,7 +801,7 @@ Z 1";
         let known_inputs = ["A", "B"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Input {
+            typ: SignalType::Input {
                 default: InputValue::Value(0),
             },
         });
@@ -778,7 +810,7 @@ Z 1";
             .map(|name| Signal {
                 name: String::from(name),
                 bits: 1,
-                dir: SignalDirection::Output,
+                typ: SignalType::Output,
             })
             .collect::<Vec<_>>();
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs.clone()));
@@ -826,7 +858,7 @@ Z 1";
         let known_inputs = ["CLK", "A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Input {
+            typ: SignalType::Input {
                 default: InputValue::Value(0),
             },
         });
@@ -835,7 +867,7 @@ Z 1";
             .map(|name| Signal {
                 name: String::from(name),
                 bits: 1,
-                dir: SignalDirection::Output,
+                typ: SignalType::Output,
             })
             .collect::<Vec<_>>();
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs.clone()));
@@ -875,14 +907,14 @@ Z 1";
         let known_inputs = ["A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Input {
+            typ: SignalType::Input {
                 default: InputValue::Value(0),
             },
         });
         let known_outputs = ["B"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let testcase_result = ParsedTestCase::from_str(input)?.with_signals(known_signals);
@@ -903,14 +935,14 @@ Z 1";
         let known_inputs = ["A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Input {
+            typ: SignalType::Input {
                 default: InputValue::Value(0),
             },
         });
         let known_outputs = ["B", "C"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
@@ -918,7 +950,7 @@ Z 1";
         let signal = Signal {
             name: String::from("B"),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         };
         let signal = &signal;
 
@@ -943,14 +975,14 @@ Z 1";
         let known_inputs = ["A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Input {
+            typ: SignalType::Input {
                 default: InputValue::Value(0),
             },
         });
         let known_outputs = ["B", "C"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
@@ -958,14 +990,14 @@ Z 1";
         let signal_b = Signal {
             name: String::from("B"),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         };
         let signal_b = &signal_b;
 
         let signal_c = Signal {
             name: String::from("C"),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         };
         let signal_c = &signal_c;
 
@@ -991,14 +1023,14 @@ Z 1";
         let known_inputs = ["A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Input {
+            typ: SignalType::Input {
                 default: InputValue::Value(0),
             },
         });
         let known_outputs = ["B", "C"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
@@ -1006,14 +1038,14 @@ Z 1";
         let signal_b = Signal {
             name: String::from("B"),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         };
         let signal_b = &signal_b;
 
         let signal_c = Signal {
             name: String::from("C"),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         };
         let signal_c = &signal_c;
 
@@ -1037,14 +1069,14 @@ Z 1";
         let known_inputs = ["A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Input {
+            typ: SignalType::Input {
                 default: InputValue::Value(0),
             },
         });
         let known_outputs = ["B", "C"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
@@ -1052,14 +1084,14 @@ Z 1";
         let signal_b = Signal {
             name: String::from("B"),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         };
         let signal_b = &signal_b;
 
         let signal_c = Signal {
             name: String::from("C"),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         };
         let signal_c = &signal_c;
 
@@ -1082,14 +1114,14 @@ Z 1";
         let known_inputs = ["A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Input {
+            typ: SignalType::Input {
                 default: InputValue::Value(0),
             },
         });
         let known_outputs = ["B"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let Err(err) = ParsedTestCase::from_str(input)?.with_signals(known_signals) else {
@@ -1111,14 +1143,14 @@ Z 1";
         let known_inputs = ["A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Input {
+            typ: SignalType::Input {
                 default: InputValue::Value(0),
             },
         });
         let known_outputs = ["B"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let Err(err) = ParsedTestCase::from_str(input)?.with_signals(known_signals) else {
@@ -1139,14 +1171,14 @@ A B C
         let known_inputs = ["A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Input {
+            typ: SignalType::Input {
                 default: InputValue::Value(0),
             },
         });
         let known_outputs = ["B", "C"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
@@ -1176,14 +1208,14 @@ A B C
         let known_inputs = ["A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Input {
+            typ: SignalType::Input {
                 default: InputValue::Value(0),
             },
         });
         let known_outputs = ["B", "C"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
@@ -1191,7 +1223,7 @@ A B C
         let signal_b = Signal {
             name: String::from("B"),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         };
         let signal_b = &signal_b;
 
@@ -1232,14 +1264,14 @@ A B C
         let known_inputs = ["A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Input {
+            typ: SignalType::Input {
                 default: InputValue::Value(0),
             },
         });
         let known_outputs = ["B", "A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let Err(err) = ParsedTestCase::from_str(input)?.with_signals(known_signals) else {
@@ -1254,7 +1286,7 @@ A B C
     }
 
     #[test]
-    fn test() -> miette::Result<()> {
+    fn virtual_signal_and_signal_with_same_name_should_give_error() -> miette::Result<()> {
         let input = r"
         A B C
         declare C = !B;
@@ -1264,19 +1296,56 @@ A B C
         let known_inputs = ["A"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Input {
+            typ: SignalType::Input {
                 default: InputValue::Value(0),
             },
         });
         let known_outputs = ["B", "C"].into_iter().map(|name| Signal {
             name: String::from(name),
             bits: 1,
-            dir: SignalDirection::Output,
+            typ: SignalType::Output,
         });
         let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
         let Err(_) = ParsedTestCase::from_str(input)?.with_signals(known_signals) else {
             panic!("Expected an error")
         };
+
+        Ok(())
+    }
+
+    #[test]
+    fn virtual_signal_ignores_variables() -> miette::Result<()> {
+        let input = r"
+        A B C
+        declare C = !B;
+        let B = 2;
+        0 x 1
+        ";
+
+        let known_inputs = ["A"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            typ: SignalType::Input {
+                default: InputValue::Value(0),
+            },
+        });
+        let known_outputs = ["B"].into_iter().map(|name| Signal {
+            name: String::from(name),
+            bits: 1,
+            typ: SignalType::Output,
+        });
+        let known_signals = Vec::from_iter(known_inputs.chain(known_outputs));
+        let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals.clone())?;
+
+        let mut driver = ConstDriver {
+            outputs: vec![OutputEntry {
+                signal: &known_signals[1],
+                value: OutputValue::Value(0),
+            }],
+        };
+        let it = testcase.run_iter(&mut driver)?;
+        let result: Vec<_> = it.collect::<Result<_, _>>()?;
+        assert!(&result[0].outputs[1].check());
 
         Ok(())
     }

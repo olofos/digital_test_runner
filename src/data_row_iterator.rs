@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use crate::{
-    errors::{ExprError, IterationError, RuntimeErrorKind},
+    errors::{ExprError, IterationError, RuntimeError, RuntimeErrorKind},
     stmt::DataEntries,
     DataEntry, DataRow, EntryIndex, EvalContext, ExpectedEntry, ExpectedValue, InputEntry,
-    InputValue, OutputEntry, OutputResultEntry, OutputValue, Signal, StmtIterator, TestCase,
-    TestDriver,
+    InputValue, OutputEntry, OutputResultEntry, OutputValue, Signal, SignalType, StmtIterator,
+    TestCase, TestDriver,
 };
 
 #[derive(Debug)]
@@ -16,14 +16,26 @@ pub struct DataRowIterator<'a, 'b, T> {
     driver: &'b mut T,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OutputEntryIndex<'a> {
+    None,
+    Output(usize),
+    Virtual(&'a crate::expr::Expr),
+}
+
 #[derive(Debug)]
 struct DataRowIteratorTestData<'a> {
     signals: &'a [Signal],
     iter: StmtIterator<'a>,
+    /// List of inputs which links signals to test entries
     input_indices: &'a [EntryIndex],
+    /// List of expected values which links signals to test entries
     expected_indices: &'a [EntryIndex],
-    output_indices: Vec<Option<usize>>,
+    /// List with the same number of entries as `expected_indices`.
+    /// Each non-trivial entry is an index into the output vec from the driver.
+    output_indices: Vec<OutputEntryIndex<'a>>,
     prev: Option<Vec<DataEntry>>,
+    /// The bool is check_update. This should probably sit inside DataEntries
     cache: Vec<(DataEntries, bool)>,
 }
 
@@ -83,7 +95,7 @@ impl<'a, 'b, T: TestDriver> DataRowIterator<'a, 'b, T> {
         if update_output {
             let outputs = self.driver.write_input_and_read_output(inputs)?;
             self.ctx.set_outputs(&outputs);
-            self.test_data.extract_output_values(outputs)
+            self.test_data.extract_output_values(outputs, &mut self.ctx)
         } else {
             self.driver.write_input(inputs)?;
             Ok(vec![])
@@ -159,7 +171,14 @@ impl<'a> DataRowIteratorTestData<'a> {
                 } => {
                     let signal = &self.signals[*signal_index];
                     let value = match &stmt_entries[*entry_index] {
-                        DataEntry::Number(n) => ExpectedValue::Value(n & ((1 << signal.bits) - 1)),
+                        DataEntry::Number(n) => {
+                            let mask = if signal.bits < 64 {
+                                (1 << signal.bits) - 1
+                            } else {
+                                -1
+                            };
+                            ExpectedValue::Value(n & mask)
+                        }
                         DataEntry::Z => ExpectedValue::Z,
                         DataEntry::X => ExpectedValue::X,
                         _ => unreachable!(),
@@ -187,9 +206,15 @@ impl<'a> DataRowIteratorTestData<'a> {
 
         for expected_index in self.expected_indices.iter() {
             let signal = &self.signals[expected_index.signal_index()];
-            let entry = outputs.iter().position(|output| output.signal == signal);
+            let entry = if let SignalType::Virtual { expr } = &signal.typ {
+                OutputEntryIndex::Virtual(&expr.expr)
+            } else if let Some(n) = outputs.iter().position(|output| output.signal == signal) {
+                OutputEntryIndex::Output(n)
+            } else {
+                OutputEntryIndex::None
+            };
             output_indices.push(entry);
-            if entry.is_some() {
+            if matches!(entry, OutputEntryIndex::Output(_)) {
                 found_outputs.push(expected_index.signal_index());
             }
         }
@@ -215,12 +240,16 @@ impl<'a> DataRowIteratorTestData<'a> {
     }
 
     fn num_outputs(&self) -> usize {
-        self.output_indices.iter().filter(|i| i.is_some()).count()
+        self.output_indices
+            .iter()
+            .filter(|i| matches!(i, OutputEntryIndex::Output(_)))
+            .count()
     }
 
     fn extract_output_values<E: std::error::Error>(
         &self,
         outputs: Vec<OutputEntry<'_>>,
+        ctx: &mut EvalContext,
     ) -> Result<Vec<OutputValue>, IterationError<E>> {
         let num_outputs = self.num_outputs();
 
@@ -230,26 +259,33 @@ impl<'a> DataRowIteratorTestData<'a> {
             ));
         }
 
-        self.expected_indices
+        ctx.swap_vars();
+        let result = self
+            .expected_indices
             .iter()
             .zip(&self.output_indices)
-            .map(|(expected_index, output_index)| {
-                if let Some(output_entry_index) = output_index {
+            .map(|(expected_index, output_index)| match *output_index {
+                OutputEntryIndex::Output(output_entry_index) => {
                     let expected_signal = &self.signals[expected_index.signal_index()];
-                    let output_signal = outputs[*output_entry_index].signal;
+                    let output_signal = outputs[output_entry_index].signal;
 
                     if expected_signal == output_signal {
-                        Ok(outputs[*output_entry_index].value)
+                        Ok(outputs[output_entry_index].value)
                     } else {
                         Err(IterationError::Runtime(
                             RuntimeErrorKind::WrongOutputOrder.into(),
                         ))
                     }
-                } else {
-                    Ok(OutputValue::X)
                 }
+                OutputEntryIndex::Virtual(expr) => expr
+                    .eval(ctx)
+                    .map(OutputValue::Value)
+                    .map_err(|err| IterationError::Runtime(RuntimeError(err.into()))),
+                OutputEntryIndex::None => Ok(OutputValue::X),
             })
-            .collect()
+            .collect();
+        ctx.swap_vars();
+        result
     }
 
     fn new(test_case: &'a TestCase) -> Self {

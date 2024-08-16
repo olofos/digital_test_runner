@@ -1,5 +1,5 @@
 use colored::{Color, Colorize};
-use digital_test_runner::{dig, InputEntry, OutputEntry, Signal, SignalDirection, TestDriver};
+use digital_test_runner::{dig, InputEntry, OutputEntry, Signal, SignalType, TestDriver};
 use miette::{IntoDiagnostic, Result};
 use std::{ffi::OsStr, io::Write};
 use util::Cursor;
@@ -49,12 +49,7 @@ impl Driver {
 
         let output_signals = signals
             .iter()
-            .filter(|s| {
-                matches!(
-                    s.dir,
-                    SignalDirection::Output | SignalDirection::Bidirectional { .. }
-                )
-            })
+            .filter(|s| matches!(s.typ, SignalType::Output | SignalType::Bidirectional { .. }))
             .cloned()
             .collect();
 

@@ -5,7 +5,7 @@ use miette::NamedSource;
 use crate::{
     errors::{DigFileError, DigFileErrorKind},
     parser::HeaderParser,
-    InputValue, Signal, SignalDirection,
+    InputValue, Signal, SignalType,
 };
 
 /// Represent a test case in the dig file
@@ -132,7 +132,7 @@ impl File {
             .map(|(name, bits)| Signal {
                 name: name.to_string(),
                 bits,
-                dir: SignalDirection::Output,
+                typ: SignalType::Output,
             });
 
         let inputs_signals = visual_elements(&doc, &["In", "Clock"])
@@ -147,7 +147,7 @@ impl File {
             .map(|(name, bits, default)| Signal {
                 name: name.to_string(),
                 bits,
-                dir: SignalDirection::Input { default },
+                typ: SignalType::Input { default },
             });
 
         let signals = Vec::from_iter(inputs_signals.chain(output_signals));
@@ -207,13 +207,13 @@ impl File {
                 .iter_mut()
                 .find(|sig| sig.name == name)
                 .expect("We already checked that all test signals appear in the circuit");
-            let dir = std::mem::replace(&mut sig.dir, SignalDirection::Output);
-            let SignalDirection::Input { default } = dir else {
+            let dir = std::mem::replace(&mut sig.typ, SignalType::Output);
+            let SignalType::Input { default } = dir else {
                 unreachable!(
                     "By definition we know that there will be an input signal called {name}"
                 );
             };
-            sig.dir = SignalDirection::Bidirectional { default };
+            sig.typ = SignalType::Bidirectional { default };
         }
 
         Ok(File {
