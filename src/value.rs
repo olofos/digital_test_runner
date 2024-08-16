@@ -38,6 +38,13 @@ impl OutputValue {
     pub fn check(&self, other: ExpectedValue) -> bool {
         other.check(*self)
     }
+
+    pub(crate) fn unwrap(self) -> i64 {
+        match self {
+            OutputValue::Value(n) => n,
+            OutputValue::Z | OutputValue::X => panic!("Expected an integer value"),
+        }
+    }
 }
 
 impl ExpectedValue {

@@ -181,10 +181,7 @@ impl<'a> StmtIterator<'a> {
                     };
                 }
                 StmtIteratorState::EndIterateInner(loop_state) => {
-                    let prev_value = match ctx.get(loop_state.variable).unwrap() {
-                        crate::OutputValue::Value(n) => n,
-                        crate::OutputValue::Z | crate::OutputValue::X => unreachable!(),
-                    };
+                    let prev_value = ctx.get(loop_state.variable).unwrap().unwrap();
                     let value = prev_value + 1;
                     if value < loop_state.max {
                         ctx.set(loop_state.variable, value);
