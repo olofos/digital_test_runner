@@ -65,17 +65,10 @@ pub struct VirtualExpr {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub enum SignalType {
-    Input {
-        default: InputValue,
-    },
+    Input { default: InputValue },
     Output,
-    Bidirectional {
-        default: InputValue,
-    },
-    #[non_exhaustive]
-    Virtual {
-        expr: VirtualExpr,
-    },
+    Bidirectional { default: InputValue },
+    Virtual { expr: VirtualExpr },
 }
 
 /// Represent a input or output signal of the device under test
