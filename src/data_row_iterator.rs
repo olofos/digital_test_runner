@@ -35,8 +35,7 @@ struct DataRowIteratorTestData<'a> {
     /// Each non-trivial entry is an index into the output vec from the driver.
     output_indices: Vec<OutputEntryIndex<'a>>,
     prev: Option<Vec<DataEntry>>,
-    /// The bool is check_update. This should probably sit inside DataEntries
-    cache: Vec<(DataEntries, bool)>,
+    cache: Vec<DataEntries>,
 }
 
 #[derive(Debug)]
@@ -320,11 +319,10 @@ impl<'a> DataRowIteratorTestData<'a> {
 
     fn expand_x(&mut self) {
         loop {
-            let (row_result, check_output) = self
+            let row_result = self
                 .cache
                 .last()
                 .expect("cache should be refilled before calling expand_x");
-            let check_output = *check_output;
 
             let Some(x_index) =
                 row_result
@@ -342,16 +340,16 @@ impl<'a> DataRowIteratorTestData<'a> {
             else {
                 break;
             };
-            let (mut row_result, _) = self.cache.pop().unwrap();
+            let mut row_result = self.cache.pop().unwrap();
             row_result.entries[x_index] = DataEntry::Number(1);
-            self.cache.push((row_result.clone(), check_output));
+            self.cache.push(row_result.clone());
             row_result.entries[x_index] = DataEntry::Number(0);
-            self.cache.push((row_result, check_output));
+            self.cache.push(row_result);
         }
     }
 
     fn expand_c(&mut self) {
-        let (mut row_result, check_output) = self
+        let mut row_result = self
             .cache
             .pop()
             .expect("cache should be refilled before calling expand_c");
@@ -370,12 +368,12 @@ impl<'a> DataRowIteratorTestData<'a> {
             .collect::<Vec<_>>();
 
         if c_indices.is_empty() {
-            self.cache.push((row_result, check_output));
+            self.cache.push(row_result);
         } else {
             for &i in &c_indices {
                 row_result.entries[i] = DataEntry::Number(0);
             }
-            self.cache.push((row_result.clone(), true));
+            self.cache.push(row_result.clone());
             for entry_index in self.expected_indices {
                 match entry_index {
                     EntryIndex::Entry {
@@ -385,14 +383,15 @@ impl<'a> DataRowIteratorTestData<'a> {
                     EntryIndex::Default { signal_index: _ } => continue,
                 }
             }
+            row_result.update_output = false;
             for &i in &c_indices {
                 row_result.entries[i] = DataEntry::Number(1);
             }
-            self.cache.push((row_result.clone(), false));
+            self.cache.push(row_result.clone());
             for &i in &c_indices {
                 row_result.entries[i] = DataEntry::Number(0);
             }
-            self.cache.push((row_result.clone(), false));
+            self.cache.push(row_result);
         }
     }
 
@@ -401,13 +400,13 @@ impl<'a> DataRowIteratorTestData<'a> {
             let Some(row_result) = self.iter.next_with_context(ctx)? else {
                 return Ok(None);
             };
-            self.cache.push((row_result, true));
+            self.cache.push(row_result);
         }
 
         self.expand_x();
         self.expand_c();
 
-        let (row_result, update_output) = self.cache.pop().unwrap();
+        let row_result = self.cache.pop().unwrap();
 
         let changed = self.check_changed_entries(&row_result.entries);
 
@@ -416,6 +415,8 @@ impl<'a> DataRowIteratorTestData<'a> {
         let expected = self.generate_expected_entries(&row_result.entries);
 
         let line = row_result.line;
+        let update_output = row_result.update_output;
+
         self.prev = Some(row_result.entries);
 
         Ok(Some(EvaluatedRow {

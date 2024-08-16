@@ -40,6 +40,7 @@ pub(crate) enum DataEntry {
 pub(crate) struct DataEntries {
     pub(crate) entries: Vec<DataEntry>,
     pub(crate) line: usize,
+    pub(crate) update_output: bool,
 }
 
 #[derive(Debug)]
@@ -131,6 +132,7 @@ impl<'a> StmtIterator<'a> {
                             return Ok(Some(DataEntries {
                                 entries,
                                 line: *line,
+                                update_output: true,
                             }));
                         }
                         Stmt::Loop {
