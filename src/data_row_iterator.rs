@@ -46,6 +46,28 @@ struct EvaluatedRow<'a> {
     update_output: bool,
 }
 
+impl EntryIndex {
+    pub(crate) fn signal_index(&self) -> usize {
+        match self {
+            EntryIndex::Entry {
+                entry_index: _,
+                signal_index,
+            } => *signal_index,
+            EntryIndex::Default { signal_index } => *signal_index,
+        }
+    }
+
+    pub(crate) fn indexes(&self, entry_index: usize) -> bool {
+        match self {
+            EntryIndex::Entry {
+                entry_index: i,
+                signal_index: _,
+            } => *i == entry_index,
+            EntryIndex::Default { signal_index: _ } => false,
+        }
+    }
+}
+
 impl<'a, 'b, T: TestDriver> Iterator for DataRowIterator<'a, 'b, T> {
     type Item = Result<DataRow<'a>, IterationError<T::Error>>;
 

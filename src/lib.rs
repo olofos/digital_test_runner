@@ -174,28 +174,6 @@ impl<'a> OutputResultEntry<'a> {
     }
 }
 
-impl EntryIndex {
-    pub(crate) fn signal_index(&self) -> usize {
-        match self {
-            EntryIndex::Entry {
-                entry_index: _,
-                signal_index,
-            } => *signal_index,
-            EntryIndex::Default { signal_index } => *signal_index,
-        }
-    }
-
-    pub(crate) fn indexes(&self, entry_index: usize) -> bool {
-        match self {
-            EntryIndex::Entry {
-                entry_index: i,
-                signal_index: _,
-            } => *i == entry_index,
-            EntryIndex::Default { signal_index: _ } => false,
-        }
-    }
-}
-
 impl dig::File {
     /// Load a test by index
     pub fn load_test(&self, n: usize) -> Result<TestCase, LoadTestError> {
