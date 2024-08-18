@@ -1,3 +1,10 @@
+[![Latest version](https://img.shields.io/crates/v/digital_test_runner.svg)](https://crates.io/crates/digital_test_runner)
+[![Documentation](https://docs.rs/digital_test_runner/badge.svg)](https://docs.rs/digital_test_runner)
+[![Build Status](https://github.com/olofos/digital_test_runner/workflows/main/badge.svg)](https://github.com/olofos/digital_test_runner/actions?workflow=main)
+[![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/olofos/digital_test_runner/blob/master/LICENSE-MIT)
+[![Apache](https://img.shields.io/badge/license-Apache-blue.svg)](https://github.com/olofos/digital_test_runner/blob/master/LICENSE-APACHE)
+
+
 # digital_test_runner
 
 Parse and run tests used in [hnemann's Digital](https://github.com/hneemann/Digital) logic designer and circuit simulator.
