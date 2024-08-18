@@ -5,7 +5,6 @@
 
 /// Load tests from a dig file
 pub mod dig;
-/// Error types
 pub mod errors;
 /// Static tests
 pub mod static_test;

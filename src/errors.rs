@@ -1,3 +1,7 @@
+//! Error types
+//!
+//! Where relevant these error types implement the [miette::Diagnostic] trait to provide context
+//!  such as locations in the source code of a parsing error.
 use miette::{Diagnostic, NamedSource};
 use thiserror::Error;
 
@@ -5,7 +9,7 @@ use crate::{lexer::TokenKind, OutputValue};
 
 #[derive(Debug, Error, Diagnostic)]
 #[diagnostic()]
-/// Error returned from DataRowIterator
+/// Error returned from [DataRowIterator](crate::DataRowIterator)
 pub enum IterationError<T: std::error::Error + 'static> {
     /// Driver error
     #[error("Driver error")]
@@ -250,6 +254,9 @@ pub(crate) enum ExprErrorKind {
 
 #[derive(Debug)]
 /// This should never happen
+///
+/// This type represents an error which cannot happen (since the type can never be constructed),
+/// but which still implements the [std::error::Error] trait
 pub enum NoError {}
 
 impl std::fmt::Display for NoError {

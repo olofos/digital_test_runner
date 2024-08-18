@@ -15,7 +15,7 @@ The simplest way of loading a test is to load a `.dig` file and then load a part
         dig_file.load_test(n).unwrap()
     }
 
-To actually run the test we need a driver which is implementing the `TestDriver` trait.
+To actually run the test we need a driver which is implementing the [TestDriver] trait. This trait describes the communication between the test runner and the device under test. 
 
 ## Comparison with Digital
 
