@@ -38,3 +38,12 @@ jobs:
         with:
           components: clippy
       - run: cargo clippy -- -D warnings
+
+  readme:
+    name: Check that README is up to date.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-rdme
+      - run: cargo rdme --check
