@@ -98,7 +98,7 @@ fn main() -> miette::Result<()> {
             let mut it = test_case.run_iter(&mut driver)?;
 
             while let Some(row) = it.next() {
-                let row = row.into_diagnostic()?;
+                let row = row?;
                 print!("{:2}: ", row.line);
                 for input in &row.inputs {
                     print!("{} ", input.value);
