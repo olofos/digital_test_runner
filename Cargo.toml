@@ -4,7 +4,11 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.70.0"
 license = "MIT OR Apache-2.0"
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Parse and run tests used in hnemann's Digital logic designer and circuit simulator."
+homepage = "https://github.com/olofos/digital_test_runner"
+repository = "https://github.com/olofos/digital_test_runner"
+keywords = ["digital", "circuit", "testing"]
+categories = ["development-tools::testing", "embedded", "compilers"]
 
 [dependencies]
 getrandom = "0.2.12"
