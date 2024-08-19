@@ -1,6 +1,6 @@
 [![Latest version](https://img.shields.io/crates/v/digital_test_runner.svg)](https://crates.io/crates/digital_test_runner)
 [![Documentation](https://docs.rs/digital_test_runner/badge.svg)](https://docs.rs/digital_test_runner)
-[![Build Status](https://github.com/olofos/digital_test_runner/workflows/main/badge.svg)](https://github.com/olofos/digital_test_runner/actions?workflow=main)
+[![Build Status](https://github.com/olofos/digital_test_runner/workflows/main/badge.svg)](https://github.com/olofos/digital_test_runner/actions?workflow=CI)
 [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/olofos/digital_test_runner/blob/master/LICENSE-MIT)
 [![Apache](https://img.shields.io/badge/license-Apache-blue.svg)](https://github.com/olofos/digital_test_runner/blob/master/LICENSE-APACHE)
 
