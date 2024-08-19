@@ -31,6 +31,16 @@ pub enum ExpectedValue {
     X,
 }
 
+impl InputValue {
+    /// Extract the numerical value if it is set
+    pub fn value(self) -> Option<i64> {
+        match self {
+            InputValue::Value(n) => Some(n),
+            InputValue::Z => None,
+        }
+    }
+}
+
 impl OutputValue {
     /// Check if the output value matches the expected value
     ///
@@ -39,10 +49,11 @@ impl OutputValue {
         other.check(*self)
     }
 
-    pub(crate) fn unwrap(self) -> i64 {
+    /// Extract the numerical value if it is set
+    pub fn value(self) -> Option<i64> {
         match self {
-            OutputValue::Value(n) => n,
-            OutputValue::Z | OutputValue::X => panic!("Expected an integer value"),
+            OutputValue::Value(n) => Some(n),
+            OutputValue::Z | OutputValue::X => None,
         }
     }
 }

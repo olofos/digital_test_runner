@@ -183,7 +183,11 @@ impl<'a> StmtIterator<'a> {
                     };
                 }
                 StmtIteratorState::EndIterateInner(loop_state) => {
-                    let prev_value = ctx.get(loop_state.variable).unwrap().unwrap();
+                    let prev_value = ctx
+                        .get(loop_state.variable)
+                        .unwrap()
+                        .value()
+                        .expect("Expected an integer value");
                     let value = prev_value + 1;
                     if value < loop_state.max {
                         ctx.set(loop_state.variable, value);
