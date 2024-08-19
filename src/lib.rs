@@ -279,11 +279,28 @@ impl Signal {
     }
 
     /// Construct an `Input` signal
-    pub fn input(name: impl Into<String>, bits: usize, default: InputValue) -> Self {
+    pub fn input(name: impl Into<String>, bits: usize, default: impl Into<InputValue>) -> Self {
         Self {
             name: name.into(),
             bits,
-            typ: SignalType::Input { default },
+            typ: SignalType::Input {
+                default: default.into(),
+            },
+        }
+    }
+
+    /// Construct a `Bidirectional` signal
+    pub fn bidirectional(
+        name: impl Into<String>,
+        bits: usize,
+        default: impl Into<InputValue>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            bits,
+            typ: SignalType::Bidirectional {
+                default: default.into(),
+            },
         }
     }
 
