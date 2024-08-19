@@ -246,7 +246,7 @@ mod test {
     use rstest::rstest;
 
     #[test]
-    fn test() {
+    fn can_load_dig_file() {
         let input =
             std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/74779.dig"))
                 .unwrap();
@@ -286,5 +286,19 @@ mod test {
             err,
             DigFileError(DigFileErrorKind::XMLError(_, _, _))
         ))
+    }
+
+    #[test]
+    fn xml_error_is_reported() -> miette::Result<()> {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/xml-error.dig");
+        let Err(err) = File::open(path) else {
+            panic!("Expected error")
+        };
+        assert!(matches!(
+            err,
+            DigFileError(DigFileErrorKind::XMLError(_, _, _))
+        ));
+
+        Ok(())
     }
 }
