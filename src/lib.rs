@@ -82,6 +82,7 @@
 //! - [InputValue](crate::value::InputValue): A value written to the DUT
 //! - [OutputValue](crate::value::OutputValue): A value read from the DUT
 //! - [ExpectedValue](crate::value::ExpectedValue): An expected value provided by the test and compared to an output value
+//!
 //! These values are defined as enums and all have two variants in common: a `Value(i64)` which represents an actual integer value, and a `Z` which represents a high impedence state.
 //! Note that this is a simpler value model than what is available in for example Verilog, since either all or none of the bits making up the value are high impendence.
 //!
