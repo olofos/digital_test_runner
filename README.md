@@ -78,6 +78,7 @@ This crate provides several value types:
 - [InputValue](https://docs.rs/digital_test_runner/latest/digital_test_runner/value/enum.InputValue.html): A value written to the DUT
 - [OutputValue](https://docs.rs/digital_test_runner/latest/digital_test_runner/value/enum.OutputValue.html): A value read from the DUT
 - [ExpectedValue](https://docs.rs/digital_test_runner/latest/digital_test_runner/value/enum.ExpectedValue.html): An expected value provided by the test and compared to an output value
+
 These values are defined as enums and all have two variants in common: a `Value(i64)` which represents an actual integer value, and a `Z` which represents a high impedence state.
 Note that this is a simpler value model than what is available in for example Verilog, since either all or none of the bits making up the value are high impendence.
 
