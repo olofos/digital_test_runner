@@ -11,15 +11,15 @@ keywords = ["digital", "circuit", "testing"]
 categories = ["development-tools::testing", "embedded", "compilers"]
 
 [dependencies]
-getrandom = "0.2.12"
+getrandom = "0.2.0"
 logos = "0.14.0"
-miette = "7.2.0"
-rand = "0.8.5"
+miette = "7.1.0"
+rand = "0.8.0"
 roxmltree = "0.20.0"
-thiserror = "1.0.61"
+thiserror = "1.0.0"
 
 [dev-dependencies]
-colored = "2.1.0"
+colored = "2.0.0"
 rstest = "0.21.0"
-which = "6.0.1"
-miette = { version = "7.2.0", features = ["fancy"] }
+which = "6.0.0"
+miette = { version = "7.1.0", features = ["fancy"] }
