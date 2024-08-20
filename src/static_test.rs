@@ -3,7 +3,7 @@ use crate::{errors::NoError, InputEntry, OutputEntry, TestDriver};
 #[derive(Debug)]
 /// Trivial test driver that always returns an empty output.
 ///
-/// This driver can be useful if the onlt goal is to get a list
+/// This driver can be useful if the only goal is to get a list
 /// of inputs and expected outputs for a test.
 /// This only works for a "static" test, which does not
 /// directly read the outputs from the DUT other then through
