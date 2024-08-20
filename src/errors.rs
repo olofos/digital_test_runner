@@ -20,8 +20,9 @@ pub enum IterationError<T: std::error::Error + 'static> {
 }
 
 /// Internal runtime errors
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 #[error(transparent)]
+#[diagnostic()]
 pub struct RuntimeError(#[from] pub(crate) RuntimeErrorKind);
 
 #[derive(Debug, Error)]
@@ -251,6 +252,12 @@ pub(crate) enum ExprErrorKind {
     #[error("Unexpected value {1} for signal {0}")]
     UnexpectedValueForSignal(String, OutputValue),
 }
+
+/// Could not construct static iterator
+#[derive(Debug, Error, Diagnostic)]
+#[error("Test is not static, it reads the following outputs: {0}")]
+#[diagnostic()]
+pub struct StaticIteratorError(pub(crate) String);
 
 #[derive(Debug)]
 /// This should never happen
