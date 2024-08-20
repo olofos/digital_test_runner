@@ -587,7 +587,7 @@ fn gives_error_for_reading_value_if_not_an_output() -> miette::Result<()> {
 }
 
 #[test]
-fn test_missing_ouput() -> miette::Result<()> {
+fn test_missing_output() -> miette::Result<()> {
     let input = r"
 A B C
 0 X X

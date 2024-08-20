@@ -51,7 +51,7 @@ Since `write_input_and_read_output` performs some form of IO it can potentially 
 Hence, the trait comes with an associated error type `TestDriver::Error`, which should implement [std::error::Error](https://doc.rust-lang.org/stable/core/error/trait.Error.html).
 
 The [TestDriver](https://docs.rs/digital_test_runner/latest/digital_test_runner/trait.TestDriver.html) trait has a second provided method `write_input` which is called when some input should be written to the device under test,
-but the test does not care about the resulting output. By default this is implemented by calling `write_input_and_read_output` and dicarding the output,
+but the test does not care about the resulting output. By default this is implemented by calling `write_input_and_read_output` and discarding the output,
 but a driver can implement its own version of `write_input` as an optimization if reading the output values is costly.
 
 If the goal is to translate the test to a different language, a trivial driver is provided in [static_test::Driver](https://docs.rs/digital_test_runner/latest/digital_test_runner/static_test/struct.Driver.html).
@@ -79,8 +79,8 @@ This crate provides several value types:
 - [OutputValue](https://docs.rs/digital_test_runner/latest/digital_test_runner/value/enum.OutputValue.html): A value read from the DUT
 - [ExpectedValue](https://docs.rs/digital_test_runner/latest/digital_test_runner/value/enum.ExpectedValue.html): An expected value provided by the test and compared to an output value
 
-These values are defined as enums and all have two variants in common: a `Value(i64)` which represents an actual integer value, and a `Z` which represents a high impedence state.
-Note that this is a simpler value model than what is available in for example Verilog, since either all or none of the bits making up the value are high impendence.
+These values are defined as enums and all have two variants in common: a `Value(i64)` which represents an actual integer value, and a `Z` which represents a high impedance state.
+Note that this is a simpler value model than what is available in for example Verilog, since either all or none of the bits making up the value are high impedance.
 
 Additionally, the [OutputValue](https://docs.rs/digital_test_runner/latest/digital_test_runner/value/enum.OutputValue.html) and [ExpectedValue](https://docs.rs/digital_test_runner/latest/digital_test_runner/value/enum.ExpectedValue.html) both have `X` variants.
 For an expected value, `X` represents that the test does not care about what the output value is.
@@ -93,7 +93,7 @@ Such a value will *never* checks as equal to the expected value, unless the expe
 
 Here is a complete example where a test is loaded from source, with the signals manually defined, as well as a simple driver.
 In this simple example the driver is not communicating with a device under test, but simply implementing the logic itself.
-Like this crate, this example uses [miette](https://crates.io/crates/miette) for error handeling.
+Like this crate, this example uses [miette](https://crates.io/crates/miette) for error handling.
 
 For a larger example, including a driver that does communicate with the device under test, see the `examples/` directory of the source code.
 ```rust
@@ -156,7 +156,7 @@ fn main() -> miette::Result<()> {
 
 Here are some known differences in how test cases are interpreted by this crate compared to with what the original Digital program does:
 - The `program`, `memory` and `init` statements are currently not supported.
-- If the test directly references the value of an output signal in an expression and the device under test outputs a high impedence `Z` value for that signal this crate will give an error.
+- If the test directly references the value of an output signal in an expression and the device under test outputs a high impedance `Z` value for that signal this crate will give an error.
   Digital instead randomly assigns a high or low value to the signal when evaluating the expression.
 - This crate is less strict when evaluating expressions for loop bounds.
   Digital requires the bound in `loop` and `repeat` statements to be a constant, while this crate accepts any expression.

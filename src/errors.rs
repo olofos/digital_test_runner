@@ -72,7 +72,7 @@ pub(super) enum ParseErrorKind {
     DataRowWithWrongNumberOfSignals { expected: usize, found: usize },
     #[error("Function {ident} not found")]
     FunctionNotFound { ident: String },
-    #[error("Wrong number of arguments. Expeted {expected} but found {found}")]
+    #[error("Wrong number of arguments. Expected {expected} but found {found}")]
     WrongNumberOfArguments { expected: usize, found: usize },
     #[error("Signal name {name} appears twice")]
     DuplicateSignal { name: String },
