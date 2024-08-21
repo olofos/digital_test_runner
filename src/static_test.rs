@@ -52,6 +52,7 @@ impl TestCase {
                 .join(", ");
             return Err(StaticIteratorError(list));
         }
+        // It should be fine to leak driver since it has zero size
         let it = DataRowIterator::try_new(self, Box::leak(Box::new(Driver)))
             .expect("There shouldn't be any possible errors here");
         Ok(StaticDataRowIterator { it })
@@ -95,9 +96,8 @@ impl<'a> Iterator for StaticDataRowIterator<'a> {
 
 #[cfg(test)]
 mod test {
-    use std::str::FromStr;
-
     use crate::{InputValue, ParsedTestCase, Signal};
+    use std::str::FromStr;
 
     use super::*;
 
@@ -167,5 +167,10 @@ mod test {
         assert_eq!(list, "B, C");
 
         Ok(())
+    }
+
+    #[test]
+    fn check_that_driver_is_zero_size() {
+        assert_eq!(size_of::<Driver>(), 0);
     }
 }
