@@ -99,7 +99,7 @@ end loop
     let known_signals = Vec::from_iter(known_inputs.chain(known_outputs.clone()));
     let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
     let mut driver = Driver;
-    let it = testcase.run_iter(&mut driver)?;
+    let it = testcase.try_iter(&mut driver)?;
     for row in it {
         let row = row.unwrap();
         for input in row.inputs {
@@ -138,7 +138,7 @@ Z 1";
             value: OutputValue::Value(0),
         }],
     };
-    let it = testcase.run_iter(&mut driver)?;
+    let it = testcase.try_iter(&mut driver)?;
     let result: Vec<_> = it.collect::<Result<_, _>>().unwrap();
 
     assert_eq!(result.len(), 2);
@@ -192,12 +192,12 @@ fn iter_with_c_works() -> miette::Result<()> {
 
     let mut driver = Driver;
     let rows = testcase
-        .run_iter(&mut driver)?
+        .try_iter(&mut driver)?
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
     let expanded_rows: Vec<_> = expanded_testcase
-        .run_iter(&mut driver)?
+        .try_iter(&mut driver)?
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
@@ -248,12 +248,12 @@ fn iter_with_x_works() -> miette::Result<()> {
 
     let mut driver = Driver;
     let rows = testcase
-        .run_iter(&mut driver)?
+        .try_iter(&mut driver)?
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
     let expanded_rows: Vec<_> = expanded_testcase
-        .run_iter(&mut driver)?
+        .try_iter(&mut driver)?
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
@@ -305,12 +305,12 @@ fn iter_with_x_and_c_works() -> miette::Result<()> {
 
     let mut driver = Driver;
     let rows = testcase
-        .run_iter(&mut driver)?
+        .try_iter(&mut driver)?
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
     let expanded_rows: Vec<_> = expanded_testcase
-        .run_iter(&mut driver)?
+        .try_iter(&mut driver)?
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
@@ -383,7 +383,7 @@ fn works_if_not_all_outputs_are_given() -> miette::Result<()> {
 
     let mut driver = TableDriver::new(&[vec![(signal, 0)], vec![(signal, 0)], vec![(signal, 0)]]);
 
-    for row in testcase.run_iter(&mut driver)? {
+    for row in testcase.try_iter(&mut driver)? {
         let _ = row.unwrap();
     }
 
@@ -432,7 +432,7 @@ fn gives_error_if_outputs_change_order() -> miette::Result<()> {
         vec![(signal_c, 0), (signal_b, 1)],
     ]);
 
-    let mut it = testcase.run_iter(&mut driver)?;
+    let mut it = testcase.try_iter(&mut driver)?;
     assert!(it.next().unwrap().is_err());
 
     Ok(())
@@ -477,7 +477,7 @@ fn gives_error_if_outputs_changes_length() -> miette::Result<()> {
 
     let mut driver = TableDriver::new(&[vec![(signal_b, 0), (signal_c, 1)], vec![(signal_b, 0)]]);
 
-    let mut it = testcase.run_iter(&mut driver)?;
+    let mut it = testcase.try_iter(&mut driver)?;
     assert!(it.next().unwrap().is_err());
 
     Ok(())
@@ -522,7 +522,7 @@ fn gives_error_if_outputs_changes_length_2() -> miette::Result<()> {
 
     let mut driver = TableDriver::new(&[vec![(signal_b, 0)], vec![(signal_b, 0), (signal_c, 1)]]);
 
-    let mut it = testcase.run_iter(&mut driver)?;
+    let mut it = testcase.try_iter(&mut driver)?;
     assert!(it.next().unwrap().is_err());
 
     Ok(())
@@ -608,7 +608,7 @@ A B C
     let testcase = ParsedTestCase::from_str(input)?.with_signals(known_signals)?;
 
     let mut driver = Driver;
-    let Err(err) = testcase.run_iter(&mut driver) else {
+    let Err(err) = testcase.try_iter(&mut driver) else {
         panic!("Should have failed")
     };
     assert!(matches!(
@@ -659,7 +659,7 @@ fn return_z_for_read_signal_should_not_panic() -> miette::Result<()> {
     };
 
     let Err(err) = testcase
-        .run_iter(&mut driver)?
+        .try_iter(&mut driver)?
         .collect::<Result<Vec<_>, _>>()
     else {
         panic!("Expected an error")
@@ -767,7 +767,7 @@ fn virtual_signal_ignores_variables() -> miette::Result<()> {
             value: OutputValue::Value(0),
         }],
     };
-    let it = testcase.run_iter(&mut driver)?;
+    let it = testcase.try_iter(&mut driver)?;
     let result: Vec<_> = it.collect::<Result<_, _>>()?;
     assert!(&result[0].outputs[1].check());
 

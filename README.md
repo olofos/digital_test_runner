@@ -25,11 +25,11 @@ let test_case = dig_file.load_test(n).unwrap();
 ```
 To actually run the test we need a driver which is implementing the [TestDriver](https://docs.rs/digital_test_runner/latest/digital_test_runner/trait.TestDriver.html) trait.
 This trait describes the communication between the test runner and the device under test.
-Once we have a driver we can use the [TestCase::run_iter](https://docs.rs/digital_test_runner/latest/digital_test_runner/struct.TestCase.html#method.run_iter) function to obtain an iterator over the rows of the test.
+Once we have a driver we can use the [TestCase::try_iter](https://docs.rs/digital_test_runner/latest/digital_test_runner/struct.TestCase.html#method.try_iter) function to obtain an iterator over the rows of the test.
 Since both the driver and the test itself can fail during the execution of the test, each row is wrapped in  a `Result`.
 Once we unwrap the row we can examine it to find for example if all output signals matched the expected values.
 ```rust
-for row in test_case.run_iter(&mut driver)? {
+for row in test_case.try_iter(&mut driver)? {
     let row = row?;
     for entry in row.failing_outputs() {
         println!("{}: {} expected {} but found {}", row.line, entry.signal.name, entry.expected, entry.output);
@@ -45,7 +45,7 @@ The driver should then wait for the output signals to settle, read them back and
 
 The list of output values should always be given in the same order for each invocation of `write_input_and_read_output`.
 This allows us to detect some errors, such as missing output values read by the test program, already when the iterator is constructed.
-To do this, the [TestCase::run_iter](https://docs.rs/digital_test_runner/latest/digital_test_runner/struct.TestCase.html#method.run_iter) constructor writes the default value of all inputs and reads the corresponding outputs before constructing the iterator.
+To do this, the [TestCase::try_iter](https://docs.rs/digital_test_runner/latest/digital_test_runner/struct.TestCase.html#method.try_iter) constructor writes the default value of all inputs and reads the corresponding outputs before constructing the iterator.
 
 Since `write_input_and_read_output` performs some form of IO it can potentially fail.
 Hence, the trait comes with an associated error type `TestDriver::Error`, which should implement [std::error::Error](https://doc.rust-lang.org/stable/core/error/trait.Error.html).
@@ -161,7 +161,7 @@ fn main() -> miette::Result<()> {
     let testcase = parsed_test.with_signals(signals)?;
 
     let mut driver = Driver(Signal::output("B", 1));
-    for row in testcase.run_iter(&mut driver)? {
+    for row in testcase.try_iter(&mut driver)? {
         for output in row?.outputs {
             assert!(output.check());
         }

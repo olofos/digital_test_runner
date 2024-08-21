@@ -23,7 +23,7 @@
 //! ```
 //! To actually run the test we need a driver which is implementing the [TestDriver](crate::TestDriver) trait.
 //! This trait describes the communication between the test runner and the device under test.
-//! Once we have a driver we can use the [TestCase::run_iter](crate::TestCase::run_iter) function to obtain an iterator over the rows of the test.
+//! Once we have a driver we can use the [TestCase::try_iter](crate::TestCase::try_iter) function to obtain an iterator over the rows of the test.
 //! Since both the driver and the test itself can fail during the execution of the test, each row is wrapped in  a `Result`.
 //! Once we unwrap the row we can examine it to find for example if all output signals matched the expected values.
 //! ```
@@ -31,7 +31,7 @@
 //! # use digital_test_runner::{dig,TestCase,static_test};
 //! # let test_case = dig::File::open(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/Counter.dig")).unwrap().load_test(0).unwrap();
 //! # let mut driver = static_test::Driver;
-//! for row in test_case.run_iter(&mut driver)? {
+//! for row in test_case.try_iter(&mut driver)? {
 //!     let row = row?;
 //!     for entry in row.failing_outputs() {
 //!         println!("{}: {} expected {} but found {}", row.line, entry.signal.name, entry.expected, entry.output);
@@ -49,7 +49,7 @@
 //!
 //! The list of output values should always be given in the same order for each invocation of `write_input_and_read_output`.
 //! This allows us to detect some errors, such as missing output values read by the test program, already when the iterator is constructed.
-//! To do this, the [TestCase::run_iter](crate::TestCase::run_iter) constructor writes the default value of all inputs and reads the corresponding outputs before constructing the iterator.
+//! To do this, the [TestCase::try_iter](crate::TestCase::try_iter) constructor writes the default value of all inputs and reads the corresponding outputs before constructing the iterator.
 //!
 //! Since `write_input_and_read_output` performs some form of IO it can potentially fail.
 //! Hence, the trait comes with an associated error type `TestDriver::Error`, which should implement [std::error::Error](https://doc.rust-lang.org/stable/core/error/trait.Error.html).
@@ -170,7 +170,7 @@
 //!     let testcase = parsed_test.with_signals(signals)?;
 //!
 //!     let mut driver = Driver(Signal::output("B", 1));
-//!     for row in testcase.run_iter(&mut driver)? {
+//!     for row in testcase.try_iter(&mut driver)? {
 //!         for output in row?.outputs {
 //!             assert!(output.check());
 //!         }
@@ -414,11 +414,20 @@ impl TestCase {
     /// This function returns an iterator over the resulting data rows.
     ///
     /// Before starting the test all inputs are set to their default values.
-    pub fn run_iter<'a, 'b, T: TestDriver>(
+    pub fn try_iter<'a, 'b, T: TestDriver>(
         &'a self,
         driver: &'b mut T,
     ) -> Result<DataRowIterator<'a, 'b, T>, IterationError<T::Error>> {
         DataRowIterator::try_new(self, driver)
+    }
+
+    #[deprecated = "method renamed to try_iter"]
+    /// Run the test dynamically using `driver` for communicating with the device under test
+    pub fn run_iter<'a, 'b, T: TestDriver>(
+        &'a self,
+        driver: &'b mut T,
+    ) -> Result<DataRowIterator<'a, 'b, T>, IterationError<T::Error>> {
+        self.try_iter(driver)
     }
 }
 
