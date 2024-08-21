@@ -58,9 +58,33 @@
 //! but the test does not care about the resulting output. By default this is implemented by calling `write_input_and_read_output` and discarding the output,
 //! but a driver can implement its own version of `write_input` as an optimization if reading the output values is costly.
 //!
-//! If the goal is to translate the test to a different language, a trivial driver is provided in [static_test::Driver](crate::static_test::Driver).
-//! This driver does not provide any output data, but the runner still gives a list of inputs and expected outputs.
-//! This only works for simple "static" tests, that is, test which do not directly read the value of any output signals.
+//! ### Static tests
+//!
+//! For "static" tests, that is, test which do not directly read the value of any output signals,
+//! it is possible to run the test without implementing a driver using the [TestCase::try_iter_static](crate::TestCase::try_iter_static) method.
+//! Without a driver there is no way of directly communicating with the device under test.
+//! In particular, we only know the values of input signals and the expected values for the output signals,
+//! but not what the actual output values are.
+//! However, if the goal is to translate the test to a different language the input and expected output values is all we need
+//! and this simpler API can come in handy.
+//! ```
+//! # fn main() -> miette::Result<()> {
+//! # use digital_test_runner::{dig,TestCase};
+//! # let test_case = dig::File::open(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/Counter.dig")).unwrap().load_test(0).unwrap();
+//! for row in test_case.try_iter_static()? {
+//!     let row = row?;
+//!     for input in row.inputs {
+//!         print!("{} ", input.value);
+//!     }
+//!     print!("| ");
+//!     for expected in row.expected {
+//!         print!("{} ", expected.value);
+//!     }
+//!     println!("");
+//! }
+//! # Ok(())
+//! # }
+//! ```
 //!
 //! ### Manually loading a test
 //!

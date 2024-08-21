@@ -54,9 +54,28 @@ The [TestDriver](https://docs.rs/digital_test_runner/latest/digital_test_runner/
 but the test does not care about the resulting output. By default this is implemented by calling `write_input_and_read_output` and discarding the output,
 but a driver can implement its own version of `write_input` as an optimization if reading the output values is costly.
 
-If the goal is to translate the test to a different language, a trivial driver is provided in [static_test::Driver](https://docs.rs/digital_test_runner/latest/digital_test_runner/static_test/struct.Driver.html).
-This driver does not provide any output data, but the runner still gives a list of inputs and expected outputs.
-This only works for simple "static" tests, that is, test which do not directly read the value of any output signals.
+#### Static tests
+
+For "static" tests, that is, test which do not directly read the value of any output signals,
+it is possible to run the test without implementing a driver using the TestCase::try_iter_static method.
+Without a driver there is no way of directly communicating with the device under test.
+In particular, we only know the values of input signals and the expected values for the output signals,
+but not what the actual output values are.
+However, if the goal is to translate the test to a different language the input and expected output values is all we need
+and this simpler API can come in handy.
+```rust
+for row in test_case.try_iter_static()? {
+    let row = row?;
+    for input in row.inputs {
+        print!("{} ", input.value);
+    }
+    print!("| ");
+    for expected in row.expected {
+        print!("{} ", expected.value);
+    }
+    println!("");
+}
+```
 
 #### Manually loading a test
 
